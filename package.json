@@ -1,0 +1,22 @@
+{
+  "name": "stdyapp",
+  "version": "0.0.0",
+  "description": "Set goals, find friends, see results.",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lahlan-h/stdyapp.git"
+  },
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "turbo": "^2.10.2"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@stdyapp/web",
+  "version": "0.0.0",
+  "description": "The desktop version of stdyapp.",
+  "private": "true",
+  "scripts": {
+    "dev": "echo \"Error: no dev step for shared\" && exit 0",
+    "build": "echo \"Error: no build step for shared\" && exit 0"
+  },
+  "dependencies": {}
+}
