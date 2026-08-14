@@ -49,12 +49,7 @@ Hey Devs! Some ground rules here:
   - **(2.4)** Constants: SCREAMING_SNAKE_CASE
   - **(2.5)** Classes: PascalCase
 
-- **(3)** File naming convections!
-  - **(2.1)**
-  - **(2.2)**
-  - **(2.3)**
-
-- **(4)** Commit messages: lower case please e.g. added user auth
+- **(3)** Commit messages: lower case please e.g. added user auth
 
 Along with all that ensure your code is well **commented**. In order to merge into **main** will require another dev to review and approve.
 
