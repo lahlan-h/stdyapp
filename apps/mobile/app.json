@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "stdyapp",
+    "slug": "stdyapp",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "stdyapp",
+    "plugins": ["expo-router"]
+  }
+}

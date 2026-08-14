@@ -1,1 +1,3 @@
 node_modules
+apps/mobile/.expo
+apps/mobile/node_modules
