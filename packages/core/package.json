@@ -4,9 +4,19 @@
   "description": "The core logic of stdyapp!",
   "private": true,
   "type": "module",
+  "main": "src/db.js",
   "scripts": {
     "dev": "echo \"Error: no dev step for shared\" && exit 0",
-    "build": "echo \"Error: no build step for shared\" && exit 0"
+    "build": "echo \"Error: no build step for shared\" && exit 0",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@prisma/client": "^6.10.1"
+  },
+  "devDependencies": {
+    "prisma": "^6.10.1"
+  }
 }
