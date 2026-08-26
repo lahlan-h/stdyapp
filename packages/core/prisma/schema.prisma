@@ -1,0 +1,55 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // pooled connection (via Supabase's PgBouncer) — used for normal app queries
+  url       = env("DATABASE_URL")
+  // direct connection — required for migrations, bypasses the pooler
+  directUrl = env("DIRECT_URL")
+}
+
+// --- Starter models, expand these to match the full 14-entity ERD ---
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  username  String   @unique
+  passwordHash String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions  Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  startedAt     DateTime  @default(now())
+  endedAt       DateTime?
+  focusPoints   Int       @default(0)
+
+  interruptions SessionInterruption[]
+
+  @@map("sessions")
+}
+
+model SessionInterruption {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     Session  @relation(fields: [sessionId], references: [id])
+  startedAt   DateTime @default(now())
+  durationSec Int
+  // per your focus-points rule: 20+ min away deducts points / breaks streak
+  penaltyApplied Boolean @default(false)
+
+  @@map("session_interruptions")
+}
+
+// TODO: add the remaining entities from the ERD —
+// study groups, social feed, gamification/streaks, discover, analytics,
+// and stretch-goal entities (wearable data, Discord status sync).

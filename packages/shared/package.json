@@ -1,0 +1,12 @@
+{
+  "name": "@stdyapp/shared",
+  "version": "0.0.0",
+  "description": "The void space of poor code and functions.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "echo \"Error: no dev step for shared\" && exit 0",
+    "build": "echo \"Error: no build step for shared\" && exit 0"
+  },
+  "dependencies": {}
+}
