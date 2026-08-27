@@ -1,0 +1,47 @@
+name: stdyapp
+
+services:
+  # Redis
+  redis:
+    image: redis:latest
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - stdyapp
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:4-management
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"        # AMQP
+      - "${RABBITMQ_UI_PORT:-15672}:15672"  # management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-stdyapp}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-stdyapp}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - stdyapp
+
+volumes:
+  redis-data:
+  rabbitmq-data:
+
+networks:
+  stdyapp:
+    driver: bridge
