@@ -20,7 +20,7 @@ services:
 
   # RabbitMQ
   rabbitmq:
-    image: rabbitmq:latest
+    image: rabbitmq:4-management
     ports:
       - "${RABBITMQ_PORT:-5672}:5672"        # AMQP
       - "${RABBITMQ_UI_PORT:-15672}:15672"  # management UI
