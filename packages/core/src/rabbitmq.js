@@ -56,7 +56,7 @@ export const getRabbitMq = () => {
 
   connection.on("connect", () => {
     console.log(
-      isRabbitMqDown ? "[rabbitmq] reconnected" : "[rabbitmq] connected",
+      isRabbitMqDown ? "[rabbitmq] reconnected" : "[rabbitmq] connected to rabbitmq://localhost:5672 (UI via port 15672)",
     );
     isRabbitMqDown = false;
   });
