@@ -9,7 +9,7 @@ import { getDependencyHealth } from "../services/health.service.js";
  *
  * 200 when every dependency is reachable, 503 otherwise.
  */
-export const getHealth = async (req, res) => {
+export const healthController = async (_, res) => {
   const { status, isHealthy, dependencies } = await getDependencyHealth();
 
   if (!isHealthy) {
