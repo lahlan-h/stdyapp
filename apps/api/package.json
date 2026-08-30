@@ -12,9 +12,10 @@
   },
   "dependencies": {
     "@stdyapp/core": "*",
-    "express": "^4.19.2",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5"
-  },
-  "devDependencies": {}
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "zod": "^4.4.3"
+  }
 }

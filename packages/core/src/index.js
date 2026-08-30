@@ -6,6 +6,7 @@
  * clients are created on the first getX() call - so importing this barrel is
  * free and safe before dotenv has run.
  */
+export { createLogger, logger } from "./logger.js";
 export { prisma } from "./db.js";
 export { getRedis, checkRedis, closeRedis } from "./redis.js";
 export { getRabbitMq, checkRabbitMq, closeRabbitMq } from "./rabbitmq.js";

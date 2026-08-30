@@ -8,19 +8,39 @@ datasource db {
   url       = env("DATABASE_URL")
   // direct connection — required for migrations, bypasses the pooler
   directUrl = env("DIRECT_URL")
+  // local throwaway database — see the postgres-shadow service in
+  // docker-compose.yml. Used ONLY by `prisma migrate dev`, which needs
+  // CREATE/DROP DATABASE rights that the Supabase pooler cannot grant.
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 // --- Starter models, expand these to match the full 14-entity ERD ---
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  username  String   @unique
+  id           String    @id @default(uuid())
+  email        String    @unique
+  username     String    @unique
   passwordHash String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
-  sessions  Session[]
+  // --- profile ---
+  // All nullable on purpose: rows already exist in the shared Supabase database
+  // and a user registers before filling out a profile. Nullable keeps this
+  // migration purely additive — no backfill, no table rewrite.
+  //
+  // No @map on any field: the table already uses quoted camelCase columns
+  // ("passwordHash", "createdAt"), so snake_case here would leave it half and
+  // half, which is worse than either convention applied consistently.
+  displayName  String?
+  avatarUrl    String?
+  bio          String?
+  // Server-owned: written when a study session starts, never accepted from a
+  // request body. Absent from the Zod schemas in apps/api for that reason.
+  lastActiveAt DateTime?
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions     Session[]
 
   @@map("users")
 }

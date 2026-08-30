@@ -38,6 +38,32 @@ services:
     networks:
       - stdyapp
 
+  # Throwaway Postgres for `prisma migrate dev` ONLY - never for app data.
+  #
+  # Prisma builds a "shadow database" on every `migrate dev` to detect drift,
+  # which needs CREATE/DROP DATABASE rights. DIRECT_URL points at Supabase's
+  # session-mode pooler, whose role cannot grant them, so migrate dev fails with
+  # P3014 - and on any drift it offers to RESET the shared team database. This
+  # local instance removes both problems.
+  #
+  # Deliberately has no volume: nothing in here is ever worth keeping. Port 5433
+  # avoids clashing with a Postgres someone may already run on 5432.
+  postgres-shadow:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: shadow
+      POSTGRES_DB: shadow
+    ports:
+      - "${SHADOW_PG_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - stdyapp
+
 volumes:
   redis-data:
   rabbitmq-data:
