@@ -1,6 +1,7 @@
 import Redis from "ioredis";
 
 import { describeConnectionError } from "./errors.js";
+import { createLogger } from "./logger.js";
 
 /**
  * Shared Redis connection for the monorepo (the API today, workers later).
@@ -13,6 +14,10 @@ import { describeConnectionError } from "./errors.js";
 
 // Reuse one client per process, mirroring the prisma singleton in ./db.js.
 const globalForRedis = globalThis;
+
+// Scoped, so every line from this module is tagged "redis" by the logger
+// itself rather than by a hand-written "[redis]" prefix in each message.
+const log = createLogger("redis");
 
 // Bounded backoff: keep retrying (Redis may come back) but never faster than
 // RETRY_MAX_DELAY_MS, so an outage doesn't spin the CPU or flood the console.
@@ -51,13 +56,11 @@ const createRedisClient = () => {
   client.on("error", (err) => {
     if (isRedisDown) return; // log the down-transition only
     isRedisDown = true;
-    console.error(`[redis] unreachable: ${describeConnectionError(err)}`);
+    log.error(`unreachable: ${describeConnectionError(err)}`);
   });
 
   client.on("ready", () => {
-    console.log(
-      isRedisDown ? "[redis] reconnected" : `[redis] connected to ${redisUrl}`,
-    );
+    log.info(isRedisDown ? "reconnected" : `connected to ${redisUrl}`);
     isRedisDown = false;
   });
 

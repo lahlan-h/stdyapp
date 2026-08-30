@@ -59,6 +59,13 @@ export const validate = (schemas) => (req, res, next) => {
   }
 
   if (details.length > 0) {
+    // Hand the reason to requestLogger, which logs this request on res "finish"
+    // and cannot see the response body. Without it a validation failure would
+    // print as a bare 400 with nothing saying which field was wrong.
+    res.locals.errorSummary = `validation: ${details
+      .map((detail) => `${detail.source}.${detail.field}`)
+      .join(", ")}`;
+
     return res.status(400).json({ error: "Validation failed", details });
   }
 

@@ -1,4 +1,8 @@
+import { createLogger } from "@stdyapp/core";
+
 import { HttpError } from "./httpError.js";
+
+const log = createLogger("users");
 
 /**
  * Translates Prisma failures into HTTP errors.
@@ -98,6 +102,6 @@ export const toHttpError = (err, messages = {}) => {
   // Unrecognised. The error middleware in index.js echoes err.message straight
   // to the client, and Prisma connection errors embed the database host and
   // user - so log the real error here and hand back a generic one.
-  console.error("[users] unhandled database error:", err);
+  log.error("unhandled database error", err);
   return new HttpError(500, "Internal server error", { cause: err });
 };

@@ -1,6 +1,7 @@
 import amqp from "amqp-connection-manager";
 
 import { describeConnectionError } from "./errors.js";
+import { createLogger } from "./logger.js";
 
 /**
  * Shared RabbitMQ connection for the monorepo.
@@ -26,6 +27,10 @@ const DEFAULT_RABBITMQ_URL = "amqp://guest:guest@localhost:5672";
 // Tracks the last logged state so a long outage produces two lines, not hundreds.
 let isRabbitMqDown = false;
 
+// Scoped, so every line from this module is tagged "rabbitmq" by the logger
+// itself rather than by a hand-written "[rabbitmq]" prefix in each message.
+const log = createLogger("rabbitmq");
+
 /**
  * Logs a down-transition once, ignoring the repeated retry failures that follow.
  * @param {string} reason
@@ -33,7 +38,7 @@ let isRabbitMqDown = false;
 const logRabbitMqDown = (reason) => {
   if (isRabbitMqDown) return;
   isRabbitMqDown = true;
-  console.error(`[rabbitmq] unreachable: ${reason}`);
+  log.error(`unreachable: ${reason}`);
 };
 
 /**
@@ -55,8 +60,10 @@ export const getRabbitMq = () => {
   });
 
   connection.on("connect", () => {
-    console.log(
-      isRabbitMqDown ? "[rabbitmq] reconnected" : "[rabbitmq] connected to rabbitmq://localhost:5672 (UI via port 15672)",
+    log.info(
+      isRabbitMqDown
+        ? "reconnected"
+        : "connected to rabbitmq://localhost:5672 (UI via port 15672)",
     );
     isRabbitMqDown = false;
   });

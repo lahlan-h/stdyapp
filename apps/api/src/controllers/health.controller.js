@@ -1,4 +1,8 @@
+import { createLogger } from "@stdyapp/core";
+
 import { getDependencyHealth } from "../services/health.service.js";
+
+const log = createLogger("health");
 
 /**
  * GET /api/health - probes every backing service.
@@ -13,7 +17,10 @@ export const healthController = async (_, res) => {
   const { status, isHealthy, dependencies } = await getDependencyHealth();
 
   if (!isHealthy) {
-    console.error("Health check failed:", JSON.stringify(dependencies));
+    // warn, not error: a degraded dependency is already reported by the 503
+    // this returns and by redis/rabbitmq's own down-transition logs. Logging it
+    // at error level would make a known outage look like three separate faults.
+    log.warn("dependency check failed", dependencies);
   }
 
   res.status(isHealthy ? 200 : 503).json({
