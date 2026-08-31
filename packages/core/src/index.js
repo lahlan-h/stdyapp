@@ -10,3 +10,4 @@ export { createLogger, logger } from "./logger.js";
 export { prisma } from "./db.js";
 export { getRedis, checkRedis, closeRedis } from "./redis.js";
 export { getRabbitMq, checkRabbitMq, closeRabbitMq } from "./rabbitmq.js";
+export { uploadFile, deleteFile, getFile } from "./storage.js";
