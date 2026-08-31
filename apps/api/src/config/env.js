@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Loads both .env files (api + core) as an import side effect.
+ * Loads the single repo-root .env as an import side effect.
  *
  * This module exists because ES modules evaluate their whole import graph
  * before the importing module's body runs. Calling dotenv.config() in the body
@@ -18,9 +18,8 @@ import { fileURLToPath } from "node:url";
  */
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-// dotenv is first-file-wins for duplicate keys, so apps/api/.env takes priority.
+// The whole monorepo shares one .env at the repo root; the Prisma CLI reads
+// that same file through packages/core/prisma.config.js.
 dotenv.config({
-  path: [
-    path.resolve(here, "../../../../.env"), // apps/api/.env
-  ],
+  path: path.resolve(here, "../../../../.env"),
 });
