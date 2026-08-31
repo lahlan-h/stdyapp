@@ -14,33 +14,24 @@ datasource db {
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
-// --- Starter models, expand these to match the full 14-entity ERD ---
-
 model User {
   id           String    @id @default(uuid())
   email        String    @unique
   username     String    @unique
   passwordHash String
 
-  // --- profile ---
-  // All nullable on purpose: rows already exist in the shared Supabase database
-  // and a user registers before filling out a profile. Nullable keeps this
-  // migration purely additive — no backfill, no table rewrite.
-  //
-  // No @map on any field: the table already uses quoted camelCase columns
-  // ("passwordHash", "createdAt"), so snake_case here would leave it half and
-  // half, which is worse than either convention applied consistently.
   displayName  String?
   avatarUrl    String?
   bio          String?
-  // Server-owned: written when a study session starts, never accepted from a
-  // request body. Absent from the Zod schemas in apps/api for that reason.
   lastActiveAt DateTime?
 
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   sessions     Session[]
+  ownedGroups  StudyGroup[]       @relation("GroupOwner")
+  memberships  GroupMembership[]
+  routines     StudyRoutine[]
 
   @@map("users")
 }
@@ -49,6 +40,14 @@ model Session {
   id            String    @id @default(uuid())
   userId        String
   user          User      @relation(fields: [userId], references: [id])
+
+  // nullable: a session is solo unless it's tied to a group session
+  groupId       String?
+  group         StudyGroup? @relation(fields: [groupId], references: [id])
+
+  // nullable: only generated for group sessions, meaningless for solo ones
+  inviteCode    String?   @unique
+
   startedAt     DateTime  @default(now())
   endedAt       DateTime?
   focusPoints   Int       @default(0)
@@ -61,15 +60,82 @@ model Session {
 model SessionInterruption {
   id          String   @id @default(uuid())
   sessionId   String
-  session     Session  @relation(fields: [sessionId], references: [id])
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   startedAt   DateTime @default(now())
   durationSec Int
-  // per your focus-points rule: 20+ min away deducts points / breaks streak
   penaltyApplied Boolean @default(false)
 
   @@map("session_interruptions")
 }
 
-// TODO: add the remaining entities from the ERD —
-// study groups, social feed, gamification/streaks, discover, analytics,
-// and stretch-goal entities (wearable data, Discord status sync).
+model StudyGroup {
+  id          String   @id @default(uuid())
+  ownerId     String
+  owner       User     @relation("GroupOwner", fields: [ownerId], references: [id])
+
+  name        String
+  description String?
+
+  // private groups still show up in search — joining just requires joinCode
+  isPrivate   Boolean  @default(false)
+  joinCode    String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships GroupMembership[]
+  sessions    Session[]
+
+  @@map("study_groups")
+}
+
+model GroupMembership {
+  id        String     @id @default(uuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id])
+  groupId   String
+  group     StudyGroup @relation(fields: [groupId], references: [id])
+
+  joinedAt  DateTime   @default(now())
+
+  // one membership row per user per group — prevents duplicate joins
+  @@unique([userId, groupId])
+  @@map("group_memberships")
+}
+
+model StudyRoutine {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+
+  // set when this routine was cloned ("taken") from someone else's shared routine
+  sourceRoutineId String?
+  sourceRoutine   StudyRoutine?  @relation("RoutineClones", fields: [sourceRoutineId], references: [id])
+  clones          StudyRoutine[] @relation("RoutineClones")
+
+  title           String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  todoItems       TodoItem[]
+
+  @@map("study_routines")
+}
+
+model TodoItem {
+  id          String       @id @default(uuid())
+  routineId   String
+  routine     StudyRoutine @relation(fields: [routineId], references: [id])
+
+  title       String
+  dueDate     DateTime?
+  isComplete  Boolean      @default(false)
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@map("todo_items")
+}
+
+// TODO: remaining entities from the ERD — social feed, gamification/streaks,
+// discover, analytics, and stretch-goal entities (wearable data, Discord sync).
