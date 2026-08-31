@@ -21,7 +21,6 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // dotenv is first-file-wins for duplicate keys, so apps/api/.env takes priority.
 dotenv.config({
   path: [
-    path.resolve(here, "../../.env"), // apps/api/.env
-    path.resolve(here, "../../../../packages/core/.env"), // packages/core/.env
+    path.resolve(here, "../../../../.env"), // apps/api/.env
   ],
 });
