@@ -41,9 +41,11 @@ model Session {
   userId        String
   user          User      @relation(fields: [userId], references: [id])
 
-  // nullable: a session is solo unless it's tied to a group session
+  // nullable: a session is solo unless it's tied to a group session.
+  // SetNull (not Cascade) on delete: if the group is deleted, past sessions
+  // should keep existing as historical records, just no longer tied to a group.
   groupId       String?
-  group         StudyGroup? @relation(fields: [groupId], references: [id])
+  group         StudyGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
   // nullable: only generated for group sessions, meaningless for solo ones
   inviteCode    String?   @unique
@@ -89,16 +91,24 @@ model StudyGroup {
   @@map("study_groups")
 }
 
+enum GroupRole {
+  MEMBER
+  ADMIN
+}
+
 model GroupMembership {
   id        String     @id @default(uuid())
   userId    String
   user      User       @relation(fields: [userId], references: [id])
   groupId   String
-  group     StudyGroup @relation(fields: [groupId], references: [id])
+  group     StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  // separate from StudyGroup.ownerId — the owner is always the owner
+  // regardless of role; this just marks a second tier of trusted members
+  role      GroupRole  @default(MEMBER)
 
   joinedAt  DateTime   @default(now())
 
-  // one membership row per user per group — prevents duplicate joins
   @@unique([userId, groupId])
   @@map("group_memberships")
 }
@@ -108,9 +118,11 @@ model StudyRoutine {
   userId          String
   user            User     @relation(fields: [userId], references: [id])
 
-  // set when this routine was cloned ("taken") from someone else's shared routine
+  // set when this routine was cloned ("taken") from someone else's shared
+  // routine. SetNull on delete: if the original is deleted, clones remain
+  // valid standalone routines, just lose the "cloned from" trace.
   sourceRoutineId String?
-  sourceRoutine   StudyRoutine?  @relation("RoutineClones", fields: [sourceRoutineId], references: [id])
+  sourceRoutine   StudyRoutine?  @relation("RoutineClones", fields: [sourceRoutineId], references: [id], onDelete: SetNull)
   clones          StudyRoutine[] @relation("RoutineClones")
 
   title           String
@@ -125,7 +137,7 @@ model StudyRoutine {
 model TodoItem {
   id          String       @id @default(uuid())
   routineId   String
-  routine     StudyRoutine @relation(fields: [routineId], references: [id])
+  routine     StudyRoutine @relation(fields: [routineId], references: [id], onDelete: Cascade)
 
   title       String
   dueDate     DateTime?
