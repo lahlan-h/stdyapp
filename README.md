@@ -36,6 +36,27 @@ npm run dev --workspace @stdy/gui
 
 ```
 
+## Environment
+
+One `.env` at the repo root serves the whole monorepo (the API reads it via
+`apps/api/src/config/env.js`, the Prisma CLI via `packages/core/prisma.config.js`).
+It is gitignored — ask a teammate for the real values.
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Supabase pooled connection, for normal queries |
+| `DIRECT_URL` | Supabase direct connection, for migrations |
+| `SHADOW_DATABASE_URL` | local `postgres-shadow` container, for `migrate dev` |
+| `REDIS_URL` | defaults to `redis://localhost:6379` |
+| `RABBITMQ_URL` | defaults to the local container |
+| `JWT_SECRET` | **required** — signs access tokens, min 32 chars |
+
+The API refuses to boot without a valid `JWT_SECRET`. Generate one with:
+
+```bash
+openssl rand -base64 48
+```
+
 ## Devs!
 
 Hey Devs! Some ground rules here:
