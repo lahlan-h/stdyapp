@@ -17,7 +17,7 @@ const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 const SAFE_URL_PROTOCOLS = new Set(["http:", "https:"]);
 
 const MIN_PASSWORD_LENGTH = 8;
-const MAX_DISPLAY_NAME_LENGTH = 50;
+const MAX_NAME_LENGTH = 50;
 const MAX_BIO_LENGTH = 500;
 const MAX_URL_LENGTH = 2048;
 const MAX_SEARCH_LENGTH = 100;
@@ -31,13 +31,13 @@ export const MAX_PAGE_SIZE = 100;
 // first, so " Ada@UTS.edu.au " is accepted and stored as "ada@uts.edu.au".
 // Chaining .trim() AFTER z.email() would validate the untrimmed string and
 // reject it.
-const emailSchema = z
+export const emailSchema = z
   .string()
   .trim()
   .toLowerCase()
   .pipe(z.email("must be a valid email address"));
 
-const usernameSchema = z
+export const usernameSchema = z
   .string()
   .trim()
   .min(3, "username must be at least 3 characters")
@@ -47,7 +47,16 @@ const usernameSchema = z
     "username may only contain letters, numbers and underscores",
   );
 
-const passwordSchema = z
+// Shared by firstName and lastName here, and re-exported for the required
+// variants in auth.validation.js. min(1) runs AFTER trim, so "   " is rejected
+// rather than stored as an empty name.
+export const nameSchema = z
+  .string()
+  .trim()
+  .min(1, "must not be empty")
+  .max(MAX_NAME_LENGTH, `must be at most ${MAX_NAME_LENGTH} characters`);
+
+export const passwordSchema = z
   .string()
   .min(
     MIN_PASSWORD_LENGTH,
@@ -89,7 +98,11 @@ export const createUserSchema = z.strictObject({
   email: emailSchema,
   username: usernameSchema,
   password: passwordSchema,
-  displayName: z.string().trim().min(1).max(MAX_DISPLAY_NAME_LENGTH).optional(),
+  // Optional HERE but required at signup: this schema also backs
+  // PATCH /api/users/:id, where every field must stay optional. The required
+  // variant lives in auth.validation.js.
+  firstName: nameSchema.optional(),
+  lastName: nameSchema.optional(),
   avatarUrl: avatarUrlSchema.optional(),
   bio: z.string().trim().max(MAX_BIO_LENGTH).optional(),
 });
@@ -98,11 +111,19 @@ export const createUserSchema = z.strictObject({
  * PATCH semantics: every field optional, but an empty body is a client bug -
  * without the refine it would return 200 and change nothing.
  *
- * TODO(auth): once sessions/JWT land, changing `password` must require the
- * current password. Today the whole API is unauthenticated, so gating it here
- * would be security theatre; the moment it is not, this becomes a real flaw.
+ * `password` is OMITTED, resolving the TODO(auth) that stood here while the API
+ * was unauthenticated. A password change must prove knowledge of the CURRENT
+ * password - otherwise anyone holding a stolen access token could lock the real
+ * owner out of their account permanently, which is a far worse outcome than the
+ * 15 minutes of access the stolen token was already worth.
+ *
+ * Because this is a strictObject, sending `password` here is now a loud 400
+ * rather than a silent no-op. The replacement is a dedicated authenticated
+ * endpoint (POST /api/auth/change-password) taking currentPassword +
+ * newPassword and revoking every other session on success - not yet built.
  */
 export const updateUserSchema = createUserSchema
+  .omit({ password: true })
   .partial()
   .refine((body) => Object.keys(body).length > 0, {
     message: "request body must contain at least one field to update",

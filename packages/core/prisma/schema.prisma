@@ -20,7 +20,12 @@ model User {
   username     String    @unique
   passwordHash String
 
-  displayName  String?
+  // The account-level real name. Nullable in the database so this migration
+  // needed no backfill, but REQUIRED at signup — see registerSchema in
+  // apps/api/src/validation/auth.validation.js.
+  firstName    String?
+  lastName     String?
+
   avatarUrl    String?
   bio          String?
   lastActiveAt DateTime?
@@ -28,12 +33,50 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  sessions     Session[]
-  ownedGroups  StudyGroup[]       @relation("GroupOwner")
-  memberships  GroupMembership[]
-  routines     StudyRoutine[]
+  sessions      Session[]
+  ownedGroups   StudyGroup[]       @relation("GroupOwner")
+  memberships   GroupMembership[]
+  routines      StudyRoutine[]
+  refreshTokens RefreshToken[]
 
   @@map("users")
+}
+
+/// One row per issued refresh token — effectively "one logged-in device".
+///
+/// NOT called Session: `Session` above already means a STUDY session, which is
+/// the app's core domain object. Naming this one Session too would make every
+/// conversation and every import ambiguous.
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String
+  // Cascade, unlike sessions.userId which is RESTRICT: a study session is a
+  // historical record worth protecting from an accidental user delete, a
+  // refresh token is disposable and should die with its owner.
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // SHA-256 of the token, never the token itself: a database leak must not hand
+  // out working sessions. Deliberately NOT bcrypt — these are 32 bytes of CSPRNG
+  // output with no guessable structure, so there is nothing to slow down, and
+  // bcrypt would add ~300ms to every refresh for no security gain.
+  tokenHash  String    @unique
+
+  // Set when this token is rotated away or explicitly revoked. A request that
+  // presents an ALREADY-revoked token means the token leaked — the service
+  // responds by revoking every token for that user. Storing them is what makes
+  // that detection possible at all.
+  revokedAt  DateTime?
+  expiresAt  DateTime
+
+  // Purely so a user can recognise their own devices in a future "active
+  // sessions" screen. Never trusted for auth decisions — clients set it freely.
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  // revokeAllForUser() and any "list my devices" query filter on userId; the
+  // @unique on tokenHash already indexes the lookup path used on every refresh.
+  @@index([userId])
+  @@map("refresh_tokens")
 }
 
 model Session {

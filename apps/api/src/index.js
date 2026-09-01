@@ -15,8 +15,19 @@ import {
 } from "@stdyapp/core";
 import routes from "./routes/index.js";
 import { requestLogger } from "./middleware/requestLogger.js";
+import { assertAuthConfig } from "./config/auth.js";
 
 const log = createLogger("api");
+
+// Before anything else runs: a missing or weak JWT_SECRET must be a loud boot
+// failure, not a 500 on the first login. Safe here because ./config/env.js is
+// imported above and has already populated process.env.
+try {
+  assertAuthConfig();
+} catch (err) {
+  log.error(err.message);
+  process.exit(1);
+}
 
 // Hard cap on graceful shutdown before we exit anyway.
 const SHUTDOWN_TIMEOUT_MS = 10_000;
