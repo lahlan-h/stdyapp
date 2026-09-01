@@ -45,7 +45,8 @@ const USER_PUBLIC_SELECT = {
   id: true,
   email: true,
   username: true,
-  displayName: true,
+  firstName: true,
+  lastName: true,
   avatarUrl: true,
   bio: true,
   lastActiveAt: true,
@@ -70,7 +71,8 @@ const buildUserData = async (input) => {
 
   if (input.email !== undefined) data.email = input.email;
   if (input.username !== undefined) data.username = input.username;
-  if (input.displayName !== undefined) data.displayName = input.displayName;
+  if (input.firstName !== undefined) data.firstName = input.firstName;
+  if (input.lastName !== undefined) data.lastName = input.lastName;
   if (input.avatarUrl !== undefined) data.avatarUrl = input.avatarUrl;
   if (input.bio !== undefined) data.bio = input.bio;
 
@@ -114,7 +116,8 @@ export const listUsers = async ({ page, limit, q }) => {
     ? {
         OR: [
           { username: { contains: q, mode: "insensitive" } },
-          { displayName: { contains: q, mode: "insensitive" } },
+          { firstName: { contains: q, mode: "insensitive" } },
+          { lastName: { contains: q, mode: "insensitive" } },
         ],
       }
     : undefined;

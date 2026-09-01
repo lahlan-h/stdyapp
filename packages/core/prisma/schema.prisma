@@ -20,7 +20,12 @@ model User {
   username     String    @unique
   passwordHash String
 
-  displayName  String?
+  // The account-level real name. Nullable in the database so this migration
+  // needed no backfill, but REQUIRED at signup — see registerSchema in
+  // apps/api/src/validation/auth.validation.js.
+  firstName    String?
+  lastName     String?
+
   avatarUrl    String?
   bio          String?
   lastActiveAt DateTime?
