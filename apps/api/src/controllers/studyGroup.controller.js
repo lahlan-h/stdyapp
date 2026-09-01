@@ -1,16 +1,12 @@
 import * as groupService from "../services/studyGroup.service.js";
 
-// Same temporary fallback as session.controller.js — remove once auth
-// middleware is merged and sets req.user.
-const getUserId = (req) => req.user?.id ?? req.body?.userId ?? req.query?.userId;
-
 export const create = async (req, res, next) => {
   try {
     const { name, description, isPrivate } = req.body;
     if (!name) return res.status(400).json({ error: "name is required" });
 
     const group = await groupService.createGroup({
-      ownerId: getUserId(req),
+      ownerId: req.user.id,
       name,
       description,
       isPrivate,
@@ -23,7 +19,7 @@ export const create = async (req, res, next) => {
 
 export const getOne = async (req, res, next) => {
   try {
-    const group = await groupService.getGroup(req.params.id, getUserId(req));
+    const group = await groupService.getGroup(req.params.id, req.user.id);
     res.status(200).json(group);
   } catch (err) {
     next(err);
@@ -32,7 +28,7 @@ export const getOne = async (req, res, next) => {
 
 export const search = async (req, res, next) => {
   try {
-    const groups = await groupService.searchGroups(req.query.q, getUserId(req));
+    const groups = await groupService.searchGroups(req.query.q, req.user.id);
     res.status(200).json(groups);
   } catch (err) {
     next(err);
@@ -41,7 +37,7 @@ export const search = async (req, res, next) => {
 
 export const update = async (req, res, next) => {
   try {
-    const group = await groupService.updateGroup(req.params.id, getUserId(req), req.body);
+    const group = await groupService.updateGroup(req.params.id, req.user.id, req.body);
     res.status(200).json(group);
   } catch (err) {
     next(err);
@@ -50,7 +46,7 @@ export const update = async (req, res, next) => {
 
 export const remove = async (req, res, next) => {
   try {
-    await groupService.deleteGroup(req.params.id, getUserId(req));
+    await groupService.deleteGroup(req.params.id, req.user.id);
     res.status(204).send();
   } catch (err) {
     next(err);
@@ -64,7 +60,7 @@ export const transferOwnership = async (req, res, next) => {
 
     const group = await groupService.transferOwnership(
       req.params.id,
-      getUserId(req),
+      req.user.id,
       newOwnerId
     );
     res.status(200).json(group);
@@ -76,7 +72,7 @@ export const transferOwnership = async (req, res, next) => {
 export const join = async (req, res, next) => {
   try {
     const { joinCode } = req.body;
-    const membership = await groupService.joinGroup(req.params.id, getUserId(req), joinCode);
+    const membership = await groupService.joinGroup(req.params.id, req.user.id, joinCode);
     res.status(201).json(membership);
   } catch (err) {
     next(err);
@@ -85,7 +81,7 @@ export const join = async (req, res, next) => {
 
 export const leave = async (req, res, next) => {
   try {
-    await groupService.leaveGroup(req.params.id, getUserId(req));
+    await groupService.leaveGroup(req.params.id, req.user.id);
     res.status(204).send();
   } catch (err) {
     next(err);
@@ -103,7 +99,7 @@ export const members = async (req, res, next) => {
 
 export const kickMember = async (req, res, next) => {
   try {
-    await groupService.kickMember(req.params.id, getUserId(req), req.params.userId);
+    await groupService.kickMember(req.params.id, req.user.id, req.params.userId);
     res.status(204).send();
   } catch (err) {
     next(err);
@@ -117,7 +113,7 @@ export const setMemberRole = async (req, res, next) => {
 
     const membership = await groupService.setMemberRole(
       req.params.id,
-      getUserId(req),
+      req.user.id,
       req.params.userId,
       role
     );

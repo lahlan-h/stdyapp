@@ -10,8 +10,12 @@ import {
   updateTodoItem,
   deleteTodoItem,
 } from "../controllers/studyRoutine.controller.js";
+import { requireAuth } from "../middleware/requireAuth.js";
 
 const router = Router();
+
+// See session.routes.js — routines and their todo items are all caller-owned.
+router.use(requireAuth);
 
 router.post("/", create);
 router.get("/", listMine);

@@ -111,11 +111,19 @@ export const createUserSchema = z.strictObject({
  * PATCH semantics: every field optional, but an empty body is a client bug -
  * without the refine it would return 200 and change nothing.
  *
- * TODO(auth): once sessions/JWT land, changing `password` must require the
- * current password. Today the whole API is unauthenticated, so gating it here
- * would be security theatre; the moment it is not, this becomes a real flaw.
+ * `password` is OMITTED, resolving the TODO(auth) that stood here while the API
+ * was unauthenticated. A password change must prove knowledge of the CURRENT
+ * password - otherwise anyone holding a stolen access token could lock the real
+ * owner out of their account permanently, which is a far worse outcome than the
+ * 15 minutes of access the stolen token was already worth.
+ *
+ * Because this is a strictObject, sending `password` here is now a loud 400
+ * rather than a silent no-op. The replacement is a dedicated authenticated
+ * endpoint (POST /api/auth/change-password) taking currentPassword +
+ * newPassword and revoking every other session on success - not yet built.
  */
 export const updateUserSchema = createUserSchema
+  .omit({ password: true })
   .partial()
   .refine((body) => Object.keys(body).length > 0, {
     message: "request body must contain at least one field to update",
