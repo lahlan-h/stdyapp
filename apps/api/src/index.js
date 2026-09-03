@@ -15,7 +15,7 @@ import {
 } from "@stdyapp/core";
 import routes from "./routes/index.js";
 import { requestLogger } from "./middleware/requestLogger.js";
-import { assertAuthConfig } from "./config/auth.js";
+import { assertAuthConfig, isDevAuthEnabled } from "./config/auth.js";
 
 const log = createLogger("api");
 
@@ -27,6 +27,16 @@ try {
 } catch (err) {
   log.error(err.message);
   process.exit(1);
+}
+
+// A backdoor nobody can see is the dangerous kind. Printed on every start so a
+// server running with the credential-free token route live says so out loud,
+// rather than leaving it to be discovered.
+if (isDevAuthEnabled()) {
+  log.warn(
+    "DEV AUTH ENABLED - POST /api/auth/dev-token mints access tokens with no " +
+      "credentials. This build must never run in staging or production.",
+  );
 }
 
 // Hard cap on graceful shutdown before we exit anyway.
