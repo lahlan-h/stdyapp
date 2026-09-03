@@ -38,6 +38,7 @@ model User {
   memberships   GroupMembership[]
   routines      StudyRoutine[]
   refreshTokens RefreshToken[]
+  posts         Post[]
 
   @@map("users")
 }
@@ -98,6 +99,7 @@ model Session {
   focusPoints   Int       @default(0)
 
   interruptions SessionInterruption[]
+  posts         Post[]
 
   @@map("sessions")
 }
@@ -173,6 +175,7 @@ model StudyRoutine {
   updatedAt       DateTime @updatedAt
 
   todoItems       TodoItem[]
+  posts           Post[]
 
   @@map("study_routines")
 }
@@ -192,5 +195,41 @@ model TodoItem {
   @@map("todo_items")
 }
 
-// TODO: remaining entities from the ERD — social feed, gamification/streaks,
-// discover, analytics, and stretch-goal entities (wearable data, Discord sync).
+/// A photo + caption published about a finished study session — the first
+/// piece of the social feed.
+model Post {
+  id        String       @id @default(uuid())
+
+  // The author. Restrict on delete (Prisma's default, as on sessions.userId
+  // and study_routines.userId): deleting a user should be BLOCKED by the
+  // content they still own rather than silently shredding it.
+  userId    String
+  user      User         @relation(fields: [userId], references: [id])
+
+  // Required, not nullable: a post is always ABOUT a study session. Cascade
+  // for the same reason session_interruptions cascade — the post is a leaf
+  // record of the session. Restrict here would permanently break
+  // DELETE /api/sessions/:id the moment anyone posted about that session.
+  sessionId String
+  session   Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Same reasoning as sessionId — Restrict would break DELETE /api/routines/:id.
+  // Note the consequence: deleting a routine also deletes the posts that
+  // reference it.
+  routineId String
+  routine   StudyRoutine @relation(fields: [routineId], references: [id], onDelete: Cascade)
+
+  caption   String
+  photoUrl  String
+  createdAt DateTime     @default(now())
+
+  // Covers the only list query we have — the caller's own posts, newest first.
+  // Composite rather than an index on userId alone so Postgres can satisfy the
+  // ORDER BY from the index instead of sorting the matched rows.
+  @@index([userId, createdAt])
+  @@map("posts")
+}
+
+// TODO: remaining entities from the ERD — the rest of the social feed
+// (follows, likes, comments), gamification/streaks, discover, analytics, and
+// stretch-goal entities (wearable data, Discord sync).
