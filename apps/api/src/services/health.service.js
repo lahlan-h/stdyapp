@@ -1,4 +1,4 @@
-import { prisma, checkRedis, checkRabbitMq } from "@stdyapp/core";
+import { prisma, checkRedis, checkRabbitMq, checkR2 } from "@stdyapp/core";
 
 /**
  * Aggregates backing-service health.
@@ -73,6 +73,7 @@ export const getDependencyHealth = async () => {
     db: checkDatabase,
     redis: checkRedis,
     rabbitmq: checkRabbitMq,
+    r2: checkR2,
   };
   const dependencyNames = Object.keys(probes);
 

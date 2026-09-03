@@ -8,8 +8,10 @@ import cors from "cors";
 import {
   getRedis,
   getRabbitMq,
+  connectR2,
   closeRedis,
   closeRabbitMq,
+  closeR2,
   prisma,
   createLogger,
 } from "@stdyapp/core";
@@ -84,6 +86,13 @@ app.use((err, req, res, next) => {
 getRedis();
 getRabbitMq();
 
+// R2 is stateless HTTPS, so unlike the two above there is no connection to hold
+// open and no reconnect to supervise - connectR2() is a ONE-SHOT probe whose
+// only job is to say at boot whether the bucket is actually reachable, instead
+// of leaving a revoked token or a misspelled bucket to surface as a failed
+// upload much later. Also fire-and-forget: it never blocks or throws.
+connectR2();
+
 const server = app.listen(PORT, () => {
   log.info(`listening on port ${PORT}`);
 });
@@ -114,6 +123,7 @@ const shutdown = async (signal) => {
     await Promise.allSettled([
       closeRedis(),
       closeRabbitMq(),
+      closeR2(),
       prisma.$disconnect(),
     ]);
     log.info("shutdown complete");
