@@ -26,3 +26,11 @@ export const updatePost = (id, data) => {
 export const deletePost = (id) => {
   return prisma.post.delete({ where: { id } });
 };
+
+// deleteMany returns { count } rather than the deleted rows — the tally is all
+// a bulk delete needs, and not materialising N records keeps a heavy account
+// cleanup cheap. Unlike delete(), it does not throw when nothing matches, which
+// is what makes "delete all my posts" naturally idempotent.
+export const deletePostsByUser = (userId) => {
+  return prisma.post.deleteMany({ where: { userId } });
+};

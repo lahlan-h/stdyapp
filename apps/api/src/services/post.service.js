@@ -1,6 +1,11 @@
 import * as postRepo from "../repositories/post.repository.js";
 import * as sessionRepo from "../repositories/session.repository.js";
 import * as routineRepo from "../repositories/studyRoutine.repository.js";
+// The only sanctioned way to reach prisma.user from here: user.service.js
+// declares itself the sole module in apps/api that touches that table, so its
+// column allowlist cannot be bypassed by accident. It also already throws the
+// 404 we want, so the existence check below costs nothing extra.
+import { getUserById } from "./user.service.js";
 
 const notFound = (what) => {
   const err = new Error(`${what} not found`);
@@ -59,6 +64,38 @@ export const getPost = async (postId, requesterId) => {
 
 export const listMyPosts = async (userId) => {
   return postRepo.findPostsByUser(userId);
+};
+
+/**
+ * Every post by one user — the profile feed.
+ *
+ * Deliberately has NO ownership gate: any authenticated caller may read any
+ * user's posts. That is the whole point of the route, and the reason it is a
+ * separate function rather than a parameter on listMyPosts, where a caller
+ * passing the wrong id would silently become an access-control hole.
+ *
+ * The user is looked up first so that an unknown id is a 404 rather than an
+ * empty array — a client cannot otherwise tell "no such person" from "this
+ * person has posted nothing", and those want different UI.
+ */
+export const listPostsByUser = async (targetUserId) => {
+  await getUserById(targetUserId);
+  return postRepo.findPostsByUser(targetUserId);
+};
+
+/**
+ * Deletes every post belonging to one user — "clear my history".
+ *
+ * No getOwnedPostOrThrow, and none is needed: userId is always the caller's own
+ * id taken from the access token, so the WHERE clause IS the authorisation.
+ * The route must never accept a target id from the path or body — there is no
+ * admin role in this codebase, so a caller-supplied id here would let anyone
+ * wipe anyone else's feed.
+ *
+ * @returns {Promise<{ count: number }>}
+ */
+export const deleteMyPosts = async (userId) => {
+  return postRepo.deletePostsByUser(userId);
 };
 
 /**

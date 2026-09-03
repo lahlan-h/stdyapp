@@ -71,6 +71,35 @@ export const listMine = async (req, res, next) => {
   }
 };
 
+export const listByUser = async (req, res, next) => {
+  try {
+    // "me" resolves to the caller. Without it, GET /api/posts/user/me would
+    // look up a user whose id is literally "me" and 404 — a papercut for any
+    // client that would rather not thread its own id through every call.
+    const { userId } = req.params;
+    const targetId = userId === "me" ? req.user.id : userId;
+
+    const posts = await postService.listPostsByUser(targetId);
+    res.status(200).json(posts);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const removeMine = async (req, res, next) => {
+  try {
+    // req.user.id, never req.params — see deleteMyPosts.
+    const { count } = await postService.deleteMyPosts(req.user.id);
+
+    // 200 with a body rather than the 204 its single-post sibling returns: the
+    // count is the one thing a caller cannot work out for itself afterwards,
+    // and a client wants to say "12 posts deleted".
+    res.status(200).json({ deleted: count });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const update = async (req, res, next) => {
   try {
     const { caption, photoUrl } = req.body;
