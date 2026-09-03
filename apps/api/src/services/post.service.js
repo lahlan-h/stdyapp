@@ -84,6 +84,25 @@ export const getPost = async (postId, requesterId) => {
   return getOwnedPostOrThrow(postId, requesterId);
 };
 
+/**
+ * One page of the global feed — every post by everyone, newest first.
+ *
+ * Deliberately has NO ownership gate, for the same reason listPostsByUser has
+ * none: this IS the feed, and gating it on authorship would leave it showing
+ * only your own posts. Authentication is still required, at the router.
+ *
+ * Returns the { items, total, page, limit } shape listUsers returns, so the
+ * controller can build the pagination envelope the same way.
+ */
+export const listAllPosts = async ({ page, limit }) => {
+  const [items, total] = await postRepo.findAllPosts({
+    skip: (page - 1) * limit,
+    take: limit,
+  });
+
+  return { items, total, page, limit };
+};
+
 export const listMyPosts = async (userId) => {
   return postRepo.findPostsByUser(userId);
 };

@@ -227,10 +227,17 @@ model Post {
 
   likes     Like[]
 
-  // Covers the only list query we have — the caller's own posts, newest first.
-  // Composite rather than an index on userId alone so Postgres can satisfy the
-  // ORDER BY from the index instead of sorting the matched rows.
+  // Covers the per-user feed — the caller's own posts, newest first. Composite
+  // rather than an index on userId alone so Postgres can satisfy the ORDER BY
+  // from the index instead of sorting the matched rows.
   @@index([userId, createdAt])
+
+  // The composite above CANNOT serve the global feed: createdAt is its second
+  // column, and with no equality predicate on the leading userId there is no
+  // usable ordering, so Postgres falls back to a sequential scan plus a sort.
+  // GET /api/posts/all orders every post by date, so it needs createdAt as a
+  // leading column of its own.
+  @@index([createdAt])
   @@map("posts")
 }
 

@@ -44,6 +44,40 @@ export const findLikesByUser = (userId) => {
   });
 };
 
+/**
+ * One page of EVERY like, with the totals a pager needs.
+ *
+ * Ordered by the liked post's date because Like has no createdAt of its own —
+ * the deliberate omission documented on the model. That means this sort runs on
+ * a JOINED column and can be served by no index on likes, so each page sorts
+ * the whole join. Fine at current volumes, and the first thing to change if
+ * this route gets slow; the real fix is a createdAt column on Like, which is
+ * the debt already recorded on findLikesByPost above.
+ *
+ * Ordering by id alone would be indexable and stable, but a list ordered by
+ * random uuid is not browsable by a human, which is the point of the route.
+ *
+ * The id tiebreaker is required for the same reason as in findAllPosts: post
+ * timestamps are not unique, and an unstable tie duplicates or skips rows
+ * across page boundaries.
+ *
+ * @returns {Promise<[object[], number]>} the page, and the total row count
+ */
+export const findAllLikes = ({ skip, take }) => {
+  return prisma.$transaction([
+    prisma.like.findMany({
+      include: {
+        user: { select: { id: true, username: true, avatarUrl: true } },
+        post: true,
+      },
+      orderBy: [{ post: { createdAt: "desc" } }, { id: "asc" }],
+      skip,
+      take,
+    }),
+    prisma.like.count(),
+  ]);
+};
+
 export const countLikesByPost = (postId) => {
   return prisma.like.count({ where: { postId } });
 };

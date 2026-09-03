@@ -7,8 +7,11 @@ import {
   update,
   remove,
   removeMine,
+  listAll,
 } from "../controllers/post.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { validate } from "../middleware/validate.js";
+import { paginationQuerySchema } from "../validation/pagination.validation.js";
 
 const router = Router();
 
@@ -25,6 +28,15 @@ router.use(requireAuth);
 // delete is strictly self-only and takes its target from the token.
 router.get("/user/:userId", listByUser);
 router.delete("/user/me", removeMine);
+
+// MUST stay above GET "/:id". That pattern is a single segment, so it matches
+// "all" too — a /all declared after it would never run, and the request would
+// instead reach getOne, look up a post whose id is literally "all", and answer
+// 404 "Post not found". A silently wrong answer rather than a routing error.
+//
+// This is also the only route in this file that validates its query string and
+// returns a { data, pagination } envelope; see the note on listAll.
+router.get("/all", validate({ query: paginationQuerySchema }), listAll);
 
 router.post("/", create);
 router.get("/", listMine);

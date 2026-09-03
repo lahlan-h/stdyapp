@@ -159,6 +159,24 @@ export const listLikesByPost = async (postId) => {
   return likeRepo.findLikesByPost(postId);
 };
 
+/**
+ * One page of every like in the system.
+ *
+ * No ownership gate, consistent with the authorisation note at the top of this
+ * module: likes are public social data, and only WRITES are scoped to the token
+ * holder. Authentication is still required, at the router.
+ *
+ * Returns the { items, total, page, limit } shape listUsers returns.
+ */
+export const listAllLikes = async ({ page, limit }) => {
+  const [items, total] = await likeRepo.findAllLikes({
+    skip: (page - 1) * limit,
+    take: limit,
+  });
+
+  return { items, total, page, limit };
+};
+
 export const listMyLikes = async (userId) => {
   return likeRepo.findLikesByUser(userId);
 };

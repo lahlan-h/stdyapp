@@ -78,6 +78,43 @@ export const getOne = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/posts/all - one page of the global feed - every post by everyone, newest first.
+ *
+ * The only route in this file that uses Zod: the query params are validated by
+ * the validate() middleware on the route, so req.validated.query is already
+ * coerced from strings and defaulted. Read that, never req.query, which has not
+ * been through a schema.
+ *
+ * Two deliberate inconsistencies with its siblings here, both consequences of
+ * matching GET /api/users rather than the rest of this router:
+ *   - it returns a { data, pagination } envelope, not a bare array;
+ *   - it still uses try/catch rather than asyncHandler(), because every other
+ *     handler in this file does. asyncHandler exists for the users/auth
+ *     controllers, which throw and have no catch of their own; a handler that
+ *     already catches gains nothing from it.
+ */
+export const listAll = async (req, res, next) => {
+  try {
+    const { items, total, page, limit } = await postService.listAllPosts(
+      req.validated.query,
+    );
+
+    res.status(200).json({
+      data: items,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page * limit < total,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const listMine = async (req, res, next) => {
   try {
     const posts = await postService.listMyPosts(req.user.id);

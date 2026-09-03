@@ -7,8 +7,11 @@ import {
   listByUser,
   removeByPost,
   removeMine,
+  listAll,
 } from "../controllers/like.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { validate } from "../middleware/validate.js";
+import { paginationQuerySchema } from "../validation/pagination.validation.js";
 
 const router = Router();
 
@@ -35,6 +38,11 @@ router.delete("/post/:postId", removeByPost);
 
 router.get("/user/:userId", listByUser);
 router.delete("/user/me", removeMine);
+
+// Grouped with the other literal paths for consistency with post.routes.js.
+// Unlike there, ordering is not load-bearing here — this file declares no
+// "/:id" route, so nothing can swallow a single-segment literal.
+router.get("/all", validate({ query: paginationQuerySchema }), listAll);
 
 router.post("/", create);
 router.get("/", listMine);
