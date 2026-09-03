@@ -59,6 +59,23 @@ export const getJwtSecret = () => {
 };
 
 /**
+ * Whether the credential-free dev token route may exist at all.
+ *
+ * The exact equality IS the security property. "production", "staging",
+ * "Development", a typo and an UNSET NODE_ENV must every one of them be false:
+ * the only way to enable a route that mints access tokens with no password is
+ * to say the word exactly. Anything looser - a !== "production" check, say -
+ * would turn every environment nobody remembered to label into a backdoor.
+ *
+ * Read at CALL time, never at module scope, for the reason documented at the
+ * top of this file: NODE_ENV comes from the repo-root .env via ./env.js, which
+ * has not run yet while this module is being evaluated.
+ *
+ * @returns {boolean}
+ */
+export const isDevAuthEnabled = () => process.env.NODE_ENV === "development";
+
+/**
  * Fails fast at boot if auth is misconfigured.
  *
  * Called from index.js AFTER ./config/env.js has run. Without this the app
