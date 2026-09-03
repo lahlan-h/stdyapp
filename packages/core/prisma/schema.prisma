@@ -39,6 +39,7 @@ model User {
   routines      StudyRoutine[]
   refreshTokens RefreshToken[]
   posts         Post[]
+  likes         Like[]
 
   @@map("users")
 }
@@ -224,6 +225,8 @@ model Post {
   photoUrl  String
   createdAt DateTime     @default(now())
 
+  likes     Like[]
+
   // Covers the only list query we have — the caller's own posts, newest first.
   // Composite rather than an index on userId alone so Postgres can satisfy the
   // ORDER BY from the index instead of sorting the matched rows.
@@ -231,6 +234,41 @@ model Post {
   @@map("posts")
 }
 
+/// One tap of the heart on a post — the second piece of the social feed.
+///
+/// Deliberately has NO createdAt, unlike every other model here. Nothing this
+/// app does cares WHEN a like happened: a heart renders from a count and a
+/// "did I like this", and the row's mere existence answers both. The cost is
+/// real and is paid in findLikesByPost — see the comment there.
+model Like {
+  id     String @id @default(uuid())
+
+  // Cascade, unlike posts.userId which is Restrict. The reasoning is
+  // refresh_tokens.userId's, not posts.userId's: a post is authored content
+  // worth blocking a user delete over; a like is one bit of metadata that
+  // means nothing once the person who left it is gone.
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Cascade for the same reason, and load-bearing: Restrict here would make
+  // DELETE /api/posts/:id start failing with a foreign-key error for any post
+  // anyone had ever liked — the same trap sessionId's comment describes.
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  // One like per person per post. This is the entire integrity model of the
+  // entity: it makes liking safely retryable from a double-tapped heart, and
+  // it is the index that answers "have I liked this" on every feed render.
+  @@unique([userId, postId])
+
+  // The unique above indexes (userId, postId) and therefore CANNOT serve a
+  // lookup by postId alone — which the like count and the "liked by" list
+  // both do. Same reasoning as the composite index on posts.
+  @@index([postId])
+
+  @@map("likes")
+}
+
 // TODO: remaining entities from the ERD — the rest of the social feed
-// (follows, likes, comments), gamification/streaks, discover, analytics, and
+// (follows, comments), gamification/streaks, discover, analytics, and
 // stretch-goal entities (wearable data, Discord sync).
