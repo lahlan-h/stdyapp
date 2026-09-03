@@ -206,18 +206,19 @@ model Post {
   userId    String
   user      User         @relation(fields: [userId], references: [id])
 
-  // Required, not nullable: a post is always ABOUT a study session. Cascade
-  // for the same reason session_interruptions cascade — the post is a leaf
-  // record of the session. Restrict here would permanently break
-  // DELETE /api/sessions/:id the moment anyone posted about that session.
-  sessionId String
-  session   Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  // Optional: a post may be a plain status update, or it may be tied to the
+  // session it came out of.
+  //
+  // SetNull, exactly as sessions.groupId does for groups: deleting a session
+  // should cost you the LINK, not the post. Cascade stood here only while the
+  // column was NOT NULL, which left no third option — Restrict would have
+  // permanently broken DELETE /api/sessions/:id for anyone who had posted.
+  sessionId String?
+  session   Session?      @relation(fields: [sessionId], references: [id], onDelete: SetNull)
 
-  // Same reasoning as sessionId — Restrict would break DELETE /api/routines/:id.
-  // Note the consequence: deleting a routine also deletes the posts that
-  // reference it.
-  routineId String
-  routine   StudyRoutine @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  // Same reasoning as sessionId.
+  routineId String?
+  routine   StudyRoutine? @relation(fields: [routineId], references: [id], onDelete: SetNull)
 
   caption   String
   photoUrl  String

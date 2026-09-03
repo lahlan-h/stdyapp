@@ -25,16 +25,32 @@ const isSafePhotoUrl = (value) => {
   }
 };
 
+/**
+ * An optional link is valid when it is absent, an explicit null (meaning
+ * "detach", on PATCH), or a non-empty string. A number or an object would
+ * otherwise reach Prisma and come back as a 500 for what is a bad request.
+ *
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+const isValidLink = (value) =>
+  value === undefined || value === null || (typeof value === "string" && value.length > 0);
+
 export const create = async (req, res, next) => {
   try {
     const { sessionId, routineId, caption, photoUrl } = req.body;
 
-    // All four are required — sessionId and routineId are non-nullable columns,
-    // and a post with no caption or photo is not a post.
-    if (!sessionId) return res.status(400).json({ error: "sessionId is required" });
-    if (!routineId) return res.status(400).json({ error: "routineId is required" });
+    // caption and photoUrl are the post; sessionId and routineId are optional
+    // links, so a bare photo and caption is a valid post.
     if (!caption) return res.status(400).json({ error: "caption is required" });
     if (!photoUrl) return res.status(400).json({ error: "photoUrl is required" });
+
+    if (!isValidLink(sessionId)) {
+      return res.status(400).json({ error: "sessionId must be a string or omitted" });
+    }
+    if (!isValidLink(routineId)) {
+      return res.status(400).json({ error: "routineId must be a string or omitted" });
+    }
 
     if (!isSafePhotoUrl(photoUrl)) {
       return res.status(400).json({ error: "photoUrl must be a valid http or https URL" });
@@ -102,12 +118,20 @@ export const removeMine = async (req, res, next) => {
 
 export const update = async (req, res, next) => {
   try {
-    const { caption, photoUrl } = req.body;
+    const { caption, photoUrl, sessionId, routineId } = req.body;
 
-    // PATCH semantics: both optional, but an empty body would return 200 having
-    // changed nothing, which is a client bug worth surfacing.
-    if (caption === undefined && photoUrl === undefined) {
-      return res.status(400).json({ error: "caption or photoUrl is required" });
+    // PATCH semantics: every field optional, but an empty body would return 200
+    // having changed nothing, which is a client bug worth surfacing. Note that
+    // an explicit null counts as a change — {"sessionId": null} is a detach.
+    if (
+      caption === undefined &&
+      photoUrl === undefined &&
+      sessionId === undefined &&
+      routineId === undefined
+    ) {
+      return res
+        .status(400)
+        .json({ error: "caption, photoUrl, sessionId or routineId is required" });
     }
     if (caption !== undefined && !caption) {
       return res.status(400).json({ error: "caption must not be empty" });
@@ -115,10 +139,18 @@ export const update = async (req, res, next) => {
     if (photoUrl !== undefined && !isSafePhotoUrl(photoUrl)) {
       return res.status(400).json({ error: "photoUrl must be a valid http or https URL" });
     }
+    if (!isValidLink(sessionId)) {
+      return res.status(400).json({ error: "sessionId must be a string or null" });
+    }
+    if (!isValidLink(routineId)) {
+      return res.status(400).json({ error: "routineId must be a string or null" });
+    }
 
     const post = await postService.updatePost(req.params.id, req.user.id, {
       caption,
       photoUrl,
+      sessionId,
+      routineId,
     });
     res.status(200).json(post);
   } catch (err) {
