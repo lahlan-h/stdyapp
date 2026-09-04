@@ -19,6 +19,44 @@ export const findPostsByUser = (userId) => {
   });
 };
 
+/**
+ * One page of the GLOBAL feed, newest first, with the totals a pager needs.
+ *
+ * Served by @@index([createdAt]) on posts. The per-user composite index cannot
+ * help here: createdAt is its second column, so without an equality predicate
+ * on the leading userId there is no usable ordering.
+ *
+ * The `id` tiebreaker is load-bearing, not decoration. createdAt is not unique,
+ * so two posts sharing a timestamp have no defined relative order, and under
+ * OFFSET pagination that is a correctness bug rather than an aesthetic one: the
+ * planner may break the tie differently between two requests, and the row then
+ * appears on both page 1 and page 2, or on neither.
+ *
+ * The findMany and the count run in one transaction so the page and its total
+ * are read from the same snapshot — otherwise a post inserted between the two
+ * queries makes totalPages disagree with the page just returned.
+ *
+ * The user select is the allowlist already used by findLikesByPost and
+ * listMembers. It is what keeps passwordHash and email out of a public feed, so
+ * it must stay a select rather than becoming `user: true`.
+ *
+ * @returns {Promise<[object[], number]>} the page, and the total row count
+ */
+export const findAllPosts = ({ skip, take }) => {
+  return prisma.$transaction([
+    prisma.post.findMany({
+      include: {
+        user: { select: { id: true, username: true, avatarUrl: true } },
+        _count: { select: { likes: true } },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      skip,
+      take,
+    }),
+    prisma.post.count(),
+  ]);
+};
+
 export const updatePost = (id, data) => {
   return prisma.post.update({ where: { id }, data });
 };

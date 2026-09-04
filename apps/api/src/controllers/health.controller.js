@@ -9,7 +9,7 @@ const log = createLogger("health");
  *
  * The response is a strict superset of the previous contract: status, db,
  * uptime and timestamp keep their exact names and meanings, with redis,
- * rabbitmq and a per-dependency `dependencies` breakdown added.
+ * rabbitmq, r2 and a per-dependency `dependencies` breakdown added.
  *
  * 200 when every dependency is reachable, 503 otherwise.
  */
@@ -28,6 +28,7 @@ export const healthController = async (_, res) => {
     db: dependencies.db.status,
     redis: dependencies.redis.status,
     rabbitmq: dependencies.rabbitmq.status,
+    r2: dependencies.r2.status,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     dependencies, // per-dependency latencyMs + error detail

@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  DEFAULT_PAGE_SIZE,
+  MAX_PAGE_SIZE,
+} from "./pagination.validation.js";
+
 /**
  * Request schemas for the users resource.
  *
@@ -22,10 +27,9 @@ const MAX_BIO_LENGTH = 500;
 const MAX_URL_LENGTH = 2048;
 const MAX_SEARCH_LENGTH = 100;
 
-export const DEFAULT_PAGE_SIZE = 20;
-// A hard cap, not a suggestion: without it, ?limit=999999 is a free denial of
-// service against an unauthenticated endpoint.
-export const MAX_PAGE_SIZE = 100;
+// Re-exported so this module stays the one place the users resource is
+// described, while the numbers themselves live with the shared schema.
+export { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE };
 
 // Normalise BEFORE validating. .pipe() guarantees the trim/lowercase runs
 // first, so " Ada@UTS.edu.au " is accepted and stored as "ada@uts.edu.au".

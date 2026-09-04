@@ -29,37 +29,78 @@ const getOwnedPostOrThrow = async (postId, requesterId) => {
 };
 
 /**
- * Both foreign keys are checked BEFORE the insert, for two reasons.
+ * A link is checked BEFORE it is written, for two reasons.
  *
- * Security: without the ownership half, a caller could publish a post against
- * a stranger's sessionId or routineId — attaching their content to someone
- * else's study history.
+ * Security: without the ownership half, a caller could attach their post to a
+ * stranger's session or routine — hanging their content off someone else's
+ * study history.
  *
  * Error quality: without the existence half, a bad id reaches Postgres and
  * comes back as a Prisma P2003 foreign-key violation, which nothing in the
  * error middleware translates — the client would get a 500 for what is plainly
  * a bad request.
+ *
+ * Separate functions per link, rather than one that takes both: the two ids now
+ * travel independently. A create may supply either, both or neither, and an
+ * update may set just one.
  */
-const assertOwnsSessionAndRoutine = async (sessionId, routineId, requesterId) => {
-  const [session, routine] = await Promise.all([
-    sessionRepo.findSessionById(sessionId),
-    routineRepo.findRoutineById(routineId),
-  ]);
-
+const assertOwnsSession = async (sessionId, requesterId) => {
+  const session = await sessionRepo.findSessionById(sessionId);
   if (!session) throw notFound("Session");
   if (session.userId !== requesterId) throw forbidden("session");
+};
 
+const assertOwnsRoutine = async (routineId, requesterId) => {
+  const routine = await routineRepo.findRoutineById(routineId);
   if (!routine) throw notFound("Routine");
   if (routine.userId !== requesterId) throw forbidden("routine");
 };
 
+/**
+ * Both links are optional — a post can be a plain photo and caption, tied to a
+ * session, tied to a routine, or both. Only the ids actually supplied are
+ * checked, and they are checked in parallel so supplying both still costs one
+ * round trip's latency rather than two.
+ */
 export const createPost = async ({ userId, sessionId, routineId, caption, photoUrl }) => {
-  await assertOwnsSessionAndRoutine(sessionId, routineId, userId);
-  return postRepo.createPost({ userId, sessionId, routineId, caption, photoUrl });
+  const checks = [];
+  if (sessionId) checks.push(assertOwnsSession(sessionId, userId));
+  if (routineId) checks.push(assertOwnsRoutine(routineId, userId));
+  await Promise.all(checks);
+
+  return postRepo.createPost({
+    userId,
+    // Explicit null rather than undefined, matching createRoutine's
+    // `sourceRoutineId ?? null` — the column is nullable and the intent is
+    // "no link", not "field omitted".
+    sessionId: sessionId ?? null,
+    routineId: routineId ?? null,
+    caption,
+    photoUrl,
+  });
 };
 
 export const getPost = async (postId, requesterId) => {
   return getOwnedPostOrThrow(postId, requesterId);
+};
+
+/**
+ * One page of the global feed — every post by everyone, newest first.
+ *
+ * Deliberately has NO ownership gate, for the same reason listPostsByUser has
+ * none: this IS the feed, and gating it on authorship would leave it showing
+ * only your own posts. Authentication is still required, at the router.
+ *
+ * Returns the { items, total, page, limit } shape listUsers returns, so the
+ * controller can build the pagination envelope the same way.
+ */
+export const listAllPosts = async ({ page, limit }) => {
+  const [items, total] = await postRepo.findAllPosts({
+    skip: (page - 1) * limit,
+    take: limit,
+  });
+
+  return { items, total, page, limit };
 };
 
 export const listMyPosts = async (userId) => {
@@ -99,18 +140,34 @@ export const deleteMyPosts = async (userId) => {
 };
 
 /**
- * Only caption and photoUrl are editable, and they are destructured out
- * explicitly rather than passing req.body through — same defence as
- * updateRoutine. The author, the two foreign keys and createdAt are all
- * history, and a client must not be able to rewrite them by adding keys to
- * the request body.
+ * Editable: caption, photoUrl, and the two links. The author and createdAt are
+ * history and stay unwritable — the fields are destructured out explicitly
+ * rather than passing req.body through, the same defence updateRoutine uses, so
+ * extra keys in the body cannot reach the database.
  *
- * An absent key stays absent (rather than becoming undefined -> null) because
- * Prisma ignores undefined fields in an update.
+ * The links are THREE-STATE, which works because JSON and Prisma happen to
+ * agree on what undefined and null mean:
+ *
+ *   key absent (undefined) -> leave as-is   (Prisma skips undefined fields)
+ *   "sessionId": "abc-123" -> attach        (checked first)
+ *   "sessionId": null      -> detach        (Prisma writes NULL)
+ *
+ * Only a non-null value needs a permission check: undefined points at nothing
+ * and null points at nothing, so neither can attach you to someone else's row.
  */
-export const updatePost = async (postId, requesterId, { caption, photoUrl }) => {
+export const updatePost = async (
+  postId,
+  requesterId,
+  { caption, photoUrl, sessionId, routineId },
+) => {
   await getOwnedPostOrThrow(postId, requesterId);
-  return postRepo.updatePost(postId, { caption, photoUrl });
+
+  const checks = [];
+  if (sessionId) checks.push(assertOwnsSession(sessionId, requesterId));
+  if (routineId) checks.push(assertOwnsRoutine(routineId, requesterId));
+  await Promise.all(checks);
+
+  return postRepo.updatePost(postId, { caption, photoUrl, sessionId, routineId });
 };
 
 export const deletePost = async (postId, requesterId) => {
