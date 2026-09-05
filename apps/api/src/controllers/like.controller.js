@@ -95,16 +95,30 @@ export const listMine = async (req, res, next) => {
   }
 };
 
+/**
+ * Resolves the ":userId" path segment, mapping the literal "me" to the caller.
+ *
+ * Without it, GET /api/likes/user/me would look up a user whose id is literally
+ * "me" and 404 — a papercut for any client that would rather not thread its own
+ * id through every call. Copied in spirit from post.controller.js, which does
+ * the same inline.
+ *
+ * EXPORTED, unlike its counterpart there, because like.routes.js must build this
+ * route's cache key from the SAME resolved id before the handler runs. Two
+ * copies of this line would not merely drift — if the cache resolved "me"
+ * differently from the handler, the key would be stamped with a counter
+ * (v:like:user:me) that nothing ever bumps, so every caller's GET /user/me would
+ * share one cache entry and users would be served each other's like history.
+ *
+ * @param {import("express").Request} req
+ * @returns {string}
+ */
+export const resolveTargetUserId = (req) =>
+  req.params.userId === "me" ? req.user.id : req.params.userId;
+
 export const listByUser = async (req, res, next) => {
   try {
-    // "me" resolves to the caller, copying post.controller.js — without it
-    // GET /api/likes/user/me would look up a user whose id is literally "me"
-    // and 404, a papercut for any client that would rather not thread its own
-    // id through every call.
-    const { userId } = req.params;
-    const targetId = userId === "me" ? req.user.id : userId;
-
-    const likes = await likeService.listLikesByUser(targetId);
+    const likes = await likeService.listLikesByUser(resolveTargetUserId(req));
     res.status(200).json(likes);
   } catch (err) {
     next(err);

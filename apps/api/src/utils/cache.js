@@ -32,6 +32,12 @@ const VERSION_PREFIX = "v:";
 const EPOCH = "c1";
 
 /**
+ * The same idea for likes, versioned independently. A change to the like
+ * response shape must not orphan every cached comment, and vice versa.
+ */
+const LIKE_EPOCH = "l1";
+
+/**
  * Version counters outlive the payloads beneath them by a wide margin, and that
  * gap is deliberate.
  *
@@ -140,6 +146,51 @@ export const commentKey = (commentId, version) =>
 /** @param {string} userId @param {number} version */
 export const userListKey = (userId, version) =>
   `${EPOCH}:cmt:byuser:${userId}:u${version}`;
+
+/**
+ * Like key builders.
+ *
+ * Likes get their OWN version counters rather than reusing postVersionKey and
+ * userVersionKey above, and that separation is a performance decision worth
+ * stating: a like is the highest-frequency write in the app. Sharing v:post:*
+ * would mean every heart tap flushed that post's whole comment thread cache —
+ * gutting the comment hit rate to invalidate data no like can affect. Nothing in
+ * a comment payload depends on likes, and nothing in a like payload depends on
+ * comments, so the two namespaces never need to agree.
+ *
+ * SAME COHERENCE HOLE as the comment keys, and the same mitigation. These
+ * payloads embed rows no like counter tracks: the liked-by list carries the
+ * liker's username and avatarUrl, and the per-user list carries a whole Post
+ * row. Editing a post caption or changing an avatar leaves them wrong until they
+ * expire, because no like was written and nothing bumped. That is why the TTLs
+ * in config/cache.js are short rather than generous.
+ */
+
+/** @param {string} postId */
+export const likePostVersionKey = (postId) => `${VERSION_PREFIX}like:post:${postId}`;
+
+/** @param {string} userId */
+export const likeUserVersionKey = (userId) => `${VERSION_PREFIX}like:user:${userId}`;
+
+// Includes the viewer: the summary carries likedByMe, which differs per caller.
+// It needs no user version, though — likedByMe can only change when THIS viewer
+// likes THIS post, and every such event bumps the post counter already.
+/** @param {string} postId @param {string} viewerId @param {number} version */
+export const likeSummaryKey = (postId, viewerId, version) =>
+  `${LIKE_EPOCH}:like:count:${postId}:${viewerId}:p${version}`;
+
+/** @param {string} postId @param {number} version */
+export const likedByKey = (postId, version) =>
+  `${LIKE_EPOCH}:like:post:${postId}:p${version}`;
+
+// Shared by GET / (listMine) and GET /user/:userId, exactly as userListKey is
+// for comments. Both resolve to findLikesByUser(id) and return byte-identical
+// data — listMyLikes merely skips the existence check — so separate keys would
+// cache the same array twice and halve the hit rate. If those two response
+// shapes ever diverge, they must stop sharing this key.
+/** @param {string} userId @param {number} version */
+export const likeUserListKey = (userId, version) =>
+  `${LIKE_EPOCH}:like:byuser:${userId}:u${version}`;
 
 /**
  * Reads version counters, in the order asked for.

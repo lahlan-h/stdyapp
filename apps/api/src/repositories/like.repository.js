@@ -90,6 +90,27 @@ export const deleteLikeByUserAndPost = (userId, postId) => {
   return prisma.like.deleteMany({ where: { userId, postId } });
 };
 
+/**
+ * The posts one user has liked — for cache invalidation, not for reading.
+ *
+ * Must be read BEFORE deleteLikesByUser runs: afterwards the rows are gone and
+ * there is nothing left to work out which posts' like counts just went stale.
+ * The twin of findCommentTargetsByUser.
+ *
+ * Selects the single column invalidation needs rather than whole rows, so a user
+ * with thousands of likes does not materialise thousands of records to compute a
+ * handful of cache keys. No distinct and no orderBy: bumpVersions de-duplicates
+ * via a Set already, and order is meaningless to a set of keys.
+ *
+ * @returns {Promise<Array<{ postId: string }>>}
+ */
+export const findLikeTargetsByUser = (userId) => {
+  return prisma.like.findMany({
+    where: { userId },
+    select: { postId: true },
+  });
+};
+
 export const deleteLikesByUser = (userId) => {
   return prisma.like.deleteMany({ where: { userId } });
 };

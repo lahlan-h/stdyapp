@@ -11,6 +11,11 @@ import { getUserById } from "./user.service.js";
 // already in use" for a duplicate like; and it maps P2003 to a 409 when a bad
 // postId is plainly a 404.
 import { isPrismaError } from "../utils/prismaError.js";
+import {
+  bumpVersions,
+  likePostVersionKey,
+  likeUserVersionKey,
+} from "../utils/cache.js";
 
 /**
  * AUTHORIZATION MODEL — deliberately NOT post.service.js's.
@@ -64,6 +69,31 @@ const assertPostExists = async (postId) => {
 };
 
 /**
+ * Invalidates every cached read a like write can affect.
+ *
+ * Lives in the service rather than the middleware for the reason
+ * invalidateComment gives: this is the only layer that holds both the post and
+ * the user a change touched. The controllers here are deliberately thin.
+ *
+ * Nothing here can fail a write. bumpVersions swallows its own Redis errors, so
+ * an outage costs a bump and leaves entries stale until their TTL lapses; it
+ * never turns a successful 201 into a 500.
+ *
+ * Awaited rather than fired and forgotten, so a client that reads straight back
+ * after writing cannot observe the version it just invalidated.
+ *
+ * @param {{ postId: string, userId: string }} like
+ */
+const invalidateLike = async ({ postId, userId }) => {
+  await bumpVersions([
+    // The liked-by list and the per-viewer summary both hang off the post.
+    likePostVersionKey(postId),
+    // The liker's own list, shared by GET / and GET /user/:userId.
+    likeUserVersionKey(userId),
+  ]);
+};
+
+/**
  * Likes a post, idempotently.
  *
  * A repeat like is NOT a 409. joinGroup throws conflict("Already a member of
@@ -84,10 +114,12 @@ export const likePost = async ({ userId, postId }) => {
   await assertPostExists(postId);
 
   const existing = await likeRepo.findLikeByUserAndPost(userId, postId);
+  // Nothing changed, so nothing to invalidate — the cheap path stays cheap.
   if (existing) return { like: existing, created: false };
 
   try {
     const like = await likeRepo.createLike({ userId, postId });
+    await invalidateLike(like);
     return { like, created: true };
   } catch (err) {
     // Two taps landing between the read above and this insert. The unique
@@ -95,7 +127,14 @@ export const likePost = async ({ userId, postId }) => {
     // no-op it is rather than as a conflict.
     if (isPrismaError(err, PRISMA_UNIQUE_VIOLATION)) {
       const like = await likeRepo.findLikeByUserAndPost(userId, postId);
-      if (like) return { like, created: false };
+      // Bumped even though `created` is false. Unlike the early return above,
+      // a row genuinely WAS inserted here — by the request that won the race.
+      // Its own bump covers this, but bumping twice only orphans a key, while
+      // missing one serves a stale heart for the whole TTL.
+      if (like) {
+        await invalidateLike(like);
+        return { like, created: false };
+      }
     }
     // The post was deleted inside that same window. The check above was honest
     // when it ran, so this is still a 404 rather than a 500.
@@ -116,7 +155,14 @@ export const likePost = async ({ userId, postId }) => {
  * @returns {Promise<{ count: number }>}
  */
 export const unlikePost = async (postId, userId) => {
-  return likeRepo.deleteLikeByUserAndPost(userId, postId);
+  const result = await likeRepo.deleteLikeByUserAndPost(userId, postId);
+
+  // Only when a row actually went. deleteMany reports count 0 for the "unlike
+  // something you never liked" case, which changed nothing and must not spend a
+  // bump — this route is a toggle clients fire freely.
+  if (result.count > 0) await invalidateLike({ postId, userId });
+
+  return result;
 };
 
 /**
@@ -196,5 +242,19 @@ export const listLikesByUser = async (targetUserId) => {
  * @returns {Promise<{ count: number }>}
  */
 export const deleteMyLikes = async (userId) => {
-  return likeRepo.deleteLikesByUser(userId);
+  // Read the targets BEFORE the delete. Afterwards the rows are gone and there
+  // is no way left to work out which posts' like counts just went stale.
+  const targets = await likeRepo.findLikeTargetsByUser(userId);
+
+  const result = await likeRepo.deleteLikesByUser(userId);
+
+  // One counter per post touched, plus the caller's own list. bumpVersions
+  // de-duplicates and chunks its pipeline, so a heavy account clearing hundreds
+  // of likes is a handful of round trips rather than one per row.
+  await bumpVersions([
+    ...targets.map((target) => likePostVersionKey(target.postId)),
+    likeUserVersionKey(userId),
+  ]);
+
+  return result;
 };

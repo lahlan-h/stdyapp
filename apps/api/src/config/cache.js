@@ -34,6 +34,26 @@ export const CACHE_TTL_COMMENT_SEC = 120;
 export const CACHE_TTL_USER_LIST_SEC = 60;
 
 /**
+ * Likes.
+ *
+ * Separate constants rather than reusing the comment ones, even where the number
+ * happens to match: they describe different surfaces, and tuning the comment
+ * thread should not silently retune the heart.
+ */
+
+// The count + likedByMe pair. The shortest TTL in the file. A heart that stays
+// grey after you tap it is the most visible staleness this app can produce, and
+// the query behind it is two indexed lookups — cheap to get wrong, cheap to redo.
+export const CACHE_TTL_LIKE_SUMMARY_SEC = 15;
+
+// The "liked by" list. Matches the comment thread: same kind of surface, same
+// tolerance for being a minute behind.
+export const CACHE_TTL_LIKED_BY_SEC = 60;
+
+// One user's like history — a profile tab, like its comment counterpart.
+export const CACHE_TTL_LIKE_USER_LIST_SEC = 60;
+
+/**
  * Rate-limit tiers, keyed on the caller's user id.
  *
  * Tiered rather than uniform because the routes cost wildly different amounts.
@@ -56,3 +76,16 @@ export const RATE_LIMIT_WRITE = { max: 20, windowSec: 60 };
 // 5/hour. There is no legitimate reason to clear your entire comment history
 // twice in a row, let alone five times, and the operation is irreversible.
 export const RATE_LIMIT_BULK = { max: 5, windowSec: 3600 };
+
+/**
+ * Likes reuse RATE_LIMIT_READ and RATE_LIMIT_BULK as they stand — those tiers
+ * are written as whole-API ceilings, and rateLimit()'s `name` already gives each
+ * router its own Redis keyspace and therefore its own independent budget.
+ *
+ * The WRITE tier is the one exception. 20/min is tuned for a human typing a
+ * comment; a heart is a tap. Liking is deliberately idempotent, so clients
+ * retry it freely and a user scrolling a feed can legitimately fire a burst.
+ * 20/min would throttle ordinary use — this is still an order of magnitude
+ * below a script.
+ */
+export const RATE_LIMIT_LIKE_WRITE = { max: 60, windowSec: 60 };
