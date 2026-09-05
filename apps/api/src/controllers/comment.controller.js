@@ -143,16 +143,29 @@ export const listMine = async (req, res, next) => {
   }
 };
 
+/**
+ * Resolves the :userId path param, mapping the literal "me" to the caller.
+ *
+ * Without it, GET /api/comments/user/me would look up a user whose id is
+ * literally "me" and 404 — a papercut for any client that would rather not
+ * thread its own id through every call. Copied in spirit from
+ * post.controller.js, which does the same inline.
+ *
+ * EXPORTED, unlike its counterpart there, because comment.routes.js must build
+ * this route's cache key from the SAME resolved id before the handler runs. Two
+ * copies of this line would not merely drift — if the cache resolved "me"
+ * differently from the handler, every caller's GET /user/me would share one
+ * cache key and users would be served each other's comment history.
+ *
+ * @param {import("express").Request} req
+ * @returns {string}
+ */
+export const resolveTargetUserId = (req) =>
+  req.params.userId === "me" ? req.user.id : req.params.userId;
+
 export const listByUser = async (req, res, next) => {
   try {
-    // "me" resolves to the caller, copying post.controller.js — without it
-    // GET /api/comments/user/me would look up a user whose id is literally "me"
-    // and 404, a papercut for any client that would rather not thread its own id
-    // through every call.
-    const { userId } = req.params;
-    const targetId = userId === "me" ? req.user.id : userId;
-
-    const comments = await commentService.listCommentsByUser(targetId);
+    const comments = await commentService.listCommentsByUser(resolveTargetUserId(req));
     res.status(200).json(comments);
   } catch (err) {
     next(err);

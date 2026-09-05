@@ -60,9 +60,14 @@ export const requestLogger = (req, res, next) => {
     // thrown HttpError. Without it a 400 would be an unexplained number.
     const reason = res.locals.errorSummary ? `  ${res.locals.errorSummary}` : "";
 
+    // Set by middleware/cache.js. Same channel and same reason as errorSummary
+    // above: this hook runs on "finish" and cannot see the response body, so
+    // res.locals is the only way a cache hit can make itself visible here.
+    const cacheState = res.locals.cache ? `  ${res.locals.cache}` : "";
+
     const message =
       `${req.method.padEnd(METHOD_WIDTH)} ${url.padEnd(URL_WIDTH)} ` +
-      `${res.statusCode} ${`${durationMs.toFixed(0)}ms`.padStart(6)}${reason}`;
+      `${res.statusCode} ${`${durationMs.toFixed(0)}ms`.padStart(6)}${cacheState}${reason}`;
 
     // 5xx is our bug, 4xx is the client's, anything else is ordinary traffic.
     // The stack for a 5xx is printed by the error middleware, which has already

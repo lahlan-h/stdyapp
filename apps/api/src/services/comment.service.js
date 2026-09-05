@@ -9,6 +9,12 @@ import { getUserById } from "./user.service.js";
 // The shared duck-typing helper; toHttpError from the same module is not reused,
 // for the reasons spelled out in like.service.js.
 import { isPrismaError } from "../utils/prismaError.js";
+import {
+  bumpVersions,
+  postVersionKey,
+  userVersionKey,
+  commentVersionKey,
+} from "../utils/cache.js";
 
 /**
  * AUTHORIZATION MODEL — a hybrid of this module's two neighbours, on purpose.
@@ -112,6 +118,41 @@ const getDeletableCommentOrThrow = async (commentId, requesterId) => {
 };
 
 /**
+ * CACHE INVALIDATION — why it lives in this layer.
+ *
+ * The cache itself is HTTP-layer (middleware/cache.js caches whole responses),
+ * but invalidation is a DATA concern: it needs to know which post's thread and
+ * whose comment list a change touched, and this is the only layer holding both.
+ * The controllers in this API are deliberately thin — "status codes and response
+ * shape only, no policy" — and a controller would have to re-read the comment it
+ * just deleted to find out.
+ *
+ * Nothing here can fail a write. Every helper in utils/cache.js swallows its own
+ * Redis errors, so an outage costs a bump and leaves entries stale until their
+ * TTL lapses; it never turns a successful 201 into a 500.
+ *
+ * It is awaited rather than fired and forgotten, so a client that reads straight
+ * back after writing cannot observe the version it just invalidated.
+ *
+ * @param {{ id: string, postId: string, userId: string }} comment
+ */
+const invalidateComment = async (comment) => {
+  await bumpVersions([
+    // The thread and the per-viewer summary both hang off the post.
+    postVersionKey(comment.postId),
+    // The author's own list. Taken from the COMMENT, never from the requester —
+    // see deleteComment for why that distinction is the trap in this module.
+    userVersionKey(comment.userId),
+    // The single-comment read. A separate counter because GET /:id knows only
+    // the id: its postId and author are exactly what a cached read must avoid
+    // going to the database to discover. A no-op on create, where nothing can
+    // yet be cached under a brand-new id, and kept anyway so all three
+    // single-comment writes invalidate identically.
+    commentVersionKey(comment.id),
+  ]);
+};
+
+/**
  * Leaves a comment on a post.
  *
  * Deliberately NOT idempotent, which is the opposite of likePost and follows
@@ -124,14 +165,18 @@ const getDeletableCommentOrThrow = async (commentId, requesterId) => {
 export const createComment = async ({ userId, postId, body }) => {
   await assertPostExists(postId);
 
+  let comment;
   try {
-    return await commentRepo.createComment({ userId, postId, body });
+    comment = await commentRepo.createComment({ userId, postId, body });
   } catch (err) {
     // The post was deleted between the check above and this insert. The check
     // was honest when it ran, so this is still a 404 rather than a 500.
     if (isPrismaError(err, PRISMA_FOREIGN_KEY_VIOLATION)) throw notFound("Post");
     throw err;
   }
+
+  await invalidateComment(comment);
+  return comment;
 };
 
 /**
@@ -238,14 +283,35 @@ export const listAllComments = async ({ page, limit }) => {
  * "edited" marker by comparing it against createdAt.
  */
 export const updateComment = async (commentId, requesterId, { body }) => {
-  await getOwnCommentOrThrow(commentId, requesterId);
-  return commentRepo.updateComment(commentId, { body });
+  // The gate's return value is captured rather than discarded: it carries the
+  // postId and author this comment belongs to, which is exactly what
+  // invalidation needs and what a second read would otherwise have to fetch.
+  const existing = await getOwnCommentOrThrow(commentId, requesterId);
+
+  const comment = await commentRepo.updateComment(commentId, { body });
+  await invalidateComment(existing);
+
+  return comment;
 };
 
-// Author OR post owner — see getDeletableCommentOrThrow.
+/**
+ * Author OR post owner — see getDeletableCommentOrThrow.
+ *
+ * The invalidation here is the one genuinely easy thing to get wrong in this
+ * module. A post owner may delete SOMEONE ELSE'S comment, so requesterId and
+ * comment.userId are different people on that path. Bumping the requester would
+ * invalidate the moderator's own comment list — which did not change — and
+ * leave the actual author's list serving a comment that no longer exists, until
+ * its TTL lapsed. invalidateComment reads the author off the comment for
+ * exactly this reason.
+ */
 export const deleteComment = async (commentId, requesterId) => {
-  await getDeletableCommentOrThrow(commentId, requesterId);
-  return commentRepo.deleteComment(commentId);
+  const comment = await getDeletableCommentOrThrow(commentId, requesterId);
+
+  const deleted = await commentRepo.deleteComment(commentId);
+  await invalidateComment(comment);
+
+  return deleted;
 };
 
 /**
@@ -259,8 +325,36 @@ export const deleteComment = async (commentId, requesterId) => {
  * cannot be deleted while their comments exist, and this is how they stop
  * existing. The same relationship deleteMyPosts has with posts.userId.
  *
+ * Invalidation is the expensive half here, and it is why the targets are read
+ * FIRST. This one call empties the caller's comment list AND changes every
+ * thread they had commented on — which may be hundreds of different posts — and
+ * once deleteCommentsByUser has run there is nothing left in the database to
+ * work out which ones those were. One extra indexed read on
+ * comments_userId_createdAt_idx buys that answer, on an operation that is rare,
+ * destructive, and already the most expensive write in the module.
+ *
  * @returns {Promise<{ count: number }>}
  */
 export const deleteMyComments = async (userId) => {
-  return commentRepo.deleteCommentsByUser(userId);
+  const targets = await commentRepo.findCommentTargetsByUser(userId);
+
+  const result = await commentRepo.deleteCommentsByUser(userId);
+
+  // Nothing was deleted, so nothing is stale. Saves a round trip on the repeat
+  // call this idempotent route is designed to tolerate.
+  if (result.count === 0) return result;
+
+  // bumpVersions de-duplicates, which matters here: several comments on the
+  // same post is the normal case, and each would otherwise bump that post's
+  // counter separately for no additional effect. It also chunks its pipeline,
+  // so a heavy account never becomes one enormous command.
+  await bumpVersions([
+    userVersionKey(userId),
+    ...targets.map((target) => postVersionKey(target.postId)),
+    // Every one of these comments is now a 404, so a cached single-comment
+    // response for it would not merely be stale but WRONG.
+    ...targets.map((target) => commentVersionKey(target.id)),
+  ]);
+
+  return result;
 };

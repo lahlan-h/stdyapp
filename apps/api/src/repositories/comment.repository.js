@@ -115,6 +115,27 @@ export const deleteComment = (id) => {
   return prisma.comment.delete({ where: { id } });
 };
 
+/**
+ * The ids and posts a bulk delete is about to affect.
+ *
+ * Must be read BEFORE the delete runs: afterwards the rows are gone and there
+ * is nothing left to work out which comment threads just went stale. Selects
+ * only the two columns invalidation needs rather than whole rows, so a user
+ * with thousands of comments does not materialise thousands of bodies to
+ * compute a handful of cache keys.
+ *
+ * No orderBy and no distinct: the caller de-duplicates postIds itself (a Set is
+ * free next to a second index scan), and order is meaningless to a set of keys.
+ *
+ * @returns {Promise<Array<{ id: string, postId: string }>>}
+ */
+export const findCommentTargetsByUser = (userId) => {
+  return prisma.comment.findMany({
+    where: { userId },
+    select: { id: true, postId: true },
+  });
+};
+
 // deleteMany rather than delete, exactly as deletePostsByUser does: the tally is
 // all a bulk delete needs, not materialising N rows keeps a heavy account
 // cleanup cheap, and it does not throw when nothing matches — which is what
