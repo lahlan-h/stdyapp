@@ -6,6 +6,18 @@ import * as routineRepo from "../repositories/studyRoutine.repository.js";
 // column allowlist cannot be bypassed by accident. It also already throws the
 // 404 we want, so the existence check below costs nothing extra.
 import { getUserById } from "./user.service.js";
+// Cross-domain reads, for cache invalidation only — see invalidatePostFanout.
+// Repository rather than service imports, matching how like.service.js reaches
+// for findPostById: going through the services would drag their gates along.
+import { findCommenterIdsByPosts } from "../repositories/comment.repository.js";
+import { findLikerIdsByPosts } from "../repositories/like.repository.js";
+import {
+  bumpVersions,
+  postContentVersionKey,
+  postAuthorVersionKey,
+  userVersionKey,
+  likeUserVersionKey,
+} from "../utils/cache.js";
 
 const notFound = (what) => {
   const err = new Error(`${what} not found`);
@@ -57,6 +69,89 @@ const assertOwnsRoutine = async (routineId, requesterId) => {
 };
 
 /**
+ * Invalidates this module's OWN cached reads.
+ *
+ * Lives in the service rather than the middleware for the reason invalidateLike
+ * gives: this is the only layer holding both the post and the author a change
+ * touched. Nothing here can fail a write — bumpVersions swallows its own Redis
+ * errors, so an outage costs a bump and leaves entries stale until their TTL
+ * lapses rather than turning a successful 201 into a 500.
+ *
+ * Awaited, never fired and forgotten, so a client that reads straight back after
+ * writing cannot observe the version it just invalidated.
+ *
+ * @param {{ postIds?: string[], authorId: string }} scope
+ */
+const invalidatePost = async ({ postIds = [], authorId }) => {
+  await bumpVersions([
+    ...postIds.map(postContentVersionKey),
+    postAuthorVersionKey(authorId),
+  ]);
+};
+
+/**
+ * The above, PLUS the comment and like caches that embed these Post rows.
+ *
+ * This closes the hole utils/cache.js documents: the per-user comment and like
+ * lists carry a whole Post row, so an edited caption or a deleted post leaves
+ * those cached responses wrong for everyone who commented on or liked it. No
+ * comment and no like was written, so nothing in those modules bumps — this is
+ * the only place that can.
+ *
+ * The two lookups are by-post rather than per-post and take the whole id array,
+ * so clearing an account with a hundred posts still costs two queries. Both run
+ * in parallel, and the whole fan-out is a single bumpVersions call so its Set
+ * de-duplicates a user who both commented and liked.
+ *
+ * Only for UPDATE and DELETE. A brand new post has no comments or likes yet, so
+ * createPost deliberately calls the cheaper invalidatePost instead.
+ *
+ * @param {string[]} postIds
+ * @param {string} authorId
+ */
+const invalidatePostFanout = async (postIds, authorId) => {
+  if (postIds.length === 0) return invalidatePost({ authorId });
+
+  const [commenters, likers] = await Promise.all([
+    findCommenterIdsByPosts(postIds),
+    findLikerIdsByPosts(postIds),
+  ]);
+
+  await bumpVersions([
+    ...postIds.map(postContentVersionKey),
+    postAuthorVersionKey(authorId),
+    ...commenters.map(({ userId }) => userVersionKey(userId)),
+    ...likers.map(({ userId }) => likeUserVersionKey(userId)),
+  ]);
+};
+
+/**
+ * Invalidates posts whose link was severed by a DATABASE-level write.
+ *
+ * sessions.id and study_routines.id are ON DELETE SET NULL from posts, so
+ * deleting either nulls posts.sessionId / posts.routineId inside Postgres
+ * without any code here running. Nothing else in this module can see that
+ * happen, so session.service.js and studyRoutine.service.js call this after
+ * their own deletes — the one invalidation this API cannot infer from its own
+ * write path.
+ *
+ * Exported rather than inlined at those two call sites so the post cache keys
+ * stay owned by the post domain: a caller that composed them itself would be a
+ * second place to get the format wrong, and a key format that drifts does not
+ * fail loudly, it quietly stops invalidating.
+ *
+ * @param {Array<{ id: string, userId: string }>} posts - read BEFORE the delete
+ */
+export const invalidateDetachedPosts = async (posts) => {
+  if (posts.length === 0) return;
+
+  await bumpVersions([
+    ...posts.map((post) => postContentVersionKey(post.id)),
+    ...posts.map((post) => postAuthorVersionKey(post.userId)),
+  ]);
+};
+
+/**
  * Both links are optional — a post can be a plain photo and caption, tied to a
  * session, tied to a routine, or both. Only the ids actually supplied are
  * checked, and they are checked in parallel so supplying both still costs one
@@ -68,7 +163,7 @@ export const createPost = async ({ userId, sessionId, routineId, caption, photoU
   if (routineId) checks.push(assertOwnsRoutine(routineId, userId));
   await Promise.all(checks);
 
-  return postRepo.createPost({
+  const post = await postRepo.createPost({
     userId,
     // Explicit null rather than undefined, matching createRoutine's
     // `sourceRoutineId ?? null` — the column is nullable and the intent is
@@ -78,6 +173,13 @@ export const createPost = async ({ userId, sessionId, routineId, caption, photoU
     caption,
     photoUrl,
   });
+
+  // Author list only. The post is new, so nothing can be cached under its own
+  // id yet, and no comment or like can reference it — the fan-out would be
+  // two guaranteed-empty queries.
+  await invalidatePost({ authorId: userId });
+
+  return post;
 };
 
 export const getPost = async (postId, requesterId) => {
@@ -136,7 +238,21 @@ export const listPostsByUser = async (targetUserId) => {
  * @returns {Promise<{ count: number }>}
  */
 export const deleteMyPosts = async (userId) => {
-  return postRepo.deletePostsByUser(userId);
+  // Read the targets BEFORE the delete. Afterwards the rows are gone and there
+  // is no way left to work out which caches just went stale — deleteMyLikes
+  // does exactly this, for exactly this reason.
+  const targets = await postRepo.findPostIdsByUser(userId);
+
+  const result = await postRepo.deletePostsByUser(userId);
+
+  // One fan-out for the whole batch rather than one per post: the two lookups
+  // take the full id array, so clearing a hundred posts is still two queries.
+  await invalidatePostFanout(
+    targets.map((target) => target.id),
+    userId,
+  );
+
+  return result;
 };
 
 /**
@@ -167,10 +283,26 @@ export const updatePost = async (
   if (routineId) checks.push(assertOwnsRoutine(routineId, requesterId));
   await Promise.all(checks);
 
-  return postRepo.updatePost(postId, { caption, photoUrl, sessionId, routineId });
+  const post = await postRepo.updatePost(postId, {
+    caption,
+    photoUrl,
+    sessionId,
+    routineId,
+  });
+
+  // AFTER the write resolves, never before or concurrently — bumping first lets
+  // a reader observe the new version, query the not-yet-committed row, and cache
+  // the OLD body under the NEW key, where it would sit for the full TTL.
+  await invalidatePostFanout([postId], requesterId);
+
+  return post;
 };
 
 export const deletePost = async (postId, requesterId) => {
   await getOwnedPostOrThrow(postId, requesterId);
-  return postRepo.deletePost(postId);
+
+  const result = await postRepo.deletePost(postId);
+  await invalidatePostFanout([postId], requesterId);
+
+  return result;
 };

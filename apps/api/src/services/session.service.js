@@ -1,4 +1,8 @@
 import * as sessionRepo from "../repositories/session.repository.js";
+// Deleting a session nulls posts.sessionId via ON DELETE SET NULL — a write to
+// posts that never passes through post.service.js, so its cache has to be told.
+import { findPostRefsBySession } from "../repositories/post.repository.js";
+import { invalidateDetachedPosts } from "./post.service.js";
 
 // 20+ minutes away applies the focus-point penalty and breaks the streak
 const INTERRUPTION_PENALTY_THRESHOLD_SEC = 20 * 60;
@@ -72,7 +76,18 @@ export const endSession = async (sessionId, userId) => {
 
 export const deleteSession = async (sessionId, userId) => {
   await getOwnedSessionOrThrow(sessionId, userId);
-  return sessionRepo.deleteSession(sessionId);
+
+  // Read BEFORE the delete: afterwards the FK is already NULL and there is no
+  // way left to find which posts were detached.
+  const detached = await findPostRefsBySession(sessionId);
+
+  const result = await sessionRepo.deleteSession(sessionId);
+
+  // After the write resolves, so a reader cannot cache the pre-delete row under
+  // the new version.
+  await invalidateDetachedPosts(detached);
+
+  return result;
 };
 
 export const logInterruption = async (sessionId, userId, { durationSec }) => {

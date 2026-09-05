@@ -38,6 +38,12 @@ const EPOCH = "c1";
 const LIKE_EPOCH = "l1";
 
 /**
+ * And again for posts. Three independent epochs means changing the post
+ * response shape orphans no comment or like payload, and vice versa.
+ */
+const POST_EPOCH = "p1";
+
+/**
  * Version counters outlive the payloads beneath them by a wide margin, and that
  * gap is deliberate.
  *
@@ -94,6 +100,25 @@ export const userVersionKey = (userId) => `${VERSION_PREFIX}user:${userId}`;
 export const commentVersionKey = (commentId) => `${VERSION_PREFIX}comment:${commentId}`;
 
 /**
+ * The post's OWN content scope — not to be confused with postVersionKey above,
+ * which despite its name is the COMMENT scope on a post (`v:post:<id>`) and is
+ * bumped by comment writes.
+ *
+ * The literal segment is what keeps them apart: `self` and `author` are never
+ * uuids, so `v:post:self:<uuid>` can never alias `v:post:<uuid>`. Renaming
+ * postVersionKey to say what it means would be the better fix; it is left alone
+ * here only because it is load-bearing in two other modules.
+ *
+ * @param {string} postId
+ */
+export const postContentVersionKey = (postId) =>
+  `${VERSION_PREFIX}post:self:${postId}`;
+
+/** @param {string} userId */
+export const postAuthorVersionKey = (userId) =>
+  `${VERSION_PREFIX}post:author:${userId}`;
+
+/**
  * Payload key builders.
  *
  * Centralised here rather than inlined at the two ends because a cache key is a
@@ -109,14 +134,20 @@ export const commentVersionKey = (commentId) => `${VERSION_PREFIX}comment:${comm
  * again. With a delete, that same reader would write stale data under the live
  * key and pin it there for the whole TTL.
  *
- * KNOWN COHERENCE HOLE, and the reason the TTLs in config/cache.js are short
- * rather than generous: these payloads embed rows no comment counter tracks.
- * The thread and single-comment bodies carry the author's username and
- * avatarUrl; the per-user lists carry a whole Post row. Editing a post caption
- * or changing an avatar leaves those cached responses wrong until they expire,
- * because no comment was written and nothing bumped. Closing it means having
- * post.service.js and user.service.js bump these same counters on their own
- * writes — a natural follow-up, deliberately out of scope here.
+ * COHERENCE, and the reason the TTLs in config/cache.js are short rather than
+ * generous: these payloads embed rows no comment counter tracks. The thread and
+ * single-comment bodies carry the author's username and avatarUrl; the per-user
+ * lists carry a whole Post row.
+ *
+ * The POST half of that hole is now CLOSED: invalidatePostFanout in
+ * post.service.js bumps userVersionKey for everyone who commented on a post
+ * whenever that post is edited or deleted, so an edited caption no longer
+ * lingers in a cached comment list.
+ *
+ * The USER half remains open. Changing an avatar or username still leaves these
+ * responses wrong until they expire, because no comment was written and nothing
+ * bumped. Closing it means user.service.js bumping the same counters on its own
+ * writes — the same follow-up, one domain smaller.
  */
 
 /** @param {string} postId @param {number} version */
@@ -158,12 +189,14 @@ export const userListKey = (userId, version) =>
  * a comment payload depends on likes, and nothing in a like payload depends on
  * comments, so the two namespaces never need to agree.
  *
- * SAME COHERENCE HOLE as the comment keys, and the same mitigation. These
- * payloads embed rows no like counter tracks: the liked-by list carries the
- * liker's username and avatarUrl, and the per-user list carries a whole Post
- * row. Editing a post caption or changing an avatar leaves them wrong until they
- * expire, because no like was written and nothing bumped. That is why the TTLs
- * in config/cache.js are short rather than generous.
+ * SAME COHERENCE POSITION as the comment keys. These payloads embed rows no like
+ * counter tracks: the liked-by list carries the liker's username and avatarUrl,
+ * and the per-user list carries a whole Post row.
+ *
+ * The POST half is CLOSED the same way — invalidatePostFanout bumps
+ * likeUserVersionKey for everyone who liked a post when that post changes. The
+ * USER half (avatar, username) is still open and still bounded only by the short
+ * TTLs in config/cache.js.
  */
 
 /** @param {string} postId */
@@ -191,6 +224,41 @@ export const likedByKey = (postId, version) =>
 /** @param {string} userId @param {number} version */
 export const likeUserListKey = (userId, version) =>
   `${LIKE_EPOCH}:like:byuser:${userId}:u${version}`;
+
+/**
+ * Post key builders.
+ *
+ * ⚠ THE VIEWER IS IN postKey, AND THAT IS A SECURITY REQUIREMENT rather than a
+ * cache-shaping choice.
+ *
+ * Every other cached read in this file is open to any authenticated caller, so
+ * its key can safely omit the viewer. GET /api/posts/:id is not: it routes
+ * through getOwnedPostOrThrow and 403s for anyone but the author. Because
+ * cache() runs BEFORE the controller, a viewer-less key would store the
+ * author's 200 and then hand it to the next caller as a HIT — serving someone
+ * else's post and never reaching the ownership check at all. Caching would
+ * become an authorization bypass.
+ *
+ * The hit rate costs nothing: only one person can ever get a 200 from that
+ * route, so the per-viewer key has exactly one occupant.
+ *
+ * These payloads are bare Post rows with no embedded username, avatarUrl or
+ * joined data, so they have none of the coherence hole described above — every
+ * field in them is covered by a counter that post.service.js bumps.
+ */
+
+/** @param {string} postId @param {string} viewerId @param {number} version */
+export const postKey = (postId, viewerId, version) =>
+  `${POST_EPOCH}:post:one:${postId}:${viewerId}:p${version}`;
+
+// Shared by GET / (listMine) and GET /user/:userId, exactly as userListKey and
+// likeUserListKey are. Both resolve to findPostsByUser(id) and return
+// byte-identical data — listMyPosts merely skips the existence check — so
+// separate keys would cache the same array twice and halve the hit rate. If
+// those two response shapes ever diverge, they must stop sharing this key.
+/** @param {string} userId @param {number} version */
+export const postUserListKey = (userId, version) =>
+  `${POST_EPOCH}:post:byuser:${userId}:u${version}`;
 
 /**
  * Reads version counters, in the order asked for.

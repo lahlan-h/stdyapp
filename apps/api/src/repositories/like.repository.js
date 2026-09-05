@@ -114,3 +114,19 @@ export const findLikeTargetsByUser = (userId) => {
 export const deleteLikesByUser = (userId) => {
   return prisma.like.deleteMany({ where: { userId } });
 };
+
+/**
+ * Everyone who has liked any of these posts — the mirror of
+ * findLikeTargetsByUser, in the opposite direction. See
+ * findCommenterIdsByPosts in comment.repository.js: same purpose, same shape,
+ * same reasoning for taking an array and selecting one column.
+ *
+ * @param {string[]} postIds
+ * @returns {Promise<Array<{ userId: string }>>}
+ */
+export const findLikerIdsByPosts = (postIds) => {
+  return prisma.like.findMany({
+    where: { postId: { in: postIds } },
+    select: { userId: true },
+  });
+};

@@ -143,3 +143,28 @@ export const findCommentTargetsByUser = (userId) => {
 export const deleteCommentsByUser = (userId) => {
   return prisma.comment.deleteMany({ where: { userId } });
 };
+
+/**
+ * Everyone who has commented on any of these posts — the mirror of
+ * findCommentTargetsByUser, in the opposite direction.
+ *
+ * Used by invalidatePostFanout in post.service.js: the per-user comment lists
+ * embed a whole Post row, so editing or deleting a post makes those cached
+ * responses wrong for every user who commented on it.
+ *
+ * Takes an ARRAY rather than one id so a bulk post delete costs one query
+ * regardless of how many posts it removes, instead of one per post.
+ *
+ * Selects the single column invalidation needs, and skips distinct and orderBy
+ * for the reason its counterpart gives: bumpVersions de-duplicates via a Set
+ * already, and order is meaningless to a set of keys.
+ *
+ * @param {string[]} postIds
+ * @returns {Promise<Array<{ userId: string }>>}
+ */
+export const findCommenterIdsByPosts = (postIds) => {
+  return prisma.comment.findMany({
+    where: { postId: { in: postIds } },
+    select: { userId: true },
+  });
+};

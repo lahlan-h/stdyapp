@@ -54,6 +54,24 @@ export const CACHE_TTL_LIKED_BY_SEC = 60;
 export const CACHE_TTL_LIKE_USER_LIST_SEC = 60;
 
 /**
+ * Posts.
+ *
+ * Separate constants again, for the reason the like block gives: these describe
+ * a different surface, and retuning the comment thread should not silently
+ * retune a profile grid.
+ */
+
+// A single post, and the only per-viewer payload here that is also owner-only.
+// The longest of the three because the sole caller who can read it is the same
+// person whose writes bump its counter — staleness is self-inflicted and
+// corrected on the very next read.
+export const CACHE_TTL_POST_SEC = 120;
+
+// One user's posts, shared by GET / and GET /user/:userId. Matches its comment
+// and like counterparts exactly: a profile tab, not a live surface.
+export const CACHE_TTL_POST_USER_LIST_SEC = 60;
+
+/**
  * Rate-limit tiers, keyed on the caller's user id.
  *
  * Tiered rather than uniform because the routes cost wildly different amounts.
@@ -89,3 +107,14 @@ export const RATE_LIMIT_BULK = { max: 5, windowSec: 3600 };
  * below a script.
  */
 export const RATE_LIMIT_LIKE_WRITE = { max: 60, windowSec: 60 };
+
+/**
+ * Posts reuse all three base tiers unchanged, and add none of their own.
+ *
+ * RATE_LIMIT_WRITE is the right one for a post rather than RATE_LIMIT_LIKE_WRITE:
+ * composing a caption and attaching a photo is the deliberate, typed action the
+ * 20/min tier was written for, not the reflexive tap that made likes an
+ * exception. As with likes, rateLimit()'s `name` gives the post router its own
+ * Redis keyspace, so these budgets are independent of the comment and like
+ * routers despite sharing the numbers.
+ */
