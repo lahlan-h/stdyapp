@@ -124,15 +124,27 @@ export const listMine = async (req, res, next) => {
   }
 };
 
+/**
+ * "me" resolves to the caller. Without it, GET /api/posts/user/me would look up
+ * a user whose id is literally "me" and 404 — a papercut for any client that
+ * would rather not thread its own id through every call.
+ *
+ * EXPORTED so post.routes.js can build the cache key with this exact function
+ * rather than a copy, which is a correctness requirement and not tidiness:
+ * keying on the raw param would compose "…byuser:me:…" against a counter
+ * (v:post:author:me) that nothing ever bumps, so every caller's GET /user/me
+ * would share one cache entry and users would be served each other's posts.
+ * like.controller.js exports resolveTargetUserId for the identical reason.
+ *
+ * @param {import("express").Request} req
+ * @returns {string}
+ */
+export const resolveTargetUserId = (req) =>
+  req.params.userId === "me" ? req.user.id : req.params.userId;
+
 export const listByUser = async (req, res, next) => {
   try {
-    // "me" resolves to the caller. Without it, GET /api/posts/user/me would
-    // look up a user whose id is literally "me" and 404 — a papercut for any
-    // client that would rather not thread its own id through every call.
-    const { userId } = req.params;
-    const targetId = userId === "me" ? req.user.id : userId;
-
-    const posts = await postService.listPostsByUser(targetId);
+    const posts = await postService.listPostsByUser(resolveTargetUserId(req));
     res.status(200).json(posts);
   } catch (err) {
     next(err);

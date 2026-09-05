@@ -1,4 +1,9 @@
 import * as routineRepo from "../repositories/studyRoutine.repository.js";
+// Deleting a routine nulls posts.routineId via ON DELETE SET NULL — a write to
+// posts that never passes through post.service.js, so its cache has to be told.
+// See deleteSession for the identical case.
+import { findPostRefsByRoutine } from "../repositories/post.repository.js";
+import { invalidateDetachedPosts } from "./post.service.js";
 
 const notFound = () => {
   const err = new Error("Routine not found");
@@ -46,7 +51,15 @@ export const updateRoutine = async (routineId, requesterId, { title }) => {
 
 export const deleteRoutine = async (routineId, requesterId) => {
   await getOwnedRoutineOrThrow(routineId, requesterId);
-  return routineRepo.deleteRoutine(routineId);
+
+  // Read BEFORE the delete — see deleteSession.
+  const detached = await findPostRefsByRoutine(routineId);
+
+  const result = await routineRepo.deleteRoutine(routineId);
+
+  await invalidateDetachedPosts(detached);
+
+  return result;
 };
 
 // "take" someone else's routine — deliberately does NOT require the

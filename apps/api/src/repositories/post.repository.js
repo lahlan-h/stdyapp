@@ -47,7 +47,7 @@ export const findAllPosts = ({ skip, take }) => {
     prisma.post.findMany({
       include: {
         user: { select: { id: true, username: true, avatarUrl: true } },
-        _count: { select: { likes: true } },
+        _count: { select: { likes: true, comments: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "asc" }],
       skip,
@@ -63,6 +63,50 @@ export const updatePost = (id, data) => {
 
 export const deletePost = (id) => {
   return prisma.post.delete({ where: { id } });
+};
+
+/**
+ * The ids of one user's posts, for cache invalidation.
+ *
+ * Must be read BEFORE deletePostsByUser runs: afterwards the rows are gone and
+ * there is nothing left to work out which caches went stale. The same ordering
+ * requirement findCommentTargetsByUser and findLikeTargetsByUser document.
+ *
+ * Selects the one column invalidation needs rather than reusing
+ * findPostsByUser, so clearing a heavy account does not materialise every
+ * caption and photo URL to compute a list of cache keys.
+ *
+ * @returns {Promise<Array<{ id: string }>>}
+ */
+export const findPostIdsByUser = (userId) => {
+  return prisma.post.findMany({ where: { userId }, select: { id: true } });
+};
+
+/**
+ * The posts pointing at a session (or a routine), with their authors.
+ *
+ * Exists for cache invalidation on a path that has NO post write in it.
+ * sessions.id and study_routines.id are ON DELETE SET NULL from posts, so
+ * deleting either rewrites posts.sessionId / posts.routineId inside Postgres
+ * without anything passing through post.service.js — and a cached post would
+ * otherwise keep showing a link to a row that no longer exists, for the whole
+ * TTL, with no log line.
+ *
+ * Must be read BEFORE the delete: afterwards the FK is already NULL and there
+ * is no way left to find which posts were touched.
+ *
+ * Returns userId as well as id because both the per-post cache and the author's
+ * list cache go stale, and this is the only chance to learn the author.
+ *
+ * @returns {Promise<Array<{ id: string, userId: string }>>}
+ */
+export const findPostRefsBySession = (sessionId) => {
+  return prisma.post.findMany({ where: { sessionId }, select: { id: true, userId: true } });
+};
+
+/** @see findPostRefsBySession */
+export const findPostRefsByRoutine = (routineId) => {
+  return prisma.post.findMany({ where: { routineId }, select: { id: true, userId: true } });
 };
 
 // deleteMany returns { count } rather than the deleted rows — the tally is all

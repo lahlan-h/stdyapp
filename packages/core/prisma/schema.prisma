@@ -40,6 +40,7 @@ model User {
   refreshTokens RefreshToken[]
   posts         Post[]
   likes         Like[]
+  comments      Comment[]
 
   @@map("users")
 }
@@ -226,6 +227,7 @@ model Post {
   createdAt DateTime     @default(now())
 
   likes     Like[]
+  comments  Comment[]
 
   // Covers the per-user feed — the caller's own posts, newest first. Composite
   // rather than an index on userId alone so Postgres can satisfy the ORDER BY
@@ -278,4 +280,53 @@ model Like {
 
 // TODO: remaining entities from the ERD — the rest of the social feed
 // (follows, comments), gamification/streaks, discover, analytics, and
-// stretch-goal entities (wearable data, Discord sync).
+/// A message left by one user on a post — the third piece of the social feed.
+///
+/// The commenter's display name and picture are deliberately NOT stored here.
+/// They live on User and are joined on read through the same
+/// {id, username, avatarUrl} allowlist the rest of the feed uses — a copy on the
+/// comment would go stale the moment someone changed their avatar.
+model Comment {
+  id        String   @id @default(uuid())
+
+  // Restrict (Prisma's default), matching posts.userId rather than likes.userId:
+  // a comment is authored content worth blocking a user delete over, not one bit
+  // of disposable metadata. DELETE /api/comments/user/me is the escape hatch,
+  // exactly as DELETE /api/posts/user/me is for posts.
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+
+  // Cascade, and load-bearing for the same reason likes.postId is: Restrict here
+  // would make DELETE /api/posts/:id start failing with a foreign-key error for
+  // any post anyone had ever commented on.
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  body      String
+  createdAt DateTime @default(now())
+
+  // Unlike Like, a comment IS editable, so unlike Like it earns a second
+  // timestamp: this is authored prose, and a typo left in public text is worth
+  // fixing. PATCH /api/comments/:id is what this column exists for.
+  updatedAt DateTime @updatedAt
+
+  // The thread query — one post's comments in conversation order. Composite
+  // rather than an index on postId alone so Postgres can satisfy the ORDER BY
+  // from the index instead of sorting the matched rows.
+  @@index([postId, createdAt])
+
+  // The profile's "comments I've left" list. Same shape, and the same reasoning,
+  // as the per-user index on posts.
+  @@index([userId, createdAt])
+
+  // Neither composite above can serve GET /api/comments/all: createdAt is the
+  // second column of both, and with no equality predicate on the leading column
+  // there is no usable ordering. See the note on posts' @@index([createdAt]).
+  @@index([createdAt])
+
+  @@map("comments")
+}
+
+// TODO: remaining entities from the ERD — the rest of the social feed (follows),
+// gamification/streaks, discover, analytics, and stretch-goal entities
+// (wearable data, Discord sync).

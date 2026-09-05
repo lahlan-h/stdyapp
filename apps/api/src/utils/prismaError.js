@@ -45,6 +45,22 @@ const isPrismaKnownRequestError = (err) =>
   typeof err?.clientVersion === "string";
 
 /**
+ * Narrows a caught error to one specific Prisma failure code.
+ *
+ * Exported because two services now need to branch on a code WITHOUT going
+ * through toHttpError, whose mappings are wrong for them: it renders P2002 as
+ * "That value is already in use" (nonsense for a duplicate like) and P2003 as a
+ * 409 when a bad postId is plainly a 404. They still must not hand-roll the
+ * duck-typing above a second and third time.
+ *
+ * @param {unknown} err
+ * @param {string} code - a Prisma error code, e.g. "P2002"
+ * @returns {boolean}
+ */
+export const isPrismaError = (err, code) =>
+  isPrismaKnownRequestError(err) && err.code === code;
+
+/**
  * Names the field behind a P2002 unique-constraint violation.
  *
  * `meta.target` is an array of field names on most Postgres versions but has
