@@ -44,6 +44,13 @@ const LIKE_EPOCH = "l1";
 const POST_EPOCH = "p1";
 
 /**
+ * And once more for users. Same reasoning a fourth time: the profile payload is
+ * a USER_PUBLIC_SELECT row from user.service.js, and changing that allowlist
+ * must orphan every cached profile without touching a comment, like or post.
+ */
+const USER_EPOCH = "u1";
+
+/**
  * Version counters outlive the payloads beneath them by a wide margin, and that
  * gap is deliberate.
  *
@@ -119,6 +126,20 @@ export const postAuthorVersionKey = (userId) =>
   `${VERSION_PREFIX}post:author:${userId}`;
 
 /**
+ * The user's OWN profile scope — and, exactly like postContentVersionKey above,
+ * NOT to be confused with userVersionKey, which despite its name is the COMMENT
+ * scope on a user (`v:user:<id>`) and is bumped by comment writes.
+ *
+ * The literal `profile` segment is what keeps them apart, the same trick and for
+ * the same reason: `profile` is never a uuid, so `v:user:profile:<uuid>` can
+ * never alias `v:user:<uuid>`.
+ *
+ * @param {string} userId
+ */
+export const userProfileVersionKey = (userId) =>
+  `${VERSION_PREFIX}user:profile:${userId}`;
+
+/**
  * Payload key builders.
  *
  * Centralised here rather than inlined at the two ends because a cache key is a
@@ -139,15 +160,20 @@ export const postAuthorVersionKey = (userId) =>
  * single-comment bodies carry the author's username and avatarUrl; the per-user
  * lists carry a whole Post row.
  *
- * The POST half of that hole is now CLOSED: invalidatePostFanout in
+ * The POST half of that hole is CLOSED: invalidatePostFanout in
  * post.service.js bumps userVersionKey for everyone who commented on a post
  * whenever that post is edited or deleted, so an edited caption no longer
  * lingers in a cached comment list.
  *
- * The USER half remains open. Changing an avatar or username still leaves these
- * responses wrong until they expire, because no comment was written and nothing
- * bumped. Closing it means user.service.js bumping the same counters on its own
- * writes — the same follow-up, one domain smaller.
+ * The USER half is now CLOSED TOO. invalidateUserFanout in user.service.js is
+ * the mirror image, pointed the other way: a profile write bumps this user's
+ * own comment list AND postVersionKey for every post they have commented on, so
+ * a changed avatar or username no longer lingers in a cached thread either.
+ *
+ * Both halves being closed is what lets these TTLs stay a reclamation backstop
+ * rather than the staleness ceiling they used to be. Any FUTURE field embedded
+ * into one of these payloads from a table no counter here tracks reopens the
+ * hole, and must come with the bump that closes it.
  */
 
 /** @param {string} postId @param {number} version */
@@ -193,10 +219,10 @@ export const userListKey = (userId, version) =>
  * counter tracks: the liked-by list carries the liker's username and avatarUrl,
  * and the per-user list carries a whole Post row.
  *
- * The POST half is CLOSED the same way — invalidatePostFanout bumps
- * likeUserVersionKey for everyone who liked a post when that post changes. The
- * USER half (avatar, username) is still open and still bounded only by the short
- * TTLs in config/cache.js.
+ * BOTH HALVES ARE CLOSED, the same way as for comments — invalidatePostFanout
+ * bumps likeUserVersionKey for everyone who liked a post when that post changes,
+ * and invalidateUserFanout bumps likePostVersionKey for every post a user has
+ * liked when that user's profile changes.
  */
 
 /** @param {string} postId */
@@ -259,6 +285,35 @@ export const postKey = (postId, viewerId, version) =>
 /** @param {string} userId @param {number} version */
 export const postUserListKey = (userId, version) =>
   `${POST_EPOCH}:post:byuser:${userId}:u${version}`;
+
+/**
+ * User key builders.
+ *
+ * ⚠ THE VIEWER IS DELIBERATELY ABSENT FROM userKey, and that is the opposite
+ * call to postKey directly above — so read this before "fixing" it to match.
+ *
+ * The rule is not "always key by viewer", it is "key by viewer exactly when the
+ * route's answer depends on who is asking". GET /api/posts/:id 403s for anyone
+ * but the author, so its cache MUST be per-viewer or it replays one caller's
+ * post to the next. GET /api/users/:id carries no requireSelf: users.routes.js
+ * states reads are open to any authenticated caller, because listUsers is a
+ * searchable directory and browsing other people is the point. Every caller
+ * therefore gets a byte-identical 200 from the same USER_PUBLIC_SELECT row, and
+ * a per-viewer key would store one copy per reader of data that is the same for
+ * all of them — collapsing the hit rate to protect nothing.
+ *
+ * If a future change makes any field of this response depend on the viewer, or
+ * gates the route on ownership, the viewer must go into this key in the same
+ * commit.
+ *
+ * These payloads embed no other table's rows, so they have none of the
+ * coherence hole described further up: every field in them is covered by the
+ * counter user.service.js bumps.
+ */
+
+/** @param {string} userId @param {number} version */
+export const userKey = (userId, version) =>
+  `${USER_EPOCH}:user:one:${userId}:u${version}`;
 
 /**
  * Reads version counters, in the order asked for.

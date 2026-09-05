@@ -72,6 +72,23 @@ export const CACHE_TTL_POST_SEC = 120;
 export const CACHE_TTL_POST_USER_LIST_SEC = 60;
 
 /**
+ * Users.
+ *
+ * Separate constant again, for the reason the like and post blocks give, and
+ * only one of them: GET /api/users/:id is the single cached read in that
+ * router. The paginated directory at GET /api/users is deliberately uncached,
+ * exactly as GET /all is in the three routers above — every user write anywhere
+ * would invalidate the whole thing, and its ?q is unbounded client input, so a
+ * cache there would thrash and grow without bound at once.
+ */
+
+// One user profile. The longest TTL here alongside the single post, and the
+// safest: a profile is the most static row in the app, and every write that can
+// change it now bumps its counter, so the expiry is purely reclamation rather
+// than the staleness ceiling it is for the shared surfaces above.
+export const CACHE_TTL_USER_SEC = 120;
+
+/**
  * Rate-limit tiers, keyed on the caller's user id.
  *
  * Tiered rather than uniform because the routes cost wildly different amounts.
@@ -117,4 +134,18 @@ export const RATE_LIMIT_LIKE_WRITE = { max: 60, windowSec: 60 };
  * exception. As with likes, rateLimit()'s `name` gives the post router its own
  * Redis keyspace, so these budgets are independent of the comment and like
  * routers despite sharing the numbers.
+ */
+
+/**
+ * Users reuse all three base tiers unchanged, adding none of their own, for the
+ * reason the post block gives: rateLimit()'s `name` gives the user router its
+ * own Redis keyspace, so these budgets are independent of the comment, like and
+ * post routers despite sharing the numbers.
+ *
+ * The one placement worth stating is DELETE /api/users/:id on RATE_LIMIT_BULK
+ * rather than RATE_LIMIT_WRITE. It is not a bulk operation by row count — it
+ * deletes exactly one — but it is the most destructive and least reversible
+ * call in the API, and 5/hour is the tier this codebase already reserves for
+ * that. A caller can only succeed once, and 5 attempts still leaves room to
+ * retry after the 409 that a user with study sessions gets.
  */
