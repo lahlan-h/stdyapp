@@ -1,4 +1,5 @@
 import * as userService from "../services/user.service.js";
+import * as avatarService from "../services/avatar.service.js";
 
 /**
  * POST /api/users - creates a user.
@@ -64,4 +65,44 @@ export const updateUser = async (req, res) => {
 export const deleteUser = async (req, res) => {
   await userService.deleteUser(req.validated.params.id);
   res.status(204).end();
+};
+
+/**
+ * PUT /api/users/:id/photo - uploads or replaces the avatar.
+ *
+ * PUT rather than POST because the photo is a SINGLETON sub-resource and the
+ * request body is its complete representation, which is what PUT means. The
+ * argument against PUT recorded above updateUser does not apply: there is no
+ * other field here that a client would be forced to resend.
+ *
+ * 200 rather than 201, and the updated USER rather than a bare URL. The user row
+ * is what changed; returning it lets a client update its profile view from this
+ * one response instead of following up with GET /api/users/:id.
+ *
+ * req.body rather than req.validated.body, the one deviation from house style in
+ * this file: the payload is a Buffer of image bytes, not JSON that Zod could
+ * parse. rawImage() in the route chain is what guarantees it is a non-empty
+ * Buffer within the size cap, and avatar.service.js re-identifies the format
+ * from the bytes themselves.
+ *
+ * 415 when the bytes are not a JPEG, PNG or WebP; 502 when R2 is unreachable.
+ */
+export const uploadUserPhoto = async (req, res) => {
+  const user = await avatarService.setAvatar(req.validated.params.id, req.body);
+  res.status(200).json({ data: user });
+};
+
+/**
+ * DELETE /api/users/:id/photo - clears the avatar.
+ *
+ * 200 with the updated user rather than the 204 deleteUser returns, and for a
+ * reason: this deletes a FIELD, not the resource. The user still exists, the
+ * client still wants to render it, and avatarUrl being null in the response is
+ * the confirmation.
+ *
+ * Idempotent - removing an absent avatar is a 200, not a 404. See removeAvatar.
+ */
+export const removeUserPhoto = async (req, res) => {
+  const user = await avatarService.removeAvatar(req.validated.params.id);
+  res.status(200).json({ data: user });
 };

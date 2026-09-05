@@ -71,14 +71,33 @@ export const passwordSchema = z
     `password must be at most ${BCRYPT_MAX_PASSWORD_BYTES} bytes`,
   );
 
-// z.url() accepts ANY scheme, including javascript: and data:. If the web app
-// ever renders this in an href rather than an img src, that is stored XSS - so
-// restrict it to http(s) here, at the only point where the value enters.
-//
-// The try/catch is not redundant: Zod runs every check on a value rather than
-// stopping at the first failure, so this refinement can still see a string that
-// z.url() already rejected, and a bare new URL() would throw.
-const avatarUrlSchema = z
+/**
+ * Asserts an avatar URL is a well-formed http(s) URL of sane length.
+ *
+ * NO LONGER A CLIENT-INPUT SCHEMA. avatarUrl was removed from createUserSchema
+ * below when PUT /api/users/:id/photo landed: an avatar is now always uploaded,
+ * so its URL is always built by the server from R2_PUBLIC_URL and can never be
+ * chosen by a caller. That closed two holes at once - a profile picture can no
+ * longer point at a third-party server that would see every viewer's IP, and a
+ * caller can no longer aim avatarUrl at an object in OUR bucket that they do not
+ * own, which the remove path would then have deleted on their behalf. See
+ * keyFromOwnAvatarUrl in services/avatar.service.js.
+ *
+ * EXPORTED because avatar.service.js still uses it - now as a sanity check on
+ * the URL the server itself constructs. A missing or malformed R2_PUBLIC_URL
+ * should fail loudly at the upload rather than be stored as an unusable string
+ * that every client then silently fails to render.
+ *
+ * The http(s) restriction is kept rather than dropped as newly unreachable.
+ * z.url() accepts ANY scheme, including javascript: and data:, and the day
+ * someone reintroduces a client-settable avatar this is the check standing
+ * between that and stored XSS in an href.
+ *
+ * The try/catch is not redundant: Zod runs every check on a value rather than
+ * stopping at the first failure, so this refinement can still see a string that
+ * z.url() already rejected, and a bare new URL() would throw.
+ */
+export const avatarUrlSchema = z
   .url("must be a valid URL")
   .max(MAX_URL_LENGTH)
   .refine((value) => {
@@ -95,8 +114,9 @@ const avatarUrlSchema = z
  * {"passwordHash": "..."} or {"id": "..."} is told it is wrong rather than
  * being left to wonder why it had no effect.
  *
- * `lastActiveAt` is absent by design - it is server-owned, so a client must not
- * be able to fake "studying right now".
+ * `lastActiveAt` and `avatarUrl` are both absent by design, because both are
+ * server-owned: a client must not be able to fake "studying right now", nor to
+ * point its own profile picture at a URL the server did not create.
  */
 export const createUserSchema = z.strictObject({
   email: emailSchema,
@@ -107,7 +127,10 @@ export const createUserSchema = z.strictObject({
   // variant lives in auth.validation.js.
   firstName: nameSchema.optional(),
   lastName: nameSchema.optional(),
-  avatarUrl: avatarUrlSchema.optional(),
+  // avatarUrl is set ONLY by PUT /api/users/:id/photo and cleared only by DELETE
+  // on that route. Because this is a strictObject, a client sending it here gets
+  // a loud 400 rather than a silent no-op - see avatarUrlSchema above for why it
+  // stopped being client input at all.
   bio: z.string().trim().max(MAX_BIO_LENGTH).optional(),
 });
 

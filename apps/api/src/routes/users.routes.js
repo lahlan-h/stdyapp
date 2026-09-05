@@ -5,11 +5,14 @@ import {
   getUser,
   updateUser,
   deleteUser,
+  uploadUserPhoto,
+  removeUserPhoto,
 } from "../controllers/users.controller.js";
 import { validate } from "../middleware/validate.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireSelf } from "../middleware/requireSelf.js";
 import { rateLimit } from "../middleware/rateLimit.js";
+import { rawImage } from "../middleware/rawImage.js";
 import { cache } from "../middleware/cache.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { userProfileVersionKey, userKey } from "../utils/cache.js";
@@ -18,7 +21,9 @@ import {
   RATE_LIMIT_READ,
   RATE_LIMIT_WRITE,
   RATE_LIMIT_BULK,
+  RATE_LIMIT_AVATAR_WRITE,
 } from "../config/cache.js";
+import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES } from "../config/upload.js";
 import {
   createUserSchema,
   updateUserSchema,
@@ -70,6 +75,20 @@ const router = Router();
  * cache still sits after rateLimit, which is the rule middleware/cache.js
  * states: a cache HIT must still spend budget, or the hottest keys - precisely
  * the traffic a limiter exists to bound - would be effectively unlimited.
+ *
+ * The two /:id/photo routes at the bottom add a THIRD deviation, and it is the
+ * only place in this router where requireSelf moves ahead of a body parser:
+ *
+ *  - requireSelf runs BEFORE rawImage on the upload. rawImage buffers up to
+ *    MAX_AVATAR_BYTES into process memory, and there is no reason to read a
+ *    single byte of a request we have already decided to answer with a 403.
+ *    Reading it first would let any authenticated user spend 5 MB of the server
+ *    memory on every request aimed at an account that is not theirs.
+ *
+ * The two positions that matter most are unchanged even there: rateLimit is
+ * still first, so a flood of oversized uploads still costs budget rather than
+ * getting a free parse each; and validate still precedes requireSelf, so a
+ * malformed id is the 400 that says so rather than a 403 about ownership.
  */
 router.use(requireAuth);
 
@@ -87,6 +106,10 @@ router.use(requireAuth);
 const readLimit = rateLimit({ name: "user-read", ...RATE_LIMIT_READ });
 const writeLimit = rateLimit({ name: "user-write", ...RATE_LIMIT_WRITE });
 const deleteLimit = rateLimit({ name: "user-delete", ...RATE_LIMIT_BULK });
+
+// A fourth bucket, on its own tier rather than sharing writeLimit: an avatar
+// upload is bounded in BYTES, not rows. See RATE_LIMIT_AVATAR_WRITE.
+const photoLimit = rateLimit({ name: "user-photo", ...RATE_LIMIT_AVATAR_WRITE });
 
 /**
  * GET /:id - the only cached read here.
@@ -156,6 +179,42 @@ router.delete(
   validate({ params: userIdParamSchema }),
   requireSelf,
   asyncHandler(deleteUser),
+);
+
+/**
+ * The avatar, as a singleton sub-resource of the user.
+ *
+ * Declared AFTER /:id purely for readability - Express matches on the full path
+ * and a single :id segment cannot swallow /:id/photo, so the order is not
+ * load-bearing here the way it is between a literal and a parameter.
+ *
+ * Neither route is cached, both being writes. The cached GET /:id above picks up
+ * an avatar change on its very next read anyway: both handlers go through
+ * updateUser in user.service.js, whose fan-out bumps userProfileVersionKey along
+ * with every post version key that embeds this avatar. That is precisely why
+ * avatar.service.js delegates its writes there instead of touching Prisma.
+ *
+ * Uploads carry raw image bytes, NOT multipart/form-data or JSON - see the
+ * header of middleware/rawImage.js for why, and note that the global
+ * express.json() in index.js passes an image Content-Type through untouched.
+ */
+router.put(
+  "/:id/photo",
+  photoLimit,
+  validate({ params: userIdParamSchema }),
+  requireSelf,
+  rawImage({ types: AVATAR_MIME_TYPES, limit: MAX_AVATAR_BYTES }),
+  asyncHandler(uploadUserPhoto),
+);
+
+// writeLimit rather than photoLimit: this request has no body to bound, and it
+// costs one row plus one object delete.
+router.delete(
+  "/:id/photo",
+  writeLimit,
+  validate({ params: userIdParamSchema }),
+  requireSelf,
+  asyncHandler(removeUserPhoto),
 );
 
 export default router;
