@@ -47,7 +47,7 @@ export const findAllPosts = ({ skip, take }) => {
     prisma.post.findMany({
       include: {
         user: { select: { id: true, username: true, avatarUrl: true } },
-        _count: { select: { likes: true } },
+        _count: { select: { likes: true, comments: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "asc" }],
       skip,

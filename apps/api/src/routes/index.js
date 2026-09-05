@@ -7,6 +7,7 @@ import groupRoutes from "./studyGroup.routes.js"
 import routineRoutes from "./studyRoutine.routes.js"
 import postRoutes from "./post.routes.js"
 import likeRoutes from "./like.routes.js"
+import commentRoutes from "./comment.routes.js"
 import devAuthRoutes from "./devAuth.routes.js"
 import { isDevAuthEnabled } from "../config/auth.js";
 
@@ -20,6 +21,7 @@ router.use("/groups", groupRoutes);
 router.use("/routines", routineRoutes);
 router.use("/posts", postRoutes);
 router.use("/likes", likeRoutes);
+router.use("/comments", commentRoutes);
 
 // DEVELOPMENT ONLY. POST /api/auth/dev-token mints an access token with no
 // credentials, so it must be ABSENT rather than merely guarded anywhere else:

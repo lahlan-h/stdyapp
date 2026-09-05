@@ -5,6 +5,12 @@ import * as likeRepo from "../repositories/like.repository.js";
 import { findPostById } from "../repositories/post.repository.js";
 // The only sanctioned way to reach prisma.user from here — see post.service.js.
 import { getUserById } from "./user.service.js";
+// The shared duck-typing helper. toHttpError from the same module is
+// deliberately NOT reused: it returns HttpError, which belongs to the
+// users/auth half of this API; its P2002 message would read "That value is
+// already in use" for a duplicate like; and it maps P2003 to a 409 when a bad
+// postId is plainly a 404.
+import { isPrismaError } from "../utils/prismaError.js";
 
 /**
  * AUTHORIZATION MODEL — deliberately NOT post.service.js's.
@@ -38,25 +44,6 @@ const notFound = (what) => {
 
 const PRISMA_UNIQUE_VIOLATION = "P2002";
 const PRISMA_FOREIGN_KEY_VIOLATION = "P2003";
-
-/**
- * Same reasoning as utils/prismaError.js: @prisma/client is a dependency of
- * @stdyapp/core, NOT of this package, and only resolves here because npm hoists
- * it — so its error classes are not ours to import, and we duck-type instead.
- * clientVersion is checked alongside code because a plain object with a `code`
- * property (a Node fs error, say) would otherwise match.
- *
- * toHttpError itself is deliberately not reused: it returns HttpError, which
- * belongs to the users/auth half of this API; its P2002 message would read
- * "That value is already in use" for a duplicate like; and it maps P2003 to a
- * 409 when a bad postId is plainly a 404.
- *
- * @param {any} err
- * @param {string} code
- * @returns {boolean}
- */
-const isPrismaError = (err, code) =>
-  err?.code === code && typeof err?.clientVersion === "string";
 
 /**
  * Existence only — note what is NOT here.
