@@ -4,6 +4,7 @@ import {
   summary,
   listFollowers,
   listFollowing,
+  listMyFollowers,
   listMine,
   remove,
   removeFollower,
@@ -92,6 +93,15 @@ const cacheFollowing = cache({
     followingKey(resolveTargetUserId(req), version),
 });
 
+// GET /followers — the caller's own followers. Shares followersKey with the
+// route above, because listMyFollowers and listFollowersByUser return
+// byte-identical data.
+const cacheMyFollowers = cache({
+  ttlSec: CACHE_TTL_FOLLOW_LIST_SEC,
+  versionKeys: (req) => [followUserVersionKey(req.user.id)],
+  buildKey: (req, [version]) => followersKey(req.user.id, version),
+});
+
 // GET / — the caller's own following list. Shares followingKey with the route
 // above, because listMyFollowing and listFollowingByUser return byte-identical
 // data. If those two response shapes ever diverge, they must stop sharing it.
@@ -125,10 +135,23 @@ router.get("/user/:userId/followers", readLimit, cacheFollowers, listFollowers);
 router.get("/user/:userId/following", readLimit, cacheFollowing, listFollowing);
 router.delete("/user/:userId", writeLimit, remove);
 
+// The /followers prefix is the "people who follow ME" half of this router, as
+// against /user/:userId, which is about somebody else's graph. Both verbs living
+// here is the point: the noun is the same, so the URL is the same.
+//
+// The GET is the canonical way to read your own followers, and the symmetric
+// counterpart of GET / below. Note it does NOT retire GET /user/me/followers —
+// that route answers for ANY user, and "me" resolution there is one shared
+// function across all four /user/:userId routes, so removing it from this one
+// alone would leave /user/me/count and /user/me/following working while their
+// sibling 404s. Both paths hit followersKey, so they share cache entries rather
+// than competing for them.
+//
+// No shadowing between the two: they differ in method AND segment count.
+router.get("/followers", readLimit, cacheMyFollowers, listMyFollowers);
+
 // The one route where the caller is the FOLLOWEE rather than the follower — see
-// removeFollower in the controller. It sits on its own path prefix precisely so
-// that distinction is visible in the URL: /user/:userId is someone you follow,
-// /followers/:userId is someone who follows you.
+// removeFollower in the controller.
 router.delete("/followers/:userId", writeLimit, removeFollower);
 
 // "Unfollow everyone", and NOT at /user/me the way likes put their bulk delete.

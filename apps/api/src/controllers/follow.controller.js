@@ -92,6 +92,24 @@ export const listFollowing = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/follows/followers — the caller's own followers.
+ *
+ * The symmetric counterpart of listMine below, and the canonical way to read
+ * your own follower list. GET /user/:userId/followers still answers for any
+ * user, the caller included, because "me" resolution is one shared function
+ * across all four /user/:userId routes — carving it out of this one alone would
+ * leave /user/me/count and /user/me/following working while its sibling 404s.
+ */
+export const listMyFollowers = async (req, res, next) => {
+  try {
+    const followers = await followService.listMyFollowers(req.user.id);
+    res.status(200).json(followers);
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const listMine = async (req, res, next) => {
   try {
     const following = await followService.listMyFollowing(req.user.id);

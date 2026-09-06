@@ -240,6 +240,14 @@ export const listFollowersByUser = async (targetUserId) => {
   return followRepo.findFollowersByUser(targetUserId);
 };
 
+// Byte-identical to listFollowersByUser(caller), minus the existence check the
+// caller's own token makes redundant — the exact relationship listMyFollowing
+// has with listFollowingByUser. The two share a cache key; see followersKey in
+// utils/cache.js.
+export const listMyFollowers = async (userId) => {
+  return followRepo.findFollowersByUser(userId);
+};
+
 /**
  * One user's following list — their "following" tab.
  *
