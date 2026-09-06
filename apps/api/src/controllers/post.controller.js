@@ -1,67 +1,44 @@
 import * as postService from "../services/post.service.js";
 
-const SAFE_URL_PROTOCOLS = new Set(["http:", "https:"]);
-
 /**
- * photoUrl is rendered by the clients, and new URL() alone accepts ANY scheme —
- * including javascript: and data:. If the web app ever puts this in an href
- * rather than an img src, an unchecked value is stored XSS, so the protocol is
- * restricted here, at the only point where it enters.
+ * POST /api/posts/photo - step one of two: stage the photo.
  *
- * This mirrors avatarUrlSchema in validation/user.validation.js; that one is
- * module-private and built on Zod, which the routes in this half of the API
- * don't use.
+ * 201 rather than 200: this creates an object in the bucket, even though it
+ * creates no row. The key it returns is the only handle on that object, so
+ * losing this response means losing the upload.
  *
- * @param {unknown} value
- * @returns {boolean}
+ * req.body is a Buffer here, not JSON and not req.validated - rawImage() in the
+ * route chain replaces the body with the raw bytes and guarantees it is a
+ * non-empty Buffer within the size cap. The same deviation, for the same reason,
+ * as uploadUserPhoto in users.controller.js.
+ *
+ * 415 when the bytes are not a JPEG, PNG or WebP; 413 when they exceed the cap;
+ * 502 when R2 is unreachable.
  */
-const isSafePhotoUrl = (value) => {
-  if (typeof value !== "string") return false;
+export const uploadPhoto = async (req, res, next) => {
   try {
-    return SAFE_URL_PROTOCOLS.has(new URL(value).protocol);
-  } catch {
-    // new URL() throws on anything that isn't an absolute URL
-    return false;
+    const photo = await postService.uploadPostPhoto(req.user.id, req.body);
+    res.status(201).json(photo);
+  } catch (err) {
+    next(err);
   }
 };
 
-/**
- * An optional link is valid when it is absent, an explicit null (meaning
- * "detach", on PATCH), or a non-empty string. A number or an object would
- * otherwise reach Prisma and come back as a 500 for what is a bad request.
- *
- * @param {unknown} value
- * @returns {boolean}
- */
-const isValidLink = (value) =>
-  value === undefined || value === null || (typeof value === "string" && value.length > 0);
-
 export const create = async (req, res, next) => {
   try {
-    const { sessionId, routineId, caption, photoUrl } = req.body;
+    const { sessionId, routineId, caption, photoKey } = req.validated.body;
 
-    // caption and photoUrl are the post; sessionId and routineId are optional
-    // links, so a bare photo and caption is a valid post.
-    if (!caption) return res.status(400).json({ error: "caption is required" });
-    if (!photoUrl) return res.status(400).json({ error: "photoUrl is required" });
-
-    if (!isValidLink(sessionId)) {
-      return res.status(400).json({ error: "sessionId must be a string or omitted" });
-    }
-    if (!isValidLink(routineId)) {
-      return res.status(400).json({ error: "routineId must be a string or omitted" });
-    }
-
-    if (!isSafePhotoUrl(photoUrl)) {
-      return res.status(400).json({ error: "photoUrl must be a valid http or https URL" });
-    }
-
+    // Every check that used to live here is now in createPostSchema, applied by
+    // validate() before this runs - shape, caption length, uuid-ness of the
+    // links, and the loud 400 for a client still sending photoUrl. What is NOT
+    // there is whether photoKey belongs to this caller: that needs req.user, so
+    // post.service.js answers it, with a 403 rather than a 400.
     const post = await postService.createPost({
       userId: req.user.id,
       sessionId,
       routineId,
       caption,
-      photoUrl,
+      photoKey,
     });
     res.status(201).json(post);
   } catch (err) {
@@ -167,37 +144,17 @@ export const removeMine = async (req, res, next) => {
 
 export const update = async (req, res, next) => {
   try {
-    const { caption, photoUrl, sessionId, routineId } = req.body;
-
-    // PATCH semantics: every field optional, but an empty body would return 200
-    // having changed nothing, which is a client bug worth surfacing. Note that
-    // an explicit null counts as a change — {"sessionId": null} is a detach.
-    if (
-      caption === undefined &&
-      photoUrl === undefined &&
-      sessionId === undefined &&
-      routineId === undefined
-    ) {
-      return res
-        .status(400)
-        .json({ error: "caption, photoUrl, sessionId or routineId is required" });
-    }
-    if (caption !== undefined && !caption) {
-      return res.status(400).json({ error: "caption must not be empty" });
-    }
-    if (photoUrl !== undefined && !isSafePhotoUrl(photoUrl)) {
-      return res.status(400).json({ error: "photoUrl must be a valid http or https URL" });
-    }
-    if (!isValidLink(sessionId)) {
-      return res.status(400).json({ error: "sessionId must be a string or null" });
-    }
-    if (!isValidLink(routineId)) {
-      return res.status(400).json({ error: "routineId must be a string or null" });
-    }
+    // updatePostSchema owns all of this now, including the "at least one field"
+    // refine that stops an empty body returning 200 having changed nothing, and
+    // the three-state link semantics (absent = leave, uuid = attach, null =
+    // detach) that .nullish() preserves.
+    //
+    // photoUrl is gone from the schema entirely: a post's photo is fixed at
+    // creation, so sending one is now a 400 rather than a silent no-op.
+    const { caption, sessionId, routineId } = req.validated.body;
 
     const post = await postService.updatePost(req.params.id, req.user.id, {
       caption,
-      photoUrl,
       sessionId,
       routineId,
     });

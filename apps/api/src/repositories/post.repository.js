@@ -72,14 +72,48 @@ export const deletePost = (id) => {
  * there is nothing left to work out which caches went stale. The same ordering
  * requirement findCommentTargetsByUser and findLikeTargetsByUser document.
  *
- * Selects the one column invalidation needs rather than reusing
- * findPostsByUser, so clearing a heavy account does not materialise every
- * caption and photo URL to compute a list of cache keys.
+ * The two columns a bulk delete needs, and no more.
  *
- * @returns {Promise<Array<{ id: string }>>}
+ * id drives cache invalidation; photoUrl is the ONLY way to work out which R2
+ * objects to reclaim, and it stops existing the moment the rows do - so like
+ * findPostRefsBySession below, this MUST be read before the delete.
+ *
+ * It deliberately still does not reuse findPostsByUser. photoUrl is bounded at a
+ * couple of hundred bytes, whereas caption is unbounded TEXT, so clearing a
+ * heavy account still avoids materialising the expensive half of every row.
+ *
+ * Named to match findPostRefsBySession / findPostRefsByRoutine below, which
+ * return multi-column refs for exactly the same read-before-delete reason.
+ *
+ * @returns {Promise<Array<{ id: string, photoUrl: string }>>}
  */
-export const findPostIdsByUser = (userId) => {
-  return prisma.post.findMany({ where: { userId }, select: { id: true } });
+export const findPostRefsByUser = (userId) => {
+  return prisma.post.findMany({
+    where: { userId },
+    select: { id: true, photoUrl: true },
+  });
+};
+
+/**
+ * Does any of this user's REMAINING posts still point at this photo?
+ *
+ * Asked on the delete path, immediately before reclaiming the object, and the
+ * answer decides whether the object is still referenced. Deleting it while
+ * another row points at it would leave that post with a broken image.
+ *
+ * Scoped by userId, and not merely as an optimisation: parseOwnedKey has already
+ * established the object belongs to this user, so any row that could reference
+ * it is theirs. It also lets Postgres use the (userId, createdAt) index to bound
+ * the scan to one author instead of the whole table - photoUrl is not indexed,
+ * so the filter itself is evaluated per candidate row.
+ *
+ * Only worth paying on the single delete. deleteMyPosts skips it entirely: every
+ * post of that user is going, so no reference can survive.
+ *
+ * @returns {Promise<number>}
+ */
+export const countPostsByPhotoUrl = ({ userId, photoUrl }) => {
+  return prisma.post.count({ where: { userId, photoUrl } });
 };
 
 /**

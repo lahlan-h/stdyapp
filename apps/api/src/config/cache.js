@@ -171,3 +171,26 @@ export const RATE_LIMIT_LIKE_WRITE = { max: 60, windowSec: 60 };
  * bound.
  */
 export const RATE_LIMIT_AVATAR_WRITE = { max: 10, windowSec: 60 };
+
+/**
+ * Post photo uploads - POST /api/posts/photo.
+ *
+ * A separate tier from RATE_LIMIT_AVATAR_WRITE despite the identical numbers,
+ * per the rule this file states throughout. Here the reason is unusually
+ * concrete: the two surfaces have completely different storage footprints, and
+ * only one of them is self-limiting.
+ *
+ * An avatar upload DELETES the previous object, so a user occupies about one
+ * object however often they change their picture - this tier bounds request rate
+ * and nothing else. A post photo upload deletes nothing, and it is the first
+ * half of a two-step flow whose second half a client can simply never send. At
+ * this tier an account that only ever uploads writes roughly 50 MB a minute into
+ * the bucket, and only the staging prefix and its lifecycle rule reclaim it (see
+ * promotePhoto in services/photoStorage.service.js). Without that prefix, this
+ * number would be the ONLY thing standing between one account and an unbounded
+ * storage bill.
+ *
+ * So: same value, different justification, and the two must be free to diverge
+ * the moment either surface changes.
+ */
+export const RATE_LIMIT_POST_PHOTO_WRITE = { max: 10, windowSec: 60 };

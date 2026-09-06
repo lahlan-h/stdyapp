@@ -8,13 +8,21 @@ import {
   remove,
   removeMine,
   listAll,
+  uploadPhoto,
   resolveTargetUserId,
 } from "../controllers/post.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { validate } from "../middleware/validate.js";
 import { rateLimit } from "../middleware/rateLimit.js";
 import { cache } from "../middleware/cache.js";
+import { rawImage } from "../middleware/rawImage.js";
 import { paginationQuerySchema } from "../validation/pagination.validation.js";
+import {
+  createPostSchema,
+  updatePostSchema,
+  postIdParamSchema,
+} from "../validation/post.validation.js";
+import { IMAGE_MIME_TYPES, MAX_POST_PHOTO_BYTES } from "../config/upload.js";
 import {
   postContentVersionKey,
   postAuthorVersionKey,
@@ -27,6 +35,7 @@ import {
   RATE_LIMIT_READ,
   RATE_LIMIT_WRITE,
   RATE_LIMIT_BULK,
+  RATE_LIMIT_POST_PHOTO_WRITE,
 } from "../config/cache.js";
 
 const router = Router();
@@ -49,6 +58,13 @@ router.use(requireAuth);
 const readLimit = rateLimit({ name: "post-read", ...RATE_LIMIT_READ });
 const writeLimit = rateLimit({ name: "post-write", ...RATE_LIMIT_WRITE });
 const bulkLimit = rateLimit({ name: "post-bulk", ...RATE_LIMIT_BULK });
+
+// A fourth bucket on its own tier. POST / is a small JSON body again now that
+// the bytes moved to POST /photo, so the tight tier belongs on the route that
+// actually carries megabytes - and, unlike an avatar upload, one that leaves an
+// object behind whether or not a post ever references it. See
+// RATE_LIMIT_POST_PHOTO_WRITE.
+const photoLimit = rateLimit({ name: "post-photo", ...RATE_LIMIT_POST_PHOTO_WRITE });
 
 /**
  * Cache configuration for the three cacheable reads.
@@ -130,10 +146,49 @@ router.delete("/user/me", bulkLimit, removeMine);
 // all would be the wrong reading of "except /all".
 router.get("/all", readLimit, validate({ query: paginationQuerySchema }), listAll);
 
-router.post("/", writeLimit, create);
+/**
+ * Step one of creating a post: stage the photo, get a key back.
+ *
+ * MUST be declared above GET "/:id", and this is not merely stylistic tidying.
+ * ":id" matches a single segment, so it matches the literal "photo" - before
+ * this route existed, GET /api/posts/photo reached getOne with id === "photo"
+ * and answered a confident "Post not found". That is the same trap the note
+ * above /all describes. Declaring literals before parameters is what stops the
+ * next person adding a sibling here and finding one verb works and another
+ * silently does not. (postIdParamSchema on the /:id routes below now upgrades
+ * that class of mistake to a 400 that names the problem.)
+ *
+ * rawImage AFTER the limiter, per the rule users.routes.js documents: do not
+ * buffer megabytes into process memory for a request already over budget. There
+ * is no ownership gate to run first - the object lands under the caller's own
+ * id, so any authenticated user may stage a photo.
+ *
+ * The global express.json() in index.js is not a conflict: it claims
+ * application/json only, so an image Content-Type streams past it unread.
+ */
+router.post(
+  "/photo",
+  photoLimit,
+  rawImage({ types: IMAGE_MIME_TYPES, limit: MAX_POST_PHOTO_BYTES }),
+  uploadPhoto,
+);
+
+// Step two. Plain JSON again - the bytes already arrived above, and this body
+// carries only the caption, the links and the key naming them.
+router.post("/", writeLimit, validate({ body: createPostSchema }), create);
 router.get("/", readLimit, cacheMyList, listMine);
-router.get("/:id", readLimit, cacheOne, getOne);
-router.patch("/:id", writeLimit, update);
-router.delete("/:id", writeLimit, remove);
+// validate() sits before cache() on the read, which is new to this router and
+// matches what users.routes.js does: a bad id gets the 400 that says so instead
+// of composing a cache key out of junk.
+router.get("/:id", readLimit, validate({ params: postIdParamSchema }), cacheOne, getOne);
+
+router.patch(
+  "/:id",
+  writeLimit,
+  validate({ params: postIdParamSchema, body: updatePostSchema }),
+  update,
+);
+
+router.delete("/:id", writeLimit, validate({ params: postIdParamSchema }), remove);
 
 export default router;

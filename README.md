@@ -69,6 +69,52 @@ The API refuses to boot without a valid `JWT_SECRET`. Generate one with:
 openssl rand -base64 48
 ```
 
+## Photo uploads
+
+Photos are sent as **raw bytes**, not `multipart/form-data` and not base64. Set an
+image `Content-Type` and put the file in the body:
+
+```bash
+# Avatar - one step, replaces whatever was there
+curl -X PUT localhost:4000/api/users/$ID/photo \
+  -H "Authorization: Bearer $TOK" -H "Content-Type: image/jpeg" \
+  --data-binary @photo.jpg
+
+# Post - two steps, because a post carries a caption as well as a file
+KEY=$(curl -s -X POST localhost:4000/api/posts/photo \
+  -H "Authorization: Bearer $TOK" -H "Content-Type: image/jpeg" \
+  --data-binary @photo.jpg | jq -r .photoKey)
+
+curl -X POST localhost:4000/api/posts \
+  -H "Authorization: Bearer $TOK" -H "Content-Type: application/json" \
+  -d "{\"caption\":\"3h of discrete maths\",\"photoKey\":\"$KEY\"}"
+```
+
+JPEG, PNG or WebP, 5 MB max. The declared `Content-Type` only gets the request
+accepted - the stored format is re-derived from the file's magic bytes, so lying
+about it is harmless and sending a non-image is a 415.
+
+Things worth knowing:
+
+- **`avatarUrl` and `photoUrl` are not client input any more.** Sending either to
+  `PATCH /api/users/:id` or `PATCH /api/posts/:id` is a 400. The server builds them.
+- **A post's photo is fixed at creation.** `PATCH` edits the caption and the
+  session/routine links only; to change the picture, delete the post and repost.
+- **`photoKey` is single-use.** It names a staged object under `tmp/`, which is
+  removed once the post row exists. Reusing a key is a 400.
+- **The `photoUrl` returned by `POST /api/posts/photo` is a preview.** It stops
+  resolving once the post is created; the post carries the durable URL.
+- Deleting a post (or `DELETE /api/posts/user/me`) deletes its object from R2.
+  Posts seeded with third-party URLs are left alone.
+
+### Bucket prerequisite
+
+Staged uploads land under `tmp/`. A post that is never created leaves its object
+there, so the bucket needs **one lifecycle rule: expire objects under `tmp/` after
+24 hours** (Cloudflare dashboard - R2 > the bucket > Settings > Object lifecycle
+rules). Without it those objects accumulate; they are harmless and nothing
+references them, but nothing reclaims them either.
+
 ## Devs!
 
 Hey Devs! Some ground rules here:

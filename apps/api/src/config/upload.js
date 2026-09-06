@@ -32,4 +32,26 @@ export const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
  * GIF is absent on purpose: an animated avatar is a product decision nobody has
  * made, and the first frame of a large GIF is not worth the bytes.
  */
-export const AVATAR_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
+export const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * The name the avatar route already mounts with, kept as an alias.
+ *
+ * One list rather than one per surface, unlike the size caps, and that is not an
+ * inconsistency: a cap is a policy choice per surface, whereas this is simply
+ * the set of formats utils/imageType.js can identify. A second copy could only
+ * ever be wrong - accepting something the sniffer then rejects with a 415, or
+ * refusing something it handles fine.
+ */
+export const AVATAR_MIME_TYPES = IMAGE_MIME_TYPES;
+
+/**
+ * Hard ceiling on a post photo.
+ *
+ * A SEPARATE constant from MAX_AVATAR_BYTES even though the number matches
+ * today, following the rule config/cache.js states about its own tiers:
+ * separate constants even where the number happens to match, because they
+ * describe different surfaces. A post photo is the content of the app; an avatar
+ * is chrome. Raising one should not silently raise the other.
+ */
+export const MAX_POST_PHOTO_BYTES = 5 * 1024 * 1024;
