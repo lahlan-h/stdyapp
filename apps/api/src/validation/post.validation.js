@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { IMAGE_EXTENSIONS } from "../utils/imageType.js";
-import { TMP_PREFIX } from "../services/photoStorage.service.js";
 
 /**
  * Request schemas for the posts resource.
@@ -14,49 +12,18 @@ import { TMP_PREFIX } from "../services/photoStorage.service.js";
  *
  * Conventions follow user.validation.js: strictObject everywhere, so an
  * unrecognised key is a loud 400 rather than a silent no-op.
+ *
+ * ONE OF THESE PARSES MULTIPART, NOT JSON. createPostSchema is applied to the
+ * text fields multer puts on req.body, which means every value it sees is a
+ * STRING - there are no numbers, booleans or nulls in a multipart body. That is
+ * why the optional links need the empty-string normalisation below, and why the
+ * three-state link semantics live on updatePostSchema, which is still JSON.
  */
 
 // Post.caption is TEXT in Postgres with no length constraint, so this is the
 // only thing standing between the column and a megabyte of prose. Generous for
 // a study-session caption and far below anything that would hurt.
 const MAX_CAPTION_LENGTH = 2000;
-
-// prefix/owner/filename, so two separators.
-const KEY_SEGMENTS = 3;
-
-// Long enough for the layout below with room to spare; short enough that a
-// pathological string is rejected before any of the work above.
-const MAX_PHOTO_KEY_LENGTH = 256;
-
-/**
- * The staged key returned by POST /api/posts/photo.
- *
- * SHAPE ONLY. This deliberately does NOT check that the key belongs to the
- * caller, because a schema has no access to req.user - that check lives in
- * post.service.js, where the owner is in scope, and it answers 403 rather than
- * 400. Splitting them this way keeps "malformed" and "not yours" as different
- * answers, which is the same reason users.routes.js runs validate() before
- * requireSelf.
- *
- * The extension list is derived from imageType.js rather than retyped, so adding
- * a format there cannot leave this rejecting keys the upload path has just
- * issued.
- *
- * Must be a TMP_PREFIX key: a client may only reference something it has
- * staged, never a "posts/" key that already backs a row.
- */
-const photoKeySchema = z
-  .string()
-  .max(MAX_PHOTO_KEY_LENGTH)
-  .refine((value) => {
-    const segments = value.split("/");
-    if (segments.length !== KEY_SEGMENTS) return false;
-    if (segments[0] !== TMP_PREFIX) return false;
-
-    return new RegExp(`^[0-9a-f-]{36}\\.(${IMAGE_EXTENSIONS.join("|")})$`).test(
-      segments[2],
-    );
-  }, "photoKey must be a key returned by POST /api/posts/photo");
 
 /**
  * The optional links, as a uuid.
@@ -68,6 +35,24 @@ const photoKeySchema = z
  */
 const linkSchema = z.uuid();
 
+/**
+ * The same link, as it arrives on a MULTIPART form.
+ *
+ * An empty part is how a form says "nothing selected": a client that renders a
+ * session picker and leaves it blank sends `sessionId=` rather than omitting the
+ * field, and a bare z.uuid() would answer 400 for what the user meant as "no
+ * session". Normalising "" to undefined first makes the two spellings identical.
+ *
+ * The same call listUsersQuerySchema makes for an empty ?q= in
+ * user.validation.js, and for the same reason: a cleared input should behave
+ * like an absent one.
+ */
+const formLinkSchema = z
+  .string()
+  .optional()
+  .transform((value) => value || undefined)
+  .pipe(linkSchema.optional());
+
 const captionSchema = z
   .string()
   .trim()
@@ -75,30 +60,37 @@ const captionSchema = z
   .max(MAX_CAPTION_LENGTH, `caption must be at most ${MAX_CAPTION_LENGTH} characters`);
 
 /**
- * POST /api/posts - the second half of the two-step upload.
+ * POST /api/posts - the text fields of the multipart body.
  *
- * `photoUrl` is ABSENT by design, and its absence is enforced rather than
- * ignored: strictObject turns a client still sending one into a 400 that says
- * so. It stopped being client input because a caller-chosen URL could name an
- * object in our own bucket that they did not own, which the delete path would
- * then have removed on their behalf - the same reasoning that removed avatarUrl
- * from createUserSchema. The server now derives photoUrl from photoKey.
+ * The FILE is not described here. multer puts it on req.file, outside req.body,
+ * so Zod never sees it - uploadImage() guarantees it is a non-empty Buffer within
+ * the size cap, and utils/imageType.js decides whether it is really an image.
+ *
+ * Neither photoUrl NOR photoKey appears, and strictObject makes that absence
+ * enforced rather than merely undocumented: a client sending either gets a 400
+ * that says so. Nothing client-supplied may name an object in our bucket - a
+ * caller-chosen value could name one they do not own, which the delete path would
+ * then remove on their behalf. Same reasoning that removed avatarUrl from
+ * createUserSchema. The server derives photoUrl from the key it just wrote.
  */
 export const createPostSchema = z.strictObject({
   caption: captionSchema,
-  photoKey: photoKeySchema,
-  sessionId: linkSchema.optional(),
-  routineId: linkSchema.optional(),
+  sessionId: formLinkSchema,
+  routineId: formLinkSchema,
 });
 
 /**
  * PATCH /api/posts/:id - caption and links only.
  *
- * NO photoKey and no photoUrl: a post's photo is fixed at creation. Changing it
- * would mean uploading, promoting, rewriting the row and reclaiming the old
- * object, which is the create path plus a delete - and "delete the post, post
- * again" already expresses that. If a photo edit is ever wanted, it belongs on
- * its own route, not smuggled into a JSON PATCH.
+ * NO photo of any kind: a post's photo is fixed at creation. Changing it would
+ * mean uploading, rewriting the row and reclaiming the old object - the create
+ * path plus a delete - and "delete the post, post again" already expresses that.
+ * If a photo edit is ever wanted it belongs on its own route, not smuggled into
+ * a PATCH.
+ *
+ * This one is still JSON, which is what lets the links be three-state. A
+ * multipart body cannot express null - every value in it is a string - so an
+ * explicit detach is only sayable here.
  *
  * The links are THREE-STATE, and .nullish() is what preserves that. The
  * semantics are documented above updatePost in services/post.service.js:

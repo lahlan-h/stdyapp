@@ -15,11 +15,8 @@ import { findLikerIdsByPosts } from "../repositories/like.repository.js";
 // reclaimed; photoStorage owns the key layout and the ownership rule that says
 // which objects a caller may touch at all.
 import {
-  TMP_PREFIX,
   POST_PREFIX,
   uploadPhoto,
-  promotePhoto,
-  parseOwnedKey,
   keyFromOwnedUrl,
   deleteQuietly,
   deleteManyQuietly,
@@ -171,61 +168,38 @@ export const invalidateDetachedPosts = async (posts) => {
  * round trip's latency rather than two.
  */
 /**
- * Step ONE of creating a post: stage the photo.
+ * Creates a post and stores its photo, in one request.
  *
- * Writes nothing to the database, so there is nothing to invalidate - a staged
- * object is not referenced by anything until createPost promotes it.
+ * ORDER, and none of it is arbitrary:
  *
- * Lands under TMP_PREFIX rather than POST_PREFIX. A two-step upload can always
- * be abandoned between its halves, and an object under "posts/" that no row
- * references is indistinguishable from a live one; under "tmp/" it is garbage by
- * definition and a bucket lifecycle rule reclaims it. See promotePhoto for the
- * full reasoning, including why this matters far more for posts than it did for
- * avatars.
+ *   ownership checks  ->  upload  ->  write the row  ->  reclaim on failure
  *
- * @param {string} userId - the caller, from the access token
- * @param {Buffer} buffer - the complete uploaded body, size-capped by rawImage()
- * @returns {Promise<{ photoKey: string, photoUrl: string }>}
+ * The checks come first so a 403 never leaves an object behind. The upload comes
+ * before the write so the row never points at something that does not exist. And
+ * the write is wrapped so a failed insert takes the orphan with it.
+ *
+ * @param {{ userId: string, sessionId?: string, routineId?: string,
+ *           caption: string, photo: Buffer }} input - photo is the parsed file
+ *           part, size-capped and guaranteed non-empty by uploadImage()
+ * @returns {Promise<object>} the created post
+ * @throws 403 when a link is not the caller's, 415 for non-image bytes, 502 R2 down
  */
-export const uploadPostPhoto = async (userId, buffer) => {
-  const { key, url } = await uploadPhoto({
-    prefix: TMP_PREFIX,
-    ownerId: userId,
-    buffer,
-  });
-
-  // photoUrl is a PREVIEW: it stops resolving once createPost promotes the
-  // object out of staging, and the post carries the durable URL. Returned anyway
-  // so a client can show the picture it just uploaded before committing to it.
-  return { photoKey: key, photoUrl: url };
-};
-
-export const createPost = async ({ userId, sessionId, routineId, caption, photoKey }) => {
-  // FIRST, because it is pure string work with no I/O: is this key even the
-  // caller's to use? Without it a client could name another user's staged object
-  // and have this request promote it into their own post. parseOwnedKey pins
-  // both the prefix and the owner segment - see its doc block.
-  const stagedKey = parseOwnedKey(photoKey, {
-    prefix: TMP_PREFIX,
-    ownerId: userId,
-  });
-  if (!stagedKey) throw forbidden("photo");
-
+export const createPost = async ({ userId, sessionId, routineId, caption, photo }) => {
+  // FIRST, before a byte reaches R2. Both checks hit the database, so they are
+  // not free - but they are far cheaper than an upload, and doing them first
+  // means a 403 leaves nothing behind to reclaim.
   const checks = [];
   if (sessionId) checks.push(assertOwnsSession(sessionId, userId));
   if (routineId) checks.push(assertOwnsRoutine(routineId, userId));
   await Promise.all(checks);
 
-  // AFTER the ownership checks, so a 403 costs no R2 work at all. The copy also
-  // stands in for an existence check: it fails when the staged object is gone,
-  // which is how a fabricated or already-used key becomes a 400 rather than a
-  // row pointing at nothing.
-  //
-  // COPY ONLY - the staged source is still there afterwards, and is removed
-  // below once the row exists. See promotePhoto for why that order matters.
-  const { key: postKey, url: photoUrl } = await promotePhoto({
-    key: stagedKey,
-    toPrefix: POST_PREFIX,
+  // The bytes decide the format, never the Content-Type multer accepted - see
+  // uploadPhoto, and utils/imageType.js for why that distinction is the security
+  // boundary rather than a detail.
+  const { key: postKey, url: photoUrl } = await uploadPhoto({
+    prefix: POST_PREFIX,
+    ownerId: userId,
+    buffer: photo,
   });
 
   let post;
@@ -241,21 +215,14 @@ export const createPost = async ({ userId, sessionId, routineId, caption, photoK
       photoUrl,
     });
   } catch (err) {
-    // Nothing references the copy we just made, so drop it rather than leaking
-    // one under POST_PREFIX on every failed insert - that prefix has no
-    // lifecycle rule behind it, unlike staging.
-    //
-    // The STAGED source is deliberately left alone: this is a retryable failure,
-    // and leaving it means the client can send the same photoKey again instead
-    // of re-uploading the whole file.
+    // This request uploaded the object moments ago and no row references it, so
+    // drop it rather than leaking one on every failed insert. Safe here in a way
+    // it would not be under a two-step upload, where the bytes arrived in an
+    // earlier request and a client might still retry with them - exactly the
+    // shape setAvatar uses in avatar.service.js, for the same reason.
     await deleteQuietly(postKey, "database write failed");
     throw err;
   }
-
-  // Only NOW, with the row written, is the staged copy redundant. Doing this
-  // before the insert would consume the key on the way to an error; doing it
-  // after is also what stops the key being usable a second time.
-  await deleteQuietly(stagedKey, "promoted out of staging");
 
   // Author list only. The post is new, so nothing can be cached under its own
   // id yet, and no comment or like can reference it — the fan-out would be

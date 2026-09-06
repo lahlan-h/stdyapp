@@ -71,49 +71,48 @@ openssl rand -base64 48
 
 ## Photo uploads
 
-Photos are sent as **raw bytes**, not `multipart/form-data` and not base64. Set an
-image `Content-Type` and put the file in the body:
+Photos are sent as **`multipart/form-data`** with the file in a **`photo`** field.
+One request, one convention, both resources:
 
 ```bash
-# Avatar - one step, replaces whatever was there
+# Avatar - replaces whatever was there
 curl -X PUT localhost:4000/api/users/$ID/photo \
-  -H "Authorization: Bearer $TOK" -H "Content-Type: image/jpeg" \
-  --data-binary @photo.jpg
+  -H "Authorization: Bearer $TOK" \
+  -F "photo=@picture.jpg"
 
-# Post - two steps, because a post carries a caption as well as a file
-KEY=$(curl -s -X POST localhost:4000/api/posts/photo \
-  -H "Authorization: Bearer $TOK" -H "Content-Type: image/jpeg" \
-  --data-binary @photo.jpg | jq -r .photoKey)
-
+# Post - the photo and the caption travel together
 curl -X POST localhost:4000/api/posts \
-  -H "Authorization: Bearer $TOK" -H "Content-Type: application/json" \
-  -d "{\"caption\":\"3h of discrete maths\",\"photoKey\":\"$KEY\"}"
+  -H "Authorization: Bearer $TOK" \
+  -F "photo=@picture.jpg" \
+  -F "caption=3h of discrete maths" \
+  -F "sessionId=<uuid>"          # optional, blank is fine
 ```
 
-JPEG, PNG or WebP, 5 MB max. The declared `Content-Type` only gets the request
-accepted - the stored format is re-derived from the file's magic bytes, so lying
+From a browser it is a `FormData`; do not set `Content-Type` yourself, the
+browser adds the boundary:
+
+```js
+const fd = new FormData();
+fd.append("photo", fileInput.files[0]);
+fd.append("caption", caption);
+await fetch("/api/posts", { method: "POST", headers: { Authorization }, body: fd });
+```
+
+JPEG, PNG or WebP, 5 MB max. The part Content-Type only gets the request
+accepted - the stored format is re-derived from the file magic bytes, so lying
 about it is harmless and sending a non-image is a 415.
 
 Things worth knowing:
 
-- **`avatarUrl` and `photoUrl` are not client input any more.** Sending either to
+- **`avatarUrl` and `photoUrl` are not client input.** Sending either to
   `PATCH /api/users/:id` or `PATCH /api/posts/:id` is a 400. The server builds them.
-- **A post's photo is fixed at creation.** `PATCH` edits the caption and the
-  session/routine links only; to change the picture, delete the post and repost.
-- **`photoKey` is single-use.** It names a staged object under `tmp/`, which is
-  removed once the post row exists. Reusing a key is a 400.
-- **The `photoUrl` returned by `POST /api/posts/photo` is a preview.** It stops
-  resolving once the post is created; the post carries the durable URL.
+- **A post photo is fixed at creation.** `PATCH` edits the caption and the
+  session/routine links; to change the picture, delete the post and repost.
+- **Blank form fields are treated as absent**, so `-F "sessionId="` is fine.
 - Deleting a post (or `DELETE /api/posts/user/me`) deletes its object from R2.
   Posts seeded with third-party URLs are left alone.
-
-### Bucket prerequisite
-
-Staged uploads land under `tmp/`. A post that is never created leaves its object
-there, so the bucket needs **one lifecycle rule: expire objects under `tmp/` after
-24 hours** (Cloudflare dashboard - R2 > the bucket > Settings > Object lifecycle
-rules). Without it those objects accumulate; they are harmless and nothing
-references them, but nothing reclaims them either.
+- Objects are keyed `<avatars|posts>/<userId>/<uuid>.<ext>`. The user id in the
+  key is what stops one account causing a delete of another account object.
 
 ## Devs!
 

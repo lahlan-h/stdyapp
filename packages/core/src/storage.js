@@ -3,7 +3,6 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   DeleteObjectsCommand,
-  CopyObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
 } from "@aws-sdk/client-s3";
@@ -268,48 +267,6 @@ export const uploadFile = async ({ key, body, contentType }) => {
   return publicUrlForKey(key);
 };
 
-/**
- * Server-side copy, then nothing else - the caller decides whether to delete the
- * source.
- *
- * Bytes never pass through this process: R2 copies within the bucket, so a 5 MB
- * promotion costs one API call and no egress. That is what makes a staging
- * prefix cheap enough to use as the ordinary path rather than an optimisation.
- *
- * A MISSING SOURCE IS REPORTED AS A DISTINCT ERROR, deliberately. Callers use
- * this to answer "was this object ever uploaded?" without spending a separate
- * HeadObject: a caller naming a key that does not exist is a client mistake
- * deserving a 4xx, while every other failure here is ours and deserves a 5xx.
- * Collapsing the two would make a bad request look like an outage.
- *
- * @param {{ from: string, to: string }} keys
- * @returns {Promise<void>}
- * @throws {Error & { code?: "NoSuchKey" }} code is set only when the source is gone
- */
-export const copyObject = async ({ from, to }) => {
-  try {
-    await getR2().send(
-      new CopyObjectCommand({
-        Bucket: bucket(),
-        // CopySource is bucket-qualified and must be URI-encoded: our keys carry
-        // no reserved characters today, but a key that did would otherwise be
-        // silently truncated at the first one.
-        CopySource: encodeURI(`${bucket()}/${from}`),
-        Key: to,
-      }),
-      withTimeout()
-    );
-  } catch (err) {
-    const status = err?.$metadata?.httpStatusCode;
-    if (status === 404 || err?.name === "NoSuchKey" || err?.name === "NotFound") {
-      const missing = new Error(`no object at "${from}"`);
-      missing.code = "NoSuchKey";
-      missing.cause = err;
-      throw missing;
-    }
-    throw err;
-  }
-};
 
 export const deleteFile = async (key) => {
   await getR2().send(

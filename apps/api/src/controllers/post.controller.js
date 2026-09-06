@@ -1,44 +1,29 @@
 import * as postService from "../services/post.service.js";
 
 /**
- * POST /api/posts/photo - step one of two: stage the photo.
+ * POST /api/posts - one multipart request carrying the photo and the caption.
  *
- * 201 rather than 200: this creates an object in the bucket, even though it
- * creates no row. The key it returns is the only handle on that object, so
- * losing this response means losing the upload.
+ * The body arrives in two halves and they are read from different places, which
+ * is the one thing worth knowing about this handler: uploadImage() puts the file
+ * on req.file and the text fields on req.body, and validate() then parses those
+ * fields onto req.validated.body. There is no schema for the file - Zod never
+ * sees it - so uploadImage is what guarantees req.file.buffer is a non-empty
+ * Buffer within the size cap, and imageType.js is what decides it is an image.
  *
- * req.body is a Buffer here, not JSON and not req.validated - rawImage() in the
- * route chain replaces the body with the raw bytes and guarantees it is a
- * non-empty Buffer within the size cap. The same deviation, for the same reason,
- * as uploadUserPhoto in users.controller.js.
- *
- * 415 when the bytes are not a JPEG, PNG or WebP; 413 when they exceed the cap;
- * 502 when R2 is unreachable.
+ * Every check that used to live here is now in createPostSchema: shape, caption
+ * length, uuid-ness of the links, and the loud 400 for a client still sending a
+ * photoUrl.
  */
-export const uploadPhoto = async (req, res, next) => {
-  try {
-    const photo = await postService.uploadPostPhoto(req.user.id, req.body);
-    res.status(201).json(photo);
-  } catch (err) {
-    next(err);
-  }
-};
-
 export const create = async (req, res, next) => {
   try {
-    const { sessionId, routineId, caption, photoKey } = req.validated.body;
+    const { sessionId, routineId, caption } = req.validated.body;
 
-    // Every check that used to live here is now in createPostSchema, applied by
-    // validate() before this runs - shape, caption length, uuid-ness of the
-    // links, and the loud 400 for a client still sending photoUrl. What is NOT
-    // there is whether photoKey belongs to this caller: that needs req.user, so
-    // post.service.js answers it, with a 403 rather than a 400.
     const post = await postService.createPost({
       userId: req.user.id,
       sessionId,
       routineId,
       caption,
-      photoKey,
+      photo: req.file.buffer,
     });
     res.status(201).json(post);
   } catch (err) {

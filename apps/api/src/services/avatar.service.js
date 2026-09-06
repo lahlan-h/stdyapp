@@ -37,11 +37,9 @@ import { getUserById, updateUser } from "./user.service.js";
  * than broken. The cost of being wrong in this direction is an orphaned object;
  * the cost of the other is a visibly broken profile.
  *
- * NO STAGING PREFIX HERE, unlike posts. An avatar is uploaded and referenced
- * within one request, so there is no window in which an object can be abandoned,
- * and every upload deletes the previous one - a user's footprint is bounded at
- * about one object no matter how many times they change their picture. Posts get
- * neither guarantee, which is why promotePhoto exists for them and not here.
+ * ONE EXTRA GUARANTEE over posts, and it is why this path never needed anything
+ * more: every upload deletes the previous object, so a user occupies about one
+ * avatar no matter how many times they change their picture. A post accumulates.
  */
 
 // The owner that every key on this path belongs to. Passed to photoStorage on
@@ -52,7 +50,7 @@ const owner = (userId) => ({ prefix: AVATAR_PREFIX, ownerId: userId });
  * Sets or replaces a user's avatar.
  *
  * @param {string} userId - already proven to be the caller's own by requireSelf
- * @param {Buffer} buffer - the complete uploaded body, size-capped by rawImage()
+ * @param {Buffer} buffer - the complete uploaded body, size-capped by uploadImage()
  * @returns {Promise<object>} the updated user, without passwordHash
  * @throws {HttpError} 404 unknown user, 415 unrecognised bytes, 502 R2 down
  */

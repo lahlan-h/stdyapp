@@ -10,7 +10,7 @@
  */
 
 /**
- * Hard ceiling on an avatar, enforced by rawImage() while the body is still
+ * Hard ceiling on an avatar, enforced by uploadImage() while the part is still
  * streaming — body-parser aborts at this many bytes rather than buffering the
  * whole request and measuring afterwards.
  *
@@ -22,7 +22,7 @@
 export const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
 /**
- * The Content-Type values rawImage() will accept on an avatar upload.
+ * The Content-Type values uploadImage() will accept on any photo upload.
  *
  * This list gates the PARSER only. It is not the security boundary — a client
  * can claim any of these for any bytes, so utils/imageType.js re-derives the

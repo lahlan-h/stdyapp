@@ -12,7 +12,7 @@ import { validate } from "../middleware/validate.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireSelf } from "../middleware/requireSelf.js";
 import { rateLimit } from "../middleware/rateLimit.js";
-import { rawImage } from "../middleware/rawImage.js";
+import { uploadImage } from "../middleware/uploadImage.js";
 import { cache } from "../middleware/cache.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { userProfileVersionKey, userKey } from "../utils/cache.js";
@@ -79,8 +79,8 @@ const router = Router();
  * The two /:id/photo routes at the bottom add a THIRD deviation, and it is the
  * only place in this router where requireSelf moves ahead of a body parser:
  *
- *  - requireSelf runs BEFORE rawImage on the upload. rawImage buffers up to
- *    MAX_AVATAR_BYTES into process memory, and there is no reason to read a
+ *  - requireSelf runs BEFORE uploadImage on the upload. uploadImage buffers up
+ *    to MAX_AVATAR_BYTES into process memory, and there is no reason to read a
  *    single byte of a request we have already decided to answer with a 403.
  *    Reading it first would let any authenticated user spend 5 MB of the server
  *    memory on every request aimed at an account that is not theirs.
@@ -194,16 +194,17 @@ router.delete(
  * with every post version key that embeds this avatar. That is precisely why
  * avatar.service.js delegates its writes there instead of touching Prisma.
  *
- * Uploads carry raw image bytes, NOT multipart/form-data or JSON - see the
- * header of middleware/rawImage.js for why, and note that the global
- * express.json() in index.js passes an image Content-Type through untouched.
+ * Uploads are multipart/form-data with the file in a "photo" field, the same
+ * shape POST /api/posts uses - one upload convention for the whole API. The
+ * global express.json() in index.js is not a conflict: it claims application/json
+ * only, so a multipart request passes through it with the stream unread.
  */
 router.put(
   "/:id/photo",
   photoLimit,
   validate({ params: userIdParamSchema }),
   requireSelf,
-  rawImage({ types: AVATAR_MIME_TYPES, limit: MAX_AVATAR_BYTES }),
+  uploadImage({ field: "photo", types: AVATAR_MIME_TYPES, limit: MAX_AVATAR_BYTES }),
   asyncHandler(uploadUserPhoto),
 );
 

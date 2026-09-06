@@ -79,16 +79,19 @@ export const deleteUser = async (req, res) => {
  * is what changed; returning it lets a client update its profile view from this
  * one response instead of following up with GET /api/users/:id.
  *
- * req.body rather than req.validated.body, the one deviation from house style in
- * this file: the payload is a Buffer of image bytes, not JSON that Zod could
- * parse. rawImage() in the route chain is what guarantees it is a non-empty
- * Buffer within the size cap, and avatar.service.js re-identifies the format
- * from the bytes themselves.
+ * req.file.buffer rather than req.validated.body, the one deviation from house
+ * style in this file: the payload is a file part, not JSON that Zod could parse.
+ * uploadImage() in the route chain is what guarantees it is a non-empty Buffer
+ * within the size cap, and avatar.service.js re-identifies the format from the
+ * bytes themselves.
  *
  * 415 when the bytes are not a JPEG, PNG or WebP; 502 when R2 is unreachable.
  */
 export const uploadUserPhoto = async (req, res) => {
-  const user = await avatarService.setAvatar(req.validated.params.id, req.body);
+  const user = await avatarService.setAvatar(
+    req.validated.params.id,
+    req.file.buffer,
+  );
   res.status(200).json({ data: user });
 };
 

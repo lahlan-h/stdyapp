@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import {
   uploadFile,
-  copyObject,
   deleteFile,
   deleteFiles,
   publicUrlForKey,
@@ -31,17 +30,18 @@ import { detectImageType, IMAGE_EXTENSIONS } from "../utils/imageType.js";
  * "may this caller delete this object?" answerable from the key alone, with no
  * database lookup and no metadata round trip.
  *
- * STAGING. Post photos land under "tmp/" first and are promoted to "posts/" when
- * the row that references them is written. See promotePhoto for why that is the
- * ordinary path rather than an optimisation.
+ * ONE OBJECT PER REQUEST. Both callers upload inside the same request that writes
+ * the row referencing the object, so a failed write can delete what it just made
+ * and nothing is ever left unreferenced. That is a property of the multipart
+ * transport rather than of this module - a two-step upload could not offer it,
+ * and needed a staging prefix and a bucket lifecycle rule to compensate.
  */
 
 const log = createLogger("photos");
 
-// Anything not promoted from here is unreferenced by definition, which is what
-// lets a bucket lifecycle rule expire the prefix wholesale. Exported so the
-// domain services name the same string this module does.
-export const TMP_PREFIX = "tmp";
+// The two key namespaces. Exported so the domain services name the same strings
+// this module does, and because parseOwnedKey pins the prefix - which is what
+// stops a post delete reaching an avatar object, and the reverse.
 export const AVATAR_PREFIX = "avatars";
 export const POST_PREFIX = "posts";
 
@@ -218,65 +218,4 @@ export const uploadPhoto = async ({ prefix, ownerId, buffer }) => {
   }
 
   return { key, url };
-};
-
-/**
- * Moves an object from the staging prefix to its permanent one.
- *
- * WHY STAGING EXISTS. A two-step upload - bytes in one request, the row that
- * references them in another - can always be abandoned between the two, and the
- * abandoned object is unreferenced forever. For avatars that is bounded at about
- * one object per user, because every upload deletes the previous one. For posts
- * NOTHING deletes it, so an account uploading at its rate limit and never
- * posting writes tens of gigabytes a day that nothing reclaims. That is a
- * billing problem, not an acceptable tradeoff.
- *
- * Uploading to "tmp/" first turns it into a solved problem with no sweeper, no
- * worker and no new dependency: one bucket lifecycle rule expiring that prefix
- * after a day reclaims everything that was never promoted. Objects under
- * "posts/" are exactly the referenced ones.
- *
- * It also pays for itself twice more. A copy FAILS when the source is gone, so
- * "was this ever uploaded?" is answered as a side effect rather than by a
- * separate HeadObject - the same number of round trips as checking explicitly.
- * And a key replayed for a second row finds its source already deleted by the
- * first, which kills the realistic double-use case for free.
- *
- * THIS COPIES AND NOTHING ELSE. Removing the staged source is the CALLER's job,
- * and only once the row referencing the copy has actually been written - the
- * same rule avatar.service.js follows for the object it replaces, and for the
- * same reason: until that write lands, the old object is still the only good
- * one. Deleting the source here instead would consume the key on the way to a
- * database error, so a client retrying a perfectly retryable 500 would find its
- * upload gone and have to send the whole file again.
- *
- * That ordering is also what preserves single-use. The source survives a failed
- * create (so the key still works) and is deleted after a successful one (so the
- * key stops working) - which is exactly the property wanted in both directions.
- *
- * @param {{ key: string, toPrefix: string }} input - key must be under TMP_PREFIX
- * @returns {Promise<{ key: string, url: string }>} the permanent key and URL
- * @throws {HttpError} 400 when the staged object is gone, 502 when R2 fails
- */
-export const promotePhoto = async ({ key, toPrefix }) => {
-  // Only the prefix changes: the owner and filename carry over, so the promoted
-  // key is still parseOwnedKey-able by the same owner.
-  const target = key.replace(new RegExp(`^${TMP_PREFIX}/`), `${toPrefix}/`);
-
-  try {
-    await copyObject({ from: key, to: target });
-  } catch (err) {
-    if (err.code === "NoSuchKey") {
-      throw new HttpError(
-        400,
-        "photoKey does not name an uploaded image - upload it first, and note that a key can only be used once",
-        { cause: err },
-      );
-    }
-
-    log.error(`promote ${key} -> ${target} failed: ${err.message}`);
-    throw new HttpError(502, STORAGE_UNAVAILABLE, { cause: err });
-  }
-
-  return { key: target, url: publicUrlForKey(target) };
 };

@@ -8,14 +8,13 @@ import {
   remove,
   removeMine,
   listAll,
-  uploadPhoto,
   resolveTargetUserId,
 } from "../controllers/post.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { validate } from "../middleware/validate.js";
 import { rateLimit } from "../middleware/rateLimit.js";
 import { cache } from "../middleware/cache.js";
-import { rawImage } from "../middleware/rawImage.js";
+import { uploadImage } from "../middleware/uploadImage.js";
 import { paginationQuerySchema } from "../validation/pagination.validation.js";
 import {
   createPostSchema,
@@ -147,35 +146,30 @@ router.delete("/user/me", bulkLimit, removeMine);
 router.get("/all", readLimit, validate({ query: paginationQuerySchema }), listAll);
 
 /**
- * Step one of creating a post: stage the photo, get a key back.
+ * Create a post: ONE multipart request carrying the photo and the caption.
  *
- * MUST be declared above GET "/:id", and this is not merely stylistic tidying.
- * ":id" matches a single segment, so it matches the literal "photo" - before
- * this route existed, GET /api/posts/photo reached getOne with id === "photo"
- * and answered a confident "Post not found". That is the same trap the note
- * above /all describes. Declaring literals before parameters is what stops the
- * next person adding a sibling here and finding one verb works and another
- * silently does not. (postIdParamSchema on the /:id routes below now upgrades
- * that class of mistake to a 400 that names the problem.)
+ * uploadImage BEFORE validate, which inverts the rule this router follows
+ * everywhere else and is not a style choice: multer is what populates req.body
+ * from the form fields, so there is nothing for validate() to read until it has
+ * run. See the ordering note in middleware/uploadImage.js.
  *
- * rawImage AFTER the limiter, per the rule users.routes.js documents: do not
+ * The limiter still runs first, per the rule users.routes.js documents - do not
  * buffer megabytes into process memory for a request already over budget. There
- * is no ownership gate to run first - the object lands under the caller's own
- * id, so any authenticated user may stage a photo.
+ * is no ownership gate to run in between: the object lands under the caller's own
+ * id, and whether they may link the given session or routine is a question only
+ * post.service.js can answer.
  *
- * The global express.json() in index.js is not a conflict: it claims
- * application/json only, so an image Content-Type streams past it unread.
+ * photoLimit rather than writeLimit because this route carries up to 5 MB - see
+ * RATE_LIMIT_POST_PHOTO_WRITE.
  */
 router.post(
-  "/photo",
+  "/",
   photoLimit,
-  rawImage({ types: IMAGE_MIME_TYPES, limit: MAX_POST_PHOTO_BYTES }),
-  uploadPhoto,
+  uploadImage({ field: "photo", types: IMAGE_MIME_TYPES, limit: MAX_POST_PHOTO_BYTES }),
+  validate({ body: createPostSchema }),
+  create,
 );
 
-// Step two. Plain JSON again - the bytes already arrived above, and this body
-// carries only the caption, the links and the key naming them.
-router.post("/", writeLimit, validate({ body: createPostSchema }), create);
 router.get("/", readLimit, cacheMyList, listMine);
 // validate() sits before cache() on the read, which is new to this router and
 // matches what users.routes.js does: a bad id gets the 400 that says so instead

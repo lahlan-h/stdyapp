@@ -17,7 +17,6 @@ export {
   closeR2,
   publicUrlForKey,
   uploadFile,
-  copyObject,
   deleteFile,
   deleteFiles,
   getFile,
