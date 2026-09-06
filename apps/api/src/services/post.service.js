@@ -11,6 +11,16 @@ import { getUserById } from "./user.service.js";
 // for findPostById: going through the services would drag their gates along.
 import { findCommenterIdsByPosts } from "../repositories/comment.repository.js";
 import { findLikerIdsByPosts } from "../repositories/like.repository.js";
+// Object storage for post photos. This service owns WHEN an object is written or
+// reclaimed; photoStorage owns the key layout and the ownership rule that says
+// which objects a caller may touch at all.
+import {
+  POST_PREFIX,
+  uploadPhoto,
+  keyFromOwnedUrl,
+  deleteQuietly,
+  deleteManyQuietly,
+} from "./photoStorage.service.js";
 import {
   bumpVersions,
   postContentVersionKey,
@@ -157,22 +167,62 @@ export const invalidateDetachedPosts = async (posts) => {
  * checked, and they are checked in parallel so supplying both still costs one
  * round trip's latency rather than two.
  */
-export const createPost = async ({ userId, sessionId, routineId, caption, photoUrl }) => {
+/**
+ * Creates a post and stores its photo, in one request.
+ *
+ * ORDER, and none of it is arbitrary:
+ *
+ *   ownership checks  ->  upload  ->  write the row  ->  reclaim on failure
+ *
+ * The checks come first so a 403 never leaves an object behind. The upload comes
+ * before the write so the row never points at something that does not exist. And
+ * the write is wrapped so a failed insert takes the orphan with it.
+ *
+ * @param {{ userId: string, sessionId?: string, routineId?: string,
+ *           caption: string, photo: Buffer }} input - photo is the parsed file
+ *           part, size-capped and guaranteed non-empty by uploadImage()
+ * @returns {Promise<object>} the created post
+ * @throws 403 when a link is not the caller's, 415 for non-image bytes, 502 R2 down
+ */
+export const createPost = async ({ userId, sessionId, routineId, caption, photo }) => {
+  // FIRST, before a byte reaches R2. Both checks hit the database, so they are
+  // not free - but they are far cheaper than an upload, and doing them first
+  // means a 403 leaves nothing behind to reclaim.
   const checks = [];
   if (sessionId) checks.push(assertOwnsSession(sessionId, userId));
   if (routineId) checks.push(assertOwnsRoutine(routineId, userId));
   await Promise.all(checks);
 
-  const post = await postRepo.createPost({
-    userId,
-    // Explicit null rather than undefined, matching createRoutine's
-    // `sourceRoutineId ?? null` — the column is nullable and the intent is
-    // "no link", not "field omitted".
-    sessionId: sessionId ?? null,
-    routineId: routineId ?? null,
-    caption,
-    photoUrl,
+  // The bytes decide the format, never the Content-Type multer accepted - see
+  // uploadPhoto, and utils/imageType.js for why that distinction is the security
+  // boundary rather than a detail.
+  const { key: postKey, url: photoUrl } = await uploadPhoto({
+    prefix: POST_PREFIX,
+    ownerId: userId,
+    buffer: photo,
   });
+
+  let post;
+  try {
+    post = await postRepo.createPost({
+      userId,
+      // Explicit null rather than undefined, matching createRoutine's
+      // `sourceRoutineId ?? null` — the column is nullable and the intent is
+      // "no link", not "field omitted".
+      sessionId: sessionId ?? null,
+      routineId: routineId ?? null,
+      caption,
+      photoUrl,
+    });
+  } catch (err) {
+    // This request uploaded the object moments ago and no row references it, so
+    // drop it rather than leaking one on every failed insert. Safe here in a way
+    // it would not be under a two-step upload, where the bytes arrived in an
+    // earlier request and a client might still retry with them - exactly the
+    // shape setAvatar uses in avatar.service.js, for the same reason.
+    await deleteQuietly(postKey, "database write failed");
+    throw err;
+  }
 
   // Author list only. The post is new, so nothing can be cached under its own
   // id yet, and no comment or like can reference it — the fan-out would be
@@ -241,7 +291,7 @@ export const deleteMyPosts = async (userId) => {
   // Read the targets BEFORE the delete. Afterwards the rows are gone and there
   // is no way left to work out which caches just went stale — deleteMyLikes
   // does exactly this, for exactly this reason.
-  const targets = await postRepo.findPostIdsByUser(userId);
+  const targets = await postRepo.findPostRefsByUser(userId);
 
   const result = await postRepo.deletePostsByUser(userId);
 
@@ -252,11 +302,26 @@ export const deleteMyPosts = async (userId) => {
     userId,
   );
 
+  // No reference check here, unlike deletePost, and none is needed: every post
+  // this user has is being deleted, so no surviving row can point at any of
+  // these objects. That makes the expensive half of the single-post path free on
+  // the bulk one.
+  //
+  // Batched rather than looped - one request per 1000 keys instead of one per
+  // post. Non-ours (the seeded cdn.example.com fixtures, any third-party URL)
+  // resolve to null and are dropped by deleteManyQuietly.
+  await deleteManyQuietly(
+    targets.map((target) =>
+      keyFromOwnedUrl(target.photoUrl, { prefix: POST_PREFIX, ownerId: userId }),
+    ),
+    "posts bulk deleted",
+  );
+
   return result;
 };
 
 /**
- * Editable: caption, photoUrl, and the two links. The author and createdAt are
+ * Editable: caption and the two links. The author, createdAt and PHOTO are
  * history and stay unwritable — the fields are destructured out explicitly
  * rather than passing req.body through, the same defence updateRoutine uses, so
  * extra keys in the body cannot reach the database.
@@ -274,7 +339,7 @@ export const deleteMyPosts = async (userId) => {
 export const updatePost = async (
   postId,
   requesterId,
-  { caption, photoUrl, sessionId, routineId },
+  { caption, sessionId, routineId },
 ) => {
   await getOwnedPostOrThrow(postId, requesterId);
 
@@ -285,7 +350,6 @@ export const updatePost = async (
 
   const post = await postRepo.updatePost(postId, {
     caption,
-    photoUrl,
     sessionId,
     routineId,
   });
@@ -299,10 +363,36 @@ export const updatePost = async (
 };
 
 export const deletePost = async (postId, requesterId) => {
-  await getOwnedPostOrThrow(postId, requesterId);
+  // Its return value used to be discarded. It carries photoUrl, which is the
+  // only way to work out which object to reclaim, and it stops being readable
+  // the moment the row is gone.
+  const post = await getOwnedPostOrThrow(postId, requesterId);
+  const photoKey = keyFromOwnedUrl(post.photoUrl, {
+    prefix: POST_PREFIX,
+    ownerId: requesterId,
+  });
 
   const result = await postRepo.deletePost(postId);
+
+  // BEFORE the object delete, not after. The bump must follow the write for the
+  // reason bumpVersions documents, and it must also come before the R2 call:
+  // deleteFile crosses the internet, and letting it delay invalidation widens
+  // the window in which a live cached payload advertises an image that is
+  // already gone.
   await invalidatePostFanout([postId], requesterId);
+
+  // Only reclaim an object nothing else points at. A photoKey can only ever be
+  // used once - promotePhoto deletes the staged source - but a row could have
+  // been seeded or copied, and breaking a surviving post's image is far worse
+  // than leaving one object behind.
+  if (photoKey) {
+    const stillReferenced = await postRepo.countPostsByPhotoUrl({
+      userId: requesterId,
+      photoUrl: post.photoUrl,
+    });
+
+    if (stillReferenced === 0) await deleteQuietly(photoKey, "post deleted");
+  }
 
   return result;
 };

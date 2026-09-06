@@ -15,7 +15,9 @@ export {
   checkR2,
   connectR2,
   closeR2,
+  publicUrlForKey,
   uploadFile,
   deleteFile,
+  deleteFiles,
   getFile,
 } from "./storage.js";

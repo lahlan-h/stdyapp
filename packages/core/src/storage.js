@@ -2,6 +2,7 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
 } from "@aws-sdk/client-s3";
@@ -37,6 +38,34 @@ const log = createLogger("r2");
 // timeouts because R2 is a remote service over the internet rather than a
 // container on localhost. The probe is fire-and-forget, so this delays nothing.
 const PROBE_TIMEOUT_MS = 5_000;
+
+/**
+ * Upper bound on the ordinary data-plane calls below.
+ *
+ * These sit on user-facing request paths, unlike the boot probe, so an endpoint
+ * that accepts connections and then stops answering must not be allowed to hang
+ * the request behind it. Without a signal the SDK falls back to its own defaults
+ * and its retry policy on top, which is the "fail slow" mode apps/api's cache
+ * layer calls out as the one that actually takes an API down - a hard failure
+ * degrades one request, a hang consumes a connection until something gives up.
+ *
+ * Longer than the probe because these move real bytes rather than sending a
+ * HEAD, and a slow but healthy upload should not be cut off.
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * DeleteObjects accepts at most 1000 keys per request and rejects the whole
+ * batch if given more. deleteFiles() chunks to this rather than trusting callers
+ * to - "delete everything I ever posted" is inherently unbounded.
+ */
+const DELETE_BATCH_SIZE = 1000;
+
+// Every data-plane send() below passes this. Factored out so adding a call
+// cannot quietly omit the timeout.
+const withTimeout = () => ({
+  abortSignal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+});
 
 // Without all four the client cannot address the bucket at all. R2_PUBLIC_URL is
 // deliberately absent: it only shapes the URL uploadFile returns, so a missing
@@ -199,6 +228,30 @@ export const connectR2 = () => {
   });
 };
 
+/**
+ * THE one place a key becomes a public URL.
+ *
+ * Every consumer that stores a URL must also be able to recover the key from it
+ * later - apps/api derives the object to delete from the URL held in the row.
+ * That round trip only works while both directions agree on the exact string,
+ * and a format that drifted between them would not fail loudly: it would quietly
+ * stop matching, so nothing would ever be reclaimed and no line would say so.
+ *
+ * So this is a function rather than a template literal repeated at each site,
+ * and uploadFile() below calls it rather than building its own.
+ *
+ * The trailing-slash strip is the reason it earns its own function at all. An
+ * R2_PUBLIC_URL configured as "https://cdn.example.com/" would otherwise produce
+ * a double slash here and a key of "/avatars/..." on the way back.
+ *
+ * Read per call, never at module scope - the rule at the top of this file.
+ *
+ * @param {string} key
+ * @returns {string}
+ */
+export const publicUrlForKey = (key) =>
+  `${(process.env.R2_PUBLIC_URL ?? "").replace(/\/+$/, "")}/${key}`;
+
 export const uploadFile = async ({ key, body, contentType }) => {
   await getR2().send(
     new PutObjectCommand({
@@ -206,19 +259,80 @@ export const uploadFile = async ({ key, body, contentType }) => {
       Key: key,
       Body: body,
       ContentType: contentType,
-    })
+    }),
+    withTimeout()
   );
   // R2 buckets need a public access setting or custom domain configured
   // separately in the Cloudflare dashboard for this URL to resolve publicly
-  return `${process.env.R2_PUBLIC_URL}/${key}`;
+  return publicUrlForKey(key);
 };
 
+
 export const deleteFile = async (key) => {
-  await getR2().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
+  await getR2().send(
+    new DeleteObjectCommand({ Bucket: bucket(), Key: key }),
+    withTimeout()
+  );
+};
+
+/**
+ * Deletes many objects in as few round trips as possible, and REPORTS WHICH ONES
+ * DID NOT GO.
+ *
+ * Two traps in DeleteObjects, both of which turn a silent leak into the default
+ * behaviour if you write the obvious version:
+ *
+ *  - It caps at DELETE_BATCH_SIZE keys and rejects the entire request past that.
+ *    "Delete every post I have ever made" has no upper bound, so the chunking is
+ *    not defensive - it is the normal case for any long-lived account.
+ *
+ *  - IT RESOLVES WITH A 200 WHILE REPORTING PER-KEY FAILURES in response.Errors.
+ *    A try/catch around it therefore reports total failure as complete success.
+ *    This is the same shape as ioredis pipelines in apps/api's cache layer, whose
+ *    bumpVersions() inspects exec() results for exactly this reason.
+ *
+ * Returns the keys that failed rather than throwing, because the callers are
+ * best-effort cleanup paths: a failed reclaim must not turn a successful delete
+ * into a 500. Returning them lets the caller log precisely what leaked.
+ *
+ * @param {string[]} keys
+ * @returns {Promise<string[]>} the keys that were NOT deleted
+ */
+export const deleteFiles = async (keys) => {
+  const failed = [];
+
+  for (let index = 0; index < keys.length; index += DELETE_BATCH_SIZE) {
+    const chunk = keys.slice(index, index + DELETE_BATCH_SIZE);
+
+    try {
+      const response = await getR2().send(
+        new DeleteObjectsCommand({
+          Bucket: bucket(),
+          // Quiet mode still returns Errors, and omits the per-key success list
+          // we would otherwise receive and discard.
+          Delete: { Objects: chunk.map((Key) => ({ Key })), Quiet: true },
+        }),
+        withTimeout()
+      );
+
+      for (const error of response.Errors ?? []) {
+        failed.push(error.Key);
+      }
+    } catch (err) {
+      // The whole chunk is unaccounted for, not just part of it.
+      log.warn(`batch delete of ${chunk.length} objects failed: ${err.message}`);
+      failed.push(...chunk);
+    }
+  }
+
+  return failed;
 };
 
 export const getFile = async (key) => {
-  return getR2().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+  return getR2().send(
+    new GetObjectCommand({ Bucket: bucket(), Key: key }),
+    withTimeout()
+  );
 };
 
 /** Closes the shared client. Safe to call when it was never created. */

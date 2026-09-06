@@ -19,12 +19,10 @@ import {
 const BCRYPT_MAX_PASSWORD_BYTES = 72;
 
 const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
-const SAFE_URL_PROTOCOLS = new Set(["http:", "https:"]);
 
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_NAME_LENGTH = 50;
 const MAX_BIO_LENGTH = 500;
-const MAX_URL_LENGTH = 2048;
 const MAX_SEARCH_LENGTH = 100;
 
 // Re-exported so this module stays the one place the users resource is
@@ -71,32 +69,15 @@ export const passwordSchema = z
     `password must be at most ${BCRYPT_MAX_PASSWORD_BYTES} bytes`,
   );
 
-// z.url() accepts ANY scheme, including javascript: and data:. If the web app
-// ever renders this in an href rather than an img src, that is stored XSS - so
-// restrict it to http(s) here, at the only point where the value enters.
-//
-// The try/catch is not redundant: Zod runs every check on a value rather than
-// stopping at the first failure, so this refinement can still see a string that
-// z.url() already rejected, and a bare new URL() would throw.
-const avatarUrlSchema = z
-  .url("must be a valid URL")
-  .max(MAX_URL_LENGTH)
-  .refine((value) => {
-    try {
-      return SAFE_URL_PROTOCOLS.has(new URL(value).protocol);
-    } catch {
-      return false;
-    }
-  }, "avatarUrl must use http or https");
-
 /**
  * strictObject (not object) rejects unknown keys with a 400 instead of silently
  * stripping them. Loud beats quiet for an API contract: a client sending
  * {"passwordHash": "..."} or {"id": "..."} is told it is wrong rather than
  * being left to wonder why it had no effect.
  *
- * `lastActiveAt` is absent by design - it is server-owned, so a client must not
- * be able to fake "studying right now".
+ * `lastActiveAt` and `avatarUrl` are both absent by design, because both are
+ * server-owned: a client must not be able to fake "studying right now", nor to
+ * point its own profile picture at a URL the server did not create.
  */
 export const createUserSchema = z.strictObject({
   email: emailSchema,
@@ -107,7 +88,12 @@ export const createUserSchema = z.strictObject({
   // variant lives in auth.validation.js.
   firstName: nameSchema.optional(),
   lastName: nameSchema.optional(),
-  avatarUrl: avatarUrlSchema.optional(),
+  // avatarUrl is set ONLY by PUT /api/users/:id/photo and cleared only by DELETE
+  // on that route, so it is absent here and a client sending it gets a loud 400
+  // from strictObject rather than a silent no-op. It stopped being client input
+  // because a caller-chosen URL could name an object in OUR bucket that they did
+  // not own, which the remove path would then have deleted on their behalf - see
+  // parseOwnedKey in services/photoStorage.service.js.
   bio: z.string().trim().max(MAX_BIO_LENGTH).optional(),
 });
 

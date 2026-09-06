@@ -142,6 +142,9 @@ export const RATE_LIMIT_LIKE_WRITE = { max: 60, windowSec: 60 };
  * own Redis keyspace, so these budgets are independent of the comment, like and
  * post routers despite sharing the numbers.
  *
+ * Uploading an avatar is the exception that needed its own tier - see
+ * RATE_LIMIT_AVATAR_WRITE below.
+ *
  * The one placement worth stating is DELETE /api/users/:id on RATE_LIMIT_BULK
  * rather than RATE_LIMIT_WRITE. It is not a bulk operation by row count — it
  * deletes exactly one — but it is the most destructive and least reversible
@@ -149,3 +152,39 @@ export const RATE_LIMIT_LIKE_WRITE = { max: 60, windowSec: 60 };
  * that. A caller can only succeed once, and 5 attempts still leaves room to
  * retry after the 409 that a user with study sessions gets.
  */
+
+/**
+ * Avatar uploads. The only tier defined in terms of BYTES rather than rows.
+ *
+ * Tighter than RATE_LIMIT_WRITE because the two are not comparable costs.
+ * 20/min is tuned for a JSON PATCH of a few hundred bytes; the same budget on
+ * PUT /api/users/:id/photo would let one user push 100 MB a minute through the
+ * process memory of the API and into the bucket, where every object also costs
+ * money to store until something reclaims it.
+ *
+ * 10/min is still far above legitimate use - nobody picks a profile picture ten
+ * times a minute - which is the standard this file sets for every tier: a
+ * ceiling on abuse, not a quality-of-service budget.
+ *
+ * DELETE on that same route deliberately stays on RATE_LIMIT_WRITE. It carries
+ * no body and costs one row plus one object delete, so there is nothing here to
+ * bound.
+ */
+export const RATE_LIMIT_AVATAR_WRITE = { max: 10, windowSec: 60 };
+
+/**
+ * Creating a post - POST /api/posts, which now carries the photo itself.
+ *
+ * Replaces RATE_LIMIT_WRITE on that route. 20/min is tuned for a JSON body of a
+ * few hundred bytes; the same budget against a 5 MB multipart upload is 100 MB a
+ * minute of bandwidth, process memory and bucket writes from a single account.
+ *
+ * A separate tier from RATE_LIMIT_AVATAR_WRITE despite the identical numbers,
+ * per the rule this file states throughout - and here the surfaces really do
+ * differ in the one way that matters for storage. An avatar upload DELETES the
+ * previous object, so a user occupies about one object however often they change
+ * their picture. Posts accumulate by design: every one keeps its photo until the
+ * post itself is deleted. So the same number bounds a bounded thing in one case
+ * and an unbounded one in the other, and the two must be free to diverge.
+ */
+export const RATE_LIMIT_POST_PHOTO_WRITE = { max: 10, windowSec: 60 };

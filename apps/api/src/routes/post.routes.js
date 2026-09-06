@@ -14,7 +14,14 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { validate } from "../middleware/validate.js";
 import { rateLimit } from "../middleware/rateLimit.js";
 import { cache } from "../middleware/cache.js";
+import { uploadImage } from "../middleware/uploadImage.js";
 import { paginationQuerySchema } from "../validation/pagination.validation.js";
+import {
+  createPostSchema,
+  updatePostSchema,
+  postIdParamSchema,
+} from "../validation/post.validation.js";
+import { IMAGE_MIME_TYPES, MAX_POST_PHOTO_BYTES } from "../config/upload.js";
 import {
   postContentVersionKey,
   postAuthorVersionKey,
@@ -27,6 +34,7 @@ import {
   RATE_LIMIT_READ,
   RATE_LIMIT_WRITE,
   RATE_LIMIT_BULK,
+  RATE_LIMIT_POST_PHOTO_WRITE,
 } from "../config/cache.js";
 
 const router = Router();
@@ -49,6 +57,13 @@ router.use(requireAuth);
 const readLimit = rateLimit({ name: "post-read", ...RATE_LIMIT_READ });
 const writeLimit = rateLimit({ name: "post-write", ...RATE_LIMIT_WRITE });
 const bulkLimit = rateLimit({ name: "post-bulk", ...RATE_LIMIT_BULK });
+
+// A fourth bucket on its own tier. POST / is a small JSON body again now that
+// the bytes moved to POST /photo, so the tight tier belongs on the route that
+// actually carries megabytes - and, unlike an avatar upload, one that leaves an
+// object behind whether or not a post ever references it. See
+// RATE_LIMIT_POST_PHOTO_WRITE.
+const photoLimit = rateLimit({ name: "post-photo", ...RATE_LIMIT_POST_PHOTO_WRITE });
 
 /**
  * Cache configuration for the three cacheable reads.
@@ -130,10 +145,44 @@ router.delete("/user/me", bulkLimit, removeMine);
 // all would be the wrong reading of "except /all".
 router.get("/all", readLimit, validate({ query: paginationQuerySchema }), listAll);
 
-router.post("/", writeLimit, create);
+/**
+ * Create a post: ONE multipart request carrying the photo and the caption.
+ *
+ * uploadImage BEFORE validate, which inverts the rule this router follows
+ * everywhere else and is not a style choice: multer is what populates req.body
+ * from the form fields, so there is nothing for validate() to read until it has
+ * run. See the ordering note in middleware/uploadImage.js.
+ *
+ * The limiter still runs first, per the rule users.routes.js documents - do not
+ * buffer megabytes into process memory for a request already over budget. There
+ * is no ownership gate to run in between: the object lands under the caller's own
+ * id, and whether they may link the given session or routine is a question only
+ * post.service.js can answer.
+ *
+ * photoLimit rather than writeLimit because this route carries up to 5 MB - see
+ * RATE_LIMIT_POST_PHOTO_WRITE.
+ */
+router.post(
+  "/",
+  photoLimit,
+  uploadImage({ field: "photo", types: IMAGE_MIME_TYPES, limit: MAX_POST_PHOTO_BYTES }),
+  validate({ body: createPostSchema }),
+  create,
+);
+
 router.get("/", readLimit, cacheMyList, listMine);
-router.get("/:id", readLimit, cacheOne, getOne);
-router.patch("/:id", writeLimit, update);
-router.delete("/:id", writeLimit, remove);
+// validate() sits before cache() on the read, which is new to this router and
+// matches what users.routes.js does: a bad id gets the 400 that says so instead
+// of composing a cache key out of junk.
+router.get("/:id", readLimit, validate({ params: postIdParamSchema }), cacheOne, getOne);
+
+router.patch(
+  "/:id",
+  writeLimit,
+  validate({ params: postIdParamSchema, body: updatePostSchema }),
+  update,
+);
+
+router.delete("/:id", writeLimit, validate({ params: postIdParamSchema }), remove);
 
 export default router;
