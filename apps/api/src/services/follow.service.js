@@ -3,6 +3,12 @@ import * as followRepo from "../repositories/follow.repository.js";
 // It throws its own 404, which is exactly the existence check every read below
 // needs, so nothing here re-implements one.
 import { getUserById } from "./user.service.js";
+// The REPOSITORY, never block.service.js. That module imports this one — it calls
+// unfollowUser and removeFollower to sever both edges when a block is created —
+// so a service-level import here would close the loop into a cycle. Reaching for
+// the repository keeps the dependency one-way, and costs nothing: the only thing
+// needed below is one indexed lookup with no policy attached.
+import { findBlockBetween } from "../repositories/block.repository.js";
 // The shared duck-typing helper. toHttpError from the same module is
 // deliberately NOT reused, for the reasons spelled out in like.service.js: its
 // P2002 message would read "That value is already in use" for a repeat follow,
@@ -34,9 +40,13 @@ import { bumpVersions, followUserVersionKey } from "../utils/cache.js";
  *   - Self-following is REJECTED, which is where this diverges from likes. A
  *     self-like is harmless noise; a self-follow corrupts every count the app
  *     renders and would sit in your own "following" list forever.
- *   - There is no block, no mute, and no private account. Removing a follower
- *     does not stop them following again a second later. That is a product gap,
- *     not something this module can close.
+ *   - Removing a follower does not, on its own, stop them following again a
+ *     second later. Blocking is what closes that: followUser below refuses an
+ *     edge in either direction when a block exists, and block.service.js severs
+ *     both edges when one is created. There is still no mute and no private
+ *     account.
+ *   - Blocking does not yet hide posts, comments or likes from a blocked user.
+ *     That filtering is scoped separately; see the TODO in block.service.js.
  *
  * No function here may take a target userId from the path or body for the
  * SCOPING half of a write.
@@ -117,6 +127,39 @@ export const followUser = async ({ followerId, followingId }) => {
   // the error middleware translates — the client would get a 500 for what is
   // plainly a bad request.
   await getUserById(followingId);
+
+  /**
+   * A block in EITHER direction refuses the edge. Without this half, blocking is
+   * inert: the blocked user simply follows again a second later, which is the
+   * product gap the note at the top of this module used to record.
+   *
+   * Both directions, not just "they blocked me". If I blocked someone, following
+   * them is incoherent — I asked not to see them — and allowing it would let a
+   * client resurrect a relationship the block had just severed.
+   *
+   * THE TWO ANSWERS ARE DIFFERENT ON PURPOSE, and this is the one place in the
+   * API where the status code depends on which side of a row the caller is:
+   *
+   *   - The caller is the BLOCKER. They already know they blocked this person, so
+   *     there is nothing to protect and a plain message is simply more useful.
+   *
+   *   - The caller is the BLOCKED party. They must be told nothing that
+   *     distinguishes this from an unknown id, so this is byte-identical to the
+   *     404 getUserById raises above — same status, same message. A distinct code
+   *     or message here would be a "you have been blocked" notification by
+   *     another name, which is precisely the alt-account signal block.service.js
+   *     exists to withhold.
+   *
+   * After getUserById rather than before it, so a bad id is still a 404 about the
+   * id rather than a 404 that quietly means something else.
+   */
+  const block = await findBlockBetween(followerId, followingId);
+  if (block) {
+    if (block.blockerId === followerId) {
+      throw badRequest("You cannot follow someone you have blocked");
+    }
+    throw notFound("User");
+  }
 
   const existing = await followRepo.findFollow(followerId, followingId);
   // Nothing changed, so nothing to invalidate — the cheap path stays cheap.

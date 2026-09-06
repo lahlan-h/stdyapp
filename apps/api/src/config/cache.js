@@ -72,6 +72,24 @@ export const CACHE_TTL_FOLLOW_SUMMARY_SEC = 15;
 export const CACHE_TTL_FOLLOW_LIST_SEC = 60;
 
 /**
+ * Blocks.
+ *
+ * Separate constants again, per the rule this file states throughout. These are
+ * also the only PRIVATE cached payloads in the API besides a single post, which
+ * is why both sit at the short end: a stale entry here is a caller looking at
+ * their own out-of-date list, and the queries behind both are single indexed
+ * lookups — cheap to get wrong, cheap to redo.
+ */
+
+// The caller's own block list. Matches every other profile-tab TTL in this file.
+export const CACHE_TTL_BLOCK_LIST_SEC = 60;
+
+// blockedByMe for one target. Matches the like and follow summaries, and for the
+// same reason: a Block menu item that still says "Block" after you tap it is the
+// most visible staleness this feature can produce.
+export const CACHE_TTL_BLOCK_STATUS_SEC = 15;
+
+/**
  * Posts.
  *
  * Separate constants again, for the reason the like block gives: these describe
@@ -159,6 +177,23 @@ export const RATE_LIMIT_LIKE_WRITE = { max: 60, windowSec: 60 };
  * a user directory, which is the abuse this actually bounds.
  */
 export const RATE_LIMIT_FOLLOW_WRITE = { max: 30, windowSec: 60 };
+
+/**
+ * Blocks reuse all three base tiers unchanged and add none of their own — the
+ * call the post and user blocks make rather than the one follows made.
+ *
+ * RATE_LIMIT_FOLLOW_WRITE exists because an onboarding "follow these people to
+ * get started" screen is legitimately a burst. Nothing bulk-blocks: a block is
+ * the most deliberate action in the app, made once per person, after a decision
+ * about that person. 20/min is exactly the tier RATE_LIMIT_WRITE was written for,
+ * and rateLimit()'s `name` already gives this router its own Redis keyspace, so
+ * the budget is independent of every other router despite sharing the number.
+ *
+ * DELETE /api/blocks/mine sits on RATE_LIMIT_BULK for the reason every bulk
+ * delete does: there is no legitimate reason to unblock everyone five times in an
+ * hour, and it is irreversible in a way the follow equivalent is not — the follow
+ * edges those blocks severed do not come back.
+ */
 
 /**
  * Posts reuse all three base tiers unchanged, and add none of their own.
