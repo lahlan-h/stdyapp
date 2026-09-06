@@ -54,6 +54,24 @@ export const CACHE_TTL_LIKED_BY_SEC = 60;
 export const CACHE_TTL_LIKE_USER_LIST_SEC = 60;
 
 /**
+ * Follows.
+ *
+ * Separate constants again, for the reason the like block gives: they describe a
+ * different surface, and tuning the heart should not silently retune a Follow
+ * button.
+ */
+
+// The counts + followedByMe/followsMe bundle. Matches the like summary, and for
+// the same reason: a Follow button that still says "Follow" after you tap it is
+// the most visible staleness this feature can produce, and the query behind it
+// is four indexed lookups — cheap to get wrong, cheap to redo.
+export const CACHE_TTL_FOLLOW_SUMMARY_SEC = 15;
+
+// The follower and following lists, which share one TTL because they are the
+// same surface pointed two ways. Matches every other profile tab in this file.
+export const CACHE_TTL_FOLLOW_LIST_SEC = 60;
+
+/**
  * Posts.
  *
  * Separate constants again, for the reason the like block gives: these describe
@@ -124,6 +142,23 @@ export const RATE_LIMIT_BULK = { max: 5, windowSec: 3600 };
  * below a script.
  */
 export const RATE_LIMIT_LIKE_WRITE = { max: 60, windowSec: 60 };
+
+/**
+ * Follows reuse RATE_LIMIT_READ and RATE_LIMIT_BULK as they stand, and add one
+ * tier of their own — landing deliberately BETWEEN the two write tiers above.
+ *
+ * 20/min (RATE_LIMIT_WRITE) is tuned for a human typing a comment, and an
+ * onboarding "follow these people to get started" screen legitimately exceeds
+ * it: the whole point of that flow is a burst.
+ *
+ * 60/min (RATE_LIMIT_LIKE_WRITE) is tuned for a reflexively tapped heart fired
+ * on every scroll, which a follow is not — it is a deliberate choice about
+ * someone's feed, made once per person.
+ *
+ * 30/min clears the burst and stays an order of magnitude below a script walking
+ * a user directory, which is the abuse this actually bounds.
+ */
+export const RATE_LIMIT_FOLLOW_WRITE = { max: 30, windowSec: 60 };
 
 /**
  * Posts reuse all three base tiers unchanged, and add none of their own.
