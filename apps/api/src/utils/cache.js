@@ -51,6 +51,14 @@ const POST_EPOCH = "p1";
 const USER_EPOCH = "u1";
 
 /**
+ * And a fifth time for follows. The follower and following payloads embed a
+ * {id, username, avatarUrl} row per counterparty, and changing that shape must
+ * orphan every cached follow list without touching a comment, like, post or
+ * profile.
+ */
+const FOLLOW_EPOCH = "f1";
+
+/**
  * Version counters outlive the payloads beneath them by a wide margin, and that
  * gap is deliberate.
  *
@@ -250,6 +258,56 @@ export const likedByKey = (postId, version) =>
 /** @param {string} userId @param {number} version */
 export const likeUserListKey = (userId, version) =>
   `${LIKE_EPOCH}:like:byuser:${userId}:u${version}`;
+
+/**
+ * Follow key builders.
+ *
+ * ONE COUNTER PER USER, where likes and comments each need two. That is not an
+ * omission — it falls out of the shape of the entity, and it is worth stating so
+ * nobody "fixes" it by adding a second.
+ *
+ * A follow edge has a user at BOTH ends, so every event that can change any
+ * follow-shaped answer about user U — someone follows U, U follows someone,
+ * either direction is undone — touches a row with U on one end. Bumping
+ * v:follow:user:<U> therefore invalidates U's follower list, U's following list
+ * and U's summary together, which is exactly right: all three did change.
+ *
+ * Contrast likes, where a post and a user are different kinds of thing and a
+ * like on someone else's post must not invalidate the liker's whole profile tab.
+ *
+ * THE COHERENCE HOLE IS CLOSED the same way it is for likes. These payloads
+ * embed each counterparty's username and avatarUrl, so a renamed user is stale
+ * in the follow lists of everyone they touch — collectUserVersionKeys in
+ * user.service.js bumps this counter for every counterpart on a profile change,
+ * via findFollowCounterpartIdsByUser.
+ */
+
+/** @param {string} userId */
+export const followUserVersionKey = (userId) =>
+  `${VERSION_PREFIX}follow:user:${userId}`;
+
+// Includes the viewer: the summary carries followedByMe and followsMe, which
+// both differ per caller. It needs no viewer VERSION, though — either flag can
+// only change via an edge between the viewer and this user, and such an edge has
+// this user on one end, so it bumps this user's counter already. Same reasoning
+// as likeSummaryKey.
+/** @param {string} userId @param {string} viewerId @param {number} version */
+export const followSummaryKey = (userId, viewerId, version) =>
+  `${FOLLOW_EPOCH}:follow:count:${userId}:${viewerId}:v${version}`;
+
+/** @param {string} userId @param {number} version */
+export const followersKey = (userId, version) =>
+  `${FOLLOW_EPOCH}:follow:followers:${userId}:v${version}`;
+
+// Shared by GET / (listMine) and GET /user/:userId/following, exactly as
+// likeUserListKey is for likes. Both resolve to findFollowingByUser(id) and
+// return byte-identical data — listMyFollowing merely skips the existence
+// check — so separate keys would cache the same array twice and halve the hit
+// rate. If those two response shapes ever diverge, they must stop sharing this
+// key.
+/** @param {string} userId @param {number} version */
+export const followingKey = (userId, version) =>
+  `${FOLLOW_EPOCH}:follow:following:${userId}:v${version}`;
 
 /**
  * Post key builders.

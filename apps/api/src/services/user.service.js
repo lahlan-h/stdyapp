@@ -8,6 +8,7 @@ import { toHttpError } from "../utils/prismaError.js";
 // ownership gates along, and this is a cache concern rather than an access one.
 import { findCommentTargetsByUser } from "../repositories/comment.repository.js";
 import { findLikeTargetsByUser } from "../repositories/like.repository.js";
+import { findFollowCounterpartIdsByUser } from "../repositories/follow.repository.js";
 import {
   bumpVersions,
   userProfileVersionKey,
@@ -15,6 +16,7 @@ import {
   likeUserVersionKey,
   postVersionKey,
   likePostVersionKey,
+  followUserVersionKey,
 } from "../utils/cache.js";
 
 /**
@@ -113,6 +115,10 @@ const buildUserData = async (input) => {
  *    every thread they appear in, not just in their own comment list.
  *  - likePostVersionKey per post they have LIKED, for the same reason: the
  *    liked-by list carries the liker's username and avatarUrl.
+ *  - followUserVersionKey per person they FOLLOW OR ARE FOLLOWED BY. The same
+ *    reason a third time, and the widest of the three: this user appears in the
+ *    following list of each of their followers AND in the follower list of
+ *    everyone they follow, so a rename is stale on both sides of every edge.
  *
  * No post scope. Post payloads are bare Post rows with no embedded user fields
  * (see the postKey block in utils/cache.js), so nothing there can go stale.
@@ -125,19 +131,25 @@ const buildUserData = async (input) => {
  * @returns {Promise<string[]>} version keys, for bumpVersions
  */
 const collectUserVersionKeys = async (userId) => {
-  const [comments, likes] = await Promise.all([
+  const [comments, likes, followCounterparts] = await Promise.all([
     findCommentTargetsByUser(userId),
     findLikeTargetsByUser(userId),
+    findFollowCounterpartIdsByUser(userId),
   ]);
 
   return [
-    // The user's own scopes: their profile, their comment list, their like list.
+    // The user's own scopes: their profile, their comment list, their like list,
+    // and their follower/following lists — which share one counter, because a
+    // follow edge has a user at both ends. See the follow block in utils/cache.js.
     userProfileVersionKey(userId),
     userVersionKey(userId),
     likeUserVersionKey(userId),
-    // Everywhere else they appear.
+    followUserVersionKey(userId),
+    // Everywhere else they appear. bumpVersions de-duplicates via a Set, so the
+    // repeats a mutual follow produces here cost nothing.
     ...comments.map(({ postId }) => postVersionKey(postId)),
     ...likes.map(({ postId }) => likePostVersionKey(postId)),
+    ...followCounterparts.map((id) => followUserVersionKey(id)),
   ];
 };
 

@@ -42,6 +42,12 @@ model User {
   likes         Like[]
   comments      Comment[]
 
+  // Both sides of the follow graph. The relation names are written from the
+  // ROW's point of view, so they read as the inverse of the field they land on:
+  // the rows where this user is the follower ARE this user's following list.
+  following     Follow[]           @relation("Following")
+  followers     Follow[]           @relation("Followers")
+
   @@map("users")
 }
 
@@ -278,8 +284,6 @@ model Like {
   @@map("likes")
 }
 
-// TODO: remaining entities from the ERD — the rest of the social feed
-// (follows, comments), gamification/streaks, discover, analytics, and
 /// A message left by one user on a post — the third piece of the social feed.
 ///
 /// The commenter's display name and picture are deliberately NOT stored here.
@@ -327,6 +331,43 @@ model Comment {
   @@map("comments")
 }
 
-// TODO: remaining entities from the ERD — the rest of the social feed (follows),
-// gamification/streaks, discover, analytics, and stretch-goal entities
-// (wearable data, Discord sync).
+/// One directed edge of the follow graph — the last piece of the social feed.
+///
+/// Directed, not mutual: A following B says nothing about B following A, so the
+/// pair is ordered and the two columns are never interchangeable. Everything
+/// here is that ordering — read left-to-right, a row says "follower follows
+/// following".
+///
+/// Carries no createdAt, for Like's reason: a follow renders from a count and a
+/// "do I follow this person", and the row's mere existence answers both.
+model Follow {
+  id          String @id @default(uuid())
+
+  // The person doing the following. Cascade, like likes.userId and unlike
+  // posts.userId: a follow is one bit of metadata that means nothing once the
+  // person who left it is gone, not authored content worth blocking a delete over.
+  followerId  String
+  follower    User   @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+
+  // The person being followed. Cascade for the same reason, and load-bearing:
+  // Restrict here would make deleting a user fail with a foreign-key error for
+  // anyone who had ever been followed — the trap likes.postId's comment describes.
+  followingId String
+  following   User   @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  // One edge per ordered pair. As with Like, this is the entire integrity model
+  // of the entity: it makes following safely retryable from a double-tapped
+  // button, and it is the index that answers "do I follow this person" on every
+  // profile render.
+  @@unique([followerId, followingId])
+
+  // The unique above leads with followerId and therefore CANNOT serve a lookup
+  // by followingId alone — which the follower count and the followers list both
+  // do. Same reasoning as the standalone index on likes.postId.
+  @@index([followingId])
+
+  @@map("follows")
+}
+
+// TODO: remaining entities from the ERD — gamification/streaks, discover,
+// analytics, and stretch-goal entities (wearable data, Discord sync).
