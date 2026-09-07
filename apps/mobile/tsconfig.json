@@ -1,4 +1,10 @@
 {
-  "compilerOptions": {},
+  "compilerOptions": {
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@hooks/*": ["hooks/*"]
+    }
+  },
   "extends": "expo/tsconfig.base"
 }
