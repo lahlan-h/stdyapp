@@ -59,6 +59,17 @@ const USER_EPOCH = "u1";
 const FOLLOW_EPOCH = "f1";
 
 /**
+ * And three more, one each for the routers that predate this cache. Same
+ * reasoning an eighth, ninth and tenth time - a session payload embeds its
+ * interruptions, a group payload embeds a membership COUNT and a routine
+ * payload embeds its todo items, so each of those shapes must be free to change
+ * and orphan only its own keys.
+ */
+const SESSION_EPOCH = "se1";
+const GROUP_EPOCH = "g1";
+const ROUTINE_EPOCH = "r1";
+
+/**
  * Version counters outlive the payloads beneath them by a wide margin, and that
  * gap is deliberate.
  *
@@ -372,6 +383,167 @@ export const postUserListKey = (userId, version) =>
 /** @param {string} userId @param {number} version */
 export const userKey = (userId, version) =>
   `${USER_EPOCH}:user:one:${userId}:u${version}`;
+
+/**
+ * Session version counters.
+ *
+ * Two scopes, matching the postContentVersionKey / postAuthorVersionKey pair:
+ * one for a single session's own content, one for the owner's list of them.
+ * Both carry a literal segment that can never be a uuid, so neither can alias
+ * the other or anything above.
+ *
+ * @param {string} sessionId
+ */
+export const sessionContentVersionKey = (sessionId) =>
+  `${VERSION_PREFIX}session:self:${sessionId}`;
+
+/** @param {string} userId */
+export const sessionOwnerVersionKey = (userId) =>
+  `${VERSION_PREFIX}session:owner:${userId}`;
+
+/**
+ * Session key builders.
+ *
+ * ⚠ THE VIEWER IS IN sessionKey, for postKey's reason exactly - read the
+ * warning above it before touching this. GET /api/sessions/:id routes through
+ * getOwnedSessionOrThrow and 403s for anyone but the owner, and cache() runs
+ * BEFORE the controller, so a viewer-less key would replay the owner's 200 to
+ * the next caller and never reach the ownership check. As there, the hit rate
+ * costs nothing: only one person can ever get a 200 from that route.
+ *
+ * The payload is a Session row WITH its interruptions included (see
+ * findSessionById), so logInterruption has to bump the content counter even
+ * though it writes to a different table. session.service.js does.
+ *
+ * @param {string} sessionId @param {string} viewerId @param {number} version
+ */
+export const sessionKey = (sessionId, viewerId, version) =>
+  `${SESSION_EPOCH}:session:one:${sessionId}:${viewerId}:v${version}`;
+
+/**
+ * GET /api/sessions - the caller's own history, and the ONLY route serving it.
+ *
+ * Unlike postUserListKey this is not shared with a by-user route, because there
+ * is no GET /api/sessions/user/:userId: study history is private in this API.
+ * If one is ever added, it must NOT share this key unless it returns the
+ * identical shape - findSessionsByUser omits interruptions, findSessionById
+ * includes them.
+ *
+ * @param {string} userId @param {number} version
+ */
+export const sessionUserListKey = (userId, version) =>
+  `${SESSION_EPOCH}:session:byuser:${userId}:u${version}`;
+
+/**
+ * Group version counters.
+ *
+ * Two scopes again, but split differently from sessions and posts: both are
+ * per-GROUP rather than one per-entity and one per-owner, because a group is
+ * read by its members rather than listed by its owner.
+ *
+ *   self    - name, description, privacy, ownerId
+ *   members - the membership rows
+ *
+ * The split earns its keep on setMemberRole, which changes a role without
+ * changing the group or the member COUNT, and so bumps `members` alone.
+ *
+ * @param {string} groupId
+ */
+export const groupContentVersionKey = (groupId) =>
+  `${VERSION_PREFIX}group:self:${groupId}`;
+
+/** @param {string} groupId */
+export const groupMemberVersionKey = (groupId) =>
+  `${VERSION_PREFIX}group:members:${groupId}`;
+
+/**
+ * Group key builders.
+ *
+ * ⚠ THE VIEWER IS IN groupKey, and for a DIFFERENT reason from postKey and
+ * sessionKey - so it is not enough to have read those.
+ *
+ * GET /api/groups/:id is open to any authenticated caller and 403s for nobody.
+ * What makes it per-viewer is sanitizeGroup in studyGroup.service.js, which
+ * strips joinCode unless the requester is the owner: the route returns TWO
+ * different bodies depending on who asks. A viewer-less key would cache
+ * whichever one happened to be computed first, and if that was the owner's, the
+ * private group's join code would be served to every non-member who asked next.
+ *
+ * Unlike postKey the hit rate DOES cost something here - one entry per reader
+ * rather than one entry - and it is worth paying. The alternative is moving
+ * sanitisation after the cache, which means caching the unsanitised row, which
+ * means a secret sitting in Redis under a key any request can compose.
+ *
+ * STAMPED WITH BOTH COUNTERS. The payload includes _count.memberships (see
+ * findGroupById), so a join or a leave changes this body without touching the
+ * group row - the member counter is what covers that.
+ *
+ * @param {string} groupId @param {string} viewerId
+ * @param {number} contentVersion @param {number} memberVersion
+ */
+export const groupKey = (groupId, viewerId, contentVersion, memberVersion) =>
+  `${GROUP_EPOCH}:group:one:${groupId}:${viewerId}:c${contentVersion}:m${memberVersion}`;
+
+/**
+ * GET /api/groups/:id/members.
+ *
+ * NO viewer, and that is the right call rather than an oversight - the rule is
+ * the one userKey states: key by viewer exactly when the answer depends on who
+ * is asking. listMembers takes no requester argument, applies no sanitisation
+ * and returns the same {id, username, avatarUrl} rows to every caller.
+ *
+ * Note it is open to non-members. That is existing behaviour, not something
+ * this cache introduces; if it is ever gated, the viewer goes into this key in
+ * the same commit.
+ *
+ * @param {string} groupId @param {number} version
+ */
+export const groupMembersKey = (groupId, version) =>
+  `${GROUP_EPOCH}:group:members:${groupId}:m${version}`;
+
+/**
+ * Routine version counters. The session pair exactly - one per routine, one per
+ * owner.
+ *
+ * @param {string} routineId
+ */
+export const routineContentVersionKey = (routineId) =>
+  `${VERSION_PREFIX}routine:self:${routineId}`;
+
+/** @param {string} userId */
+export const routineOwnerVersionKey = (userId) =>
+  `${VERSION_PREFIX}routine:owner:${userId}`;
+
+/**
+ * Routine key builders.
+ *
+ * ⚠ THE VIEWER IS IN routineKey, for sessionKey's reason: getRoutine routes
+ * through getOwnedRoutineOrThrow and 403s for anyone but the owner.
+ *
+ * Worth knowing that POST /api/routines/:id/clone is deliberately NOT
+ * ownership-gated - taking someone else's routine is the feature - but it is a
+ * write and never served from this cache, so the two facts do not conflict.
+ *
+ * The payload includes todoItems (findRoutineById), so every todo write bumps
+ * the content counter even though it targets a different table.
+ *
+ * @param {string} routineId @param {string} viewerId @param {number} version
+ */
+export const routineKey = (routineId, viewerId, version) =>
+  `${ROUTINE_EPOCH}:routine:one:${routineId}:${viewerId}:v${version}`;
+
+/**
+ * GET /api/routines - the caller's own routines.
+ *
+ * Not shared with any by-user route, exactly as sessionUserListKey is not, and
+ * with the same warning: findRoutinesByUser returns _count.todoItems while
+ * findRoutineById returns the items themselves, so a future by-user route may
+ * only share this key if it returns the identical shape.
+ *
+ * @param {string} userId @param {number} version
+ */
+export const routineUserListKey = (userId, version) =>
+  `${ROUTINE_EPOCH}:routine:byuser:${userId}:u${version}`;
 
 /**
  * Reads version counters, in the order asked for.
