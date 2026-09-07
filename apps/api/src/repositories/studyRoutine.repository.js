@@ -58,3 +58,26 @@ export const updateTodoItem = (id, data) => {
 export const deleteTodoItem = (id) => {
   return prisma.todoItem.delete({ where: { id } });
 };
+
+/**
+ * Which routines were cloned from this one, and who owns them?
+ *
+ * Asked by studyRoutine.service.js immediately BEFORE deleting a routine, for
+ * the reason findSessionRefsByGroup gives in session.repository.js: clones take
+ * ON DELETE SET NULL on sourceRoutineId, so deleting the original rewrites
+ * every clone without passing through the owning user's code path at all.
+ *
+ * This is the one invalidation in the file that reaches OTHER USERS' cached
+ * data - cloning is deliberately not ownership-gated, so the clones of a
+ * routine generally belong to other people. Which is exactly why userId is
+ * selected: their list counters are the ones that need bumping.
+ *
+ * @param {string} sourceRoutineId
+ * @returns {Promise<Array<{ id: string, userId: string }>>}
+ */
+export const findRoutineRefsBySource = (sourceRoutineId) => {
+  return prisma.studyRoutine.findMany({
+    where: { sourceRoutineId },
+    select: { id: true, userId: true },
+  });
+};

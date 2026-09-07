@@ -1,4 +1,14 @@
 import * as groupRepo from "../repositories/studyGroup.repository.js";
+// Deleting a group nulls sessions.groupId via ON DELETE SET NULL — a write to
+// sessions that never passes through session.service.js, so its cache has to be
+// told. The same shape post.service.js/session.service.js already use for posts.
+import { findSessionRefsByGroup } from "../repositories/session.repository.js";
+import { invalidateDetachedSessions } from "./session.service.js";
+import {
+  bumpVersions,
+  groupContentVersionKey,
+  groupMemberVersionKey,
+} from "../utils/cache.js";
 
 const notFound = () => {
   const err = new Error("Group not found");
@@ -27,6 +37,34 @@ const sanitizeGroup = (group, requesterId) => {
   return safe;
 };
 
+/**
+ * Invalidates this module's cached reads.
+ *
+ * Two scopes rather than the entity/owner split posts and sessions use, because
+ * a group is read by its members rather than listed by its owner:
+ *
+ *   content - GET /:id, the group row itself
+ *   members - GET /:id/members, AND GET /:id again, because findGroupById
+ *             includes _count.memberships
+ *
+ * That second clause is the easy one to get wrong: a join changes the group
+ * payload without touching the study_groups row at all, so every membership
+ * write has to bump `members` and groupKey has to be stamped with it. It is.
+ *
+ * Nothing here can fail a write — bumpVersions swallows its own Redis errors.
+ * Awaited rather than fired and forgotten, so a client reading straight back
+ * after writing cannot observe the version it just invalidated.
+ *
+ * @param {{ groupId: string, content?: boolean, members?: boolean }} scope
+ */
+const invalidateGroup = async ({ groupId, content = false, members = false }) => {
+  const keys = [];
+  if (content) keys.push(groupContentVersionKey(groupId));
+  if (members) keys.push(groupMemberVersionKey(groupId));
+
+  await bumpVersions(keys);
+};
+
 export const createGroup = async ({ ownerId, name, description, isPrivate }) => {
   const joinCode = isPrivate
     ? Math.random().toString(36).slice(2, 8).toUpperCase()
@@ -45,6 +83,11 @@ export const createGroup = async ({ ownerId, name, description, isPrivate }) => 
   // already be a member) would have no way to happen in reverse either
   await groupRepo.createMembership(ownerId, group.id);
 
+  // No invalidation, and that is not an omission. Both counters for this group
+  // are brand new and read as 0, and nothing can hold a cached payload under a
+  // group id that did not exist a moment ago. Bumping here would orphan
+  // nothing. Contrast startSession, which DOES bump: a new session lands in a
+  // cached LIST, whereas GET /api/groups (search) is deliberately uncached.
   return group;
 };
 
@@ -85,14 +128,35 @@ export const updateGroup = async (groupId, requesterId, data) => {
     ? { name, description, isPrivate, joinCode }
     : { name, description };
 
-  return groupRepo.updateGroup(groupId, updateData);
+  const updated = await groupRepo.updateGroup(groupId, updateData);
+
+  // AFTER the write resolves — bumping first lets a reader observe the new
+  // version, query the not-yet-committed row and cache the OLD body under the
+  // NEW key. CONTENT only: no membership row is touched here.
+  await invalidateGroup({ groupId, content: true });
+
+  return updated;
 };
 
 export const deleteGroup = async (groupId, requesterId) => {
   const group = await groupRepo.findGroupById(groupId);
   if (!group) throw notFound();
   if (group.ownerId !== requesterId) throw forbidden("Only the group owner can delete it");
-  return groupRepo.deleteGroup(groupId);
+
+  // Read BEFORE the delete: afterwards groupId is already NULL on every one of
+  // these rows and there is no way left to find which sessions were detached.
+  // Identical in shape to deleteSession's findPostRefsBySession call.
+  const detached = await findSessionRefsByGroup(groupId);
+
+  const result = await groupRepo.deleteGroup(groupId);
+
+  // BOTH scopes: the group is gone, and its memberships went with it via
+  // ON DELETE CASCADE. Then the sessions this just detached, which live in
+  // another module's cache and can only be invalidated from there.
+  await invalidateGroup({ groupId, content: true, members: true });
+  await invalidateDetachedSessions(detached);
+
+  return result;
 };
 
 export const transferOwnership = async (groupId, requesterId, newOwnerId) => {
@@ -113,7 +177,15 @@ export const transferOwnership = async (groupId, requesterId, newOwnerId) => {
 
   // the old owner keeps their membership row (they don't get kicked out,
   // they just become a regular member) — no extra cleanup needed here
-  return groupRepo.transferOwnership(groupId, newOwnerId);
+  const updated = await groupRepo.transferOwnership(groupId, newOwnerId);
+
+  // CONTENT only — no membership row changes, so the member list and the count
+  // are both untouched. Load-bearing rather than cosmetic: ownerId is what
+  // sanitizeGroup tests, so a stale content payload would keep showing the
+  // joinCode to the PREVIOUS owner and keep hiding it from the new one.
+  await invalidateGroup({ groupId, content: true });
+
+  return updated;
 };
 
 export const joinGroup = async (groupId, userId, providedCode) => {
@@ -127,7 +199,15 @@ export const joinGroup = async (groupId, userId, providedCode) => {
   const existing = await groupRepo.findMembership(userId, groupId);
   if (existing) throw conflict("Already a member of this group");
 
-  return groupRepo.createMembership(userId, groupId);
+  const membership = await groupRepo.createMembership(userId, groupId);
+
+  // MEMBERS only. That single bump covers the member list AND the group
+  // payload, because groupKey is stamped with this counter too — see the note
+  // above invalidateGroup. The group row itself did not change, so bumping
+  // content as well would throw away a good cache entry for nothing.
+  await invalidateGroup({ groupId, members: true });
+
+  return membership;
 };
 
 export const leaveGroup = async (groupId, userId) => {
@@ -143,7 +223,11 @@ export const leaveGroup = async (groupId, userId) => {
   const existing = await groupRepo.findMembership(userId, groupId);
   if (!existing) throw notFound();
 
-  return groupRepo.deleteMembership(userId, groupId);
+  const result = await groupRepo.deleteMembership(userId, groupId);
+
+  await invalidateGroup({ groupId, members: true });
+
+  return result;
 };
 
 export const listMembers = async (groupId) => {
@@ -177,7 +261,11 @@ export const kickMember = async (groupId, requesterId, targetUserId) => {
     throw forbidden("Only the owner can remove an admin");
   }
 
-  return groupRepo.deleteMembership(targetUserId, groupId);
+  const result = await groupRepo.deleteMembership(targetUserId, groupId);
+
+  await invalidateGroup({ groupId, members: true });
+
+  return result;
 };
 
 // promoting/demoting admins is owner-only — prevents admins from granting
@@ -203,5 +291,12 @@ export const setMemberRole = async (groupId, requesterId, targetUserId, role) =>
   const membership = await groupRepo.findMembership(targetUserId, groupId);
   if (!membership) throw notFound();
 
-  return groupRepo.setMembershipRole(targetUserId, groupId, role);
+  const updated = await groupRepo.setMembershipRole(targetUserId, groupId, role);
+
+  // MEMBERS only, and this is the write that justifies the two-counter split.
+  // A role change alters neither the group row nor the membership COUNT, so the
+  // group payload is still perfectly valid — only the member list has moved.
+  await invalidateGroup({ groupId, members: true });
+
+  return updated;
 };

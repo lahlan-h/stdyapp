@@ -4,6 +4,11 @@ import * as routineRepo from "../repositories/studyRoutine.repository.js";
 // See deleteSession for the identical case.
 import { findPostRefsByRoutine } from "../repositories/post.repository.js";
 import { invalidateDetachedPosts } from "./post.service.js";
+import {
+  bumpVersions,
+  routineContentVersionKey,
+  routineOwnerVersionKey,
+} from "../utils/cache.js";
 
 const notFound = () => {
   const err = new Error("Routine not found");
@@ -32,8 +37,36 @@ const getOwnedRoutineOrThrow = async (routineId, requesterId) => {
   return routine;
 };
 
+/**
+ * Invalidates this module's cached reads.
+ *
+ * The session/post shape: one counter per routine, one per owner. Nothing here
+ * can fail a write — bumpVersions swallows its own Redis errors — and it is
+ * awaited rather than fired and forgotten, so a client reading straight back
+ * after writing cannot observe the version it just invalidated.
+ *
+ * @param {{ routineIds?: string[], ownerIds?: string[] }} scope
+ */
+const invalidateRoutine = async ({ routineIds = [], ownerIds = [] }) => {
+  await bumpVersions([
+    ...routineIds.map(routineContentVersionKey),
+    ...ownerIds.map(routineOwnerVersionKey),
+  ]);
+};
+
 export const createRoutine = async ({ userId, title }) => {
-  return routineRepo.createRoutine({ userId, title, sourceRoutineId: null });
+  const routine = await routineRepo.createRoutine({
+    userId,
+    title,
+    sourceRoutineId: null,
+  });
+
+  // OWNER scope only, for startSession's reason: a brand new routine has no
+  // cached single-routine payload to orphan, but it belongs in the caller's
+  // list, which someone may well have cached a moment ago.
+  await invalidateRoutine({ ownerIds: [userId] });
+
+  return routine;
 };
 
 export const getRoutine = async (routineId, requesterId) => {
@@ -46,18 +79,44 @@ export const listMyRoutines = async (userId) => {
 
 export const updateRoutine = async (routineId, requesterId, { title }) => {
   await getOwnedRoutineOrThrow(routineId, requesterId);
-  return routineRepo.updateRoutine(routineId, { title });
+
+  const updated = await routineRepo.updateRoutine(routineId, { title });
+
+  // AFTER the write resolves — bumping first lets a reader observe the new
+  // version, query the not-yet-committed row and cache the OLD body under the
+  // NEW key. Both scopes: the title appears in the single-routine payload and
+  // in every row of findRoutinesByUser.
+  await invalidateRoutine({ routineIds: [routineId], ownerIds: [requesterId] });
+
+  return updated;
 };
 
 export const deleteRoutine = async (routineId, requesterId) => {
   await getOwnedRoutineOrThrow(routineId, requesterId);
 
-  // Read BEFORE the delete — see deleteSession.
-  const detached = await findPostRefsByRoutine(routineId);
+  // Read BEFORE the delete — see deleteSession. Two reads, because a routine
+  // delete detaches two different things via ON DELETE SET NULL: the posts that
+  // referenced it, and every CLONE anyone took of it.
+  const [detachedPosts, detachedClones] = await Promise.all([
+    findPostRefsByRoutine(routineId),
+    routineRepo.findRoutineRefsBySource(routineId),
+  ]);
 
   const result = await routineRepo.deleteRoutine(routineId);
 
-  await invalidateDetachedPosts(detached);
+  // The routine itself, plus the clones — whose sourceRoutineId just became
+  // NULL. This is the one invalidation in the file that reaches OTHER USERS'
+  // cached data: cloning is deliberately not ownership-gated, so those clones
+  // generally belong to other people, and their list counters need the bump as
+  // much as the clone payloads do.
+  await invalidateRoutine({
+    routineIds: [routineId, ...detachedClones.map((clone) => clone.id)],
+    // Not de-duplicated here: bumpVersions builds a Set, so one user holding
+    // several clones still costs one bump.
+    ownerIds: [requesterId, ...detachedClones.map((clone) => clone.userId)],
+  });
+
+  await invalidateDetachedPosts(detachedPosts);
 
   return result;
 };
@@ -84,12 +143,26 @@ export const cloneRoutine = async (sourceRoutineId, requesterId) => {
     );
   }
 
+  // OWNER scope, and the owner is the REQUESTER rather than the source's owner:
+  // the new rows land under whoever took the copy. The source routine is not
+  // modified at all, so its counters stay put.
+  await invalidateRoutine({ ownerIds: [requesterId] });
+
   return routineRepo.findRoutineById(clone.id);
 };
 
 export const addTodoItem = async (routineId, requesterId, { title, dueDate }) => {
   await getOwnedRoutineOrThrow(routineId, requesterId);
-  return routineRepo.createTodoItem({ routineId, title, dueDate });
+
+  const todo = await routineRepo.createTodoItem({ routineId, title, dueDate });
+
+  // BOTH scopes. findRoutineById embeds the items themselves, and
+  // findRoutinesByUser embeds _count.todoItems — so adding one changes the
+  // single-routine payload AND one row of the list. Contrast updateTodoItem
+  // below, which changes the count not at all.
+  await invalidateRoutine({ routineIds: [routineId], ownerIds: [requesterId] });
+
+  return todo;
 };
 
 export const updateTodoItem = async (routineId, todoId, requesterId, data) => {
@@ -99,7 +172,21 @@ export const updateTodoItem = async (routineId, todoId, requesterId, data) => {
   if (!todo || todo.routineId !== routineId) throw todoNotFound();
 
   const { title, dueDate, isComplete } = data;
-  return routineRepo.updateTodoItem(todoId, { title, dueDate, isComplete });
+
+  const updated = await routineRepo.updateTodoItem(todoId, {
+    title,
+    dueDate,
+    isComplete,
+  });
+
+  // CONTENT only, and the asymmetry is deliberate — logInterruption's exact
+  // reasoning. Ticking a task off changes the embedded items in the
+  // single-routine payload, but findRoutinesByUser carries only _count, which
+  // an update leaves alone. Bumping the owner counter here would discard a
+  // whole cached list every time someone checks a box, for nothing.
+  await invalidateRoutine({ routineIds: [routineId] });
+
+  return updated;
 };
 
 export const deleteTodoItem = async (routineId, todoId, requesterId) => {
@@ -108,5 +195,10 @@ export const deleteTodoItem = async (routineId, todoId, requesterId) => {
   const todo = await routineRepo.findTodoItemById(todoId);
   if (!todo || todo.routineId !== routineId) throw todoNotFound();
 
-  return routineRepo.deleteTodoItem(todoId);
+  const result = await routineRepo.deleteTodoItem(todoId);
+
+  // Both scopes, matching addTodoItem: a delete moves the count.
+  await invalidateRoutine({ routineIds: [routineId], ownerIds: [requesterId] });
+
+  return result;
 };
