@@ -71,6 +71,8 @@ const FOLLOW_EPOCH = "f1";
  * merely unlikely.
  */
 const BLOCK_EPOCH = "b1";
+
+/**
  * And three more, one each for the routers that predate this cache. Same
  * reasoning an eighth, ninth and tenth time - a session payload embeds its
  * interruptions, a group payload embeds a membership COUNT and a routine
