@@ -3,6 +3,11 @@ import * as sessionRepo from "../repositories/session.repository.js";
 // posts that never passes through post.service.js, so its cache has to be told.
 import { findPostRefsBySession } from "../repositories/post.repository.js";
 import { invalidateDetachedPosts } from "./post.service.js";
+import {
+  bumpVersions,
+  sessionContentVersionKey,
+  sessionOwnerVersionKey,
+} from "../utils/cache.js";
 
 // 20+ minutes away applies the focus-point penalty and breaks the streak
 const INTERRUPTION_PENALTY_THRESHOLD_SEC = 20 * 60;
@@ -30,13 +35,69 @@ const getOwnedSessionOrThrow = async (sessionId, userId) => {
   return session;
 };
 
+/**
+ * Invalidates this module's cached reads.
+ *
+ * Lives in the service rather than the middleware for the reason
+ * post.service.js gives: this is the layer that knows both which session a
+ * change touched and whose list it belongs to. Nothing here can fail a write —
+ * bumpVersions swallows its own Redis errors, so an outage costs a bump and
+ * leaves entries stale until their TTL lapses rather than turning a successful
+ * 201 into a 500.
+ *
+ * Awaited, never fired and forgotten, so a client that reads straight back
+ * after writing cannot observe the version it just invalidated.
+ *
+ * @param {{ sessionIds?: string[], ownerIds?: string[] }} scope
+ */
+const invalidateSession = async ({ sessionIds = [], ownerIds = [] }) => {
+  await bumpVersions([
+    ...sessionIds.map(sessionContentVersionKey),
+    ...ownerIds.map(sessionOwnerVersionKey),
+  ]);
+};
+
+/**
+ * The sessions a GROUP delete just detached — called from studyGroup.service.js.
+ *
+ * Exported for the reason post.service.js exports invalidateDetachedPosts:
+ * sessions.groupId is ON DELETE SET NULL, so deleting a group rewrites rows in
+ * THIS module's table without any code here running. Nothing else can bump the
+ * counters, because nothing else knows the cache layout for sessions.
+ *
+ * Both scopes are bumped. The group is part of a Session row, so the single-
+ * session payload changes, and so does every owner's list that contains one.
+ * The refs come from findSessionRefsByGroup, which MUST be read before the
+ * delete — afterwards groupId is already NULL and the rows are unfindable.
+ *
+ * @param {Array<{ id: string, userId: string }>} refs
+ */
+export const invalidateDetachedSessions = async (refs) => {
+  if (refs.length === 0) return;
+
+  await invalidateSession({
+    sessionIds: refs.map((ref) => ref.id),
+    // Deliberately not de-duplicated here: bumpVersions builds a Set, so a user
+    // owning several detached sessions still costs one bump.
+    ownerIds: refs.map((ref) => ref.userId),
+  });
+};
+
 export const startSession = async ({ userId, groupId }) => {
   // invite codes only make sense for group sessions — solo sessions get none
   const inviteCode = groupId
     ? Math.random().toString(36).slice(2, 8).toUpperCase()
     : null;
 
-  return sessionRepo.createSession({ userId, groupId, inviteCode });
+  const session = await sessionRepo.createSession({ userId, groupId, inviteCode });
+
+  // Only the OWNER scope. A brand new session has no cached single-session
+  // payload to orphan — nobody can have read an id that did not exist — but it
+  // belongs in the caller's list, which someone may well have cached a moment
+  // ago.
+  await invalidateSession({ ownerIds: [userId] });
+
+  return session;
 };
 
 export const getSession = async (sessionId, userId) => {
@@ -71,7 +132,17 @@ export const endSession = async (sessionId, userId) => {
     minutesStudied * FOCUS_POINTS_PER_MINUTE - penaltyPoints
   );
 
-  return sessionRepo.updateSession(sessionId, { endedAt, focusPoints });
+  const updated = await sessionRepo.updateSession(sessionId, { endedAt, focusPoints });
+
+  // AFTER the write resolves, never before or concurrently — bumping first lets
+  // a reader observe the new version, query the not-yet-committed row, and cache
+  // the OLD body under the NEW key, where it would sit for the full TTL.
+  //
+  // Both scopes: endedAt and focusPoints appear in the single-session payload
+  // and in every row of findSessionsByUser.
+  await invalidateSession({ sessionIds: [sessionId], ownerIds: [userId] });
+
+  return updated;
 };
 
 export const deleteSession = async (sessionId, userId) => {
@@ -84,7 +155,9 @@ export const deleteSession = async (sessionId, userId) => {
   const result = await sessionRepo.deleteSession(sessionId);
 
   // After the write resolves, so a reader cannot cache the pre-delete row under
-  // the new version.
+  // the new version. Two invalidations rather than one because the delete
+  // touches two resources: this session, and every post that pointed at it.
+  await invalidateSession({ sessionIds: [sessionId], ownerIds: [userId] });
   await invalidateDetachedPosts(detached);
 
   return result;
@@ -101,5 +174,18 @@ export const logInterruption = async (sessionId, userId, { durationSec }) => {
 
   const penaltyApplied = durationSec >= INTERRUPTION_PENALTY_THRESHOLD_SEC;
 
-  return sessionRepo.addInterruption({ sessionId, durationSec, penaltyApplied });
+  const interruption = await sessionRepo.addInterruption({
+    sessionId,
+    durationSec,
+    penaltyApplied,
+  });
+
+  // CONTENT scope only, and the asymmetry is deliberate. findSessionById
+  // includes interruptions, so the single-session payload changes; the list
+  // does not include them and focusPoints is not recomputed until endSession,
+  // so no row of findSessionsByUser is affected. Bumping the owner counter here
+  // would throw away a whole cached list on every away-event for nothing.
+  await invalidateSession({ sessionIds: [sessionId] });
+
+  return interruption;
 };

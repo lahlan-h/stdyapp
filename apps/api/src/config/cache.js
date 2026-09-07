@@ -258,3 +258,90 @@ export const RATE_LIMIT_AVATAR_WRITE = { max: 10, windowSec: 60 };
  * and an unbounded one in the other, and the two must be free to diverge.
  */
 export const RATE_LIMIT_POST_PHOTO_WRITE = { max: 10, windowSec: 60 };
+
+/**
+ * Sessions, groups and routines.
+ *
+ * These three routers predate the caching and rate-limiting work above and are
+ * being brought up to it. Separate constants again, for the reason every block
+ * above gives: they describe different surfaces, and retuning a profile grid
+ * should not silently retune a study timer.
+ */
+
+/**
+ * A single study session. SHORT, and the shortest single-entity TTL in this
+ * file, because it is the only cached payload here that a user watches change
+ * WHILE they look at it: interruptions accumulate against a running session, so
+ * a timer screen polling GET /api/sessions/:id is the exact surface where a
+ * two-minute backstop would be felt. Every write bumps the counter, so this is
+ * only the ceiling on an outage.
+ */
+export const CACHE_TTL_SESSION_SEC = 30;
+
+// The caller's own session history. A profile-ish tab, matching every other
+// per-user list in this file at 60s.
+export const CACHE_TTL_SESSION_LIST_SEC = 60;
+
+// A single group. Matches CACHE_TTL_POST_SEC: a group's name, description and
+// privacy flag are about as static as a profile row.
+export const CACHE_TTL_GROUP_SEC = 120;
+
+// One group's member list. Shorter than the group itself because it is the
+// surface a user checks straight after someone joins, and the underlying query
+// is one indexed lookup with a small join.
+export const CACHE_TTL_GROUP_MEMBERS_SEC = 60;
+
+// A single routine, todo items included. Matches the single post and the single
+// group: the caller who reads it is the same person whose writes bump its
+// counter, so staleness is self-inflicted and corrected on the very next read.
+export const CACHE_TTL_ROUTINE_SEC = 120;
+
+// The caller's own routines. Same 60s as every other per-user list here.
+export const CACHE_TTL_ROUTINE_LIST_SEC = 60;
+
+/**
+ * Sessions, groups and routines reuse RATE_LIMIT_READ, RATE_LIMIT_WRITE and
+ * RATE_LIMIT_BULK as they stand, and add one tier of their own for the join
+ * route below. rateLimit()'s `name` gives each of the three routers its own
+ * Redis keyspace, so these budgets are independent of each other and of the
+ * comment, like, post and user routers despite sharing the numbers.
+ *
+ * Two placements are worth stating, both on RATE_LIMIT_BULK rather than
+ * RATE_LIMIT_WRITE, and neither for row count:
+ *
+ *   DELETE /api/groups/:id     - cascades every membership in the group, so one
+ *                                call can remove dozens of rows belonging to
+ *                                people other than the caller.
+ *   DELETE /api/routines/:id   - cascades every todo item, and SetNulls the
+ *                                sourceRoutineId of every clone anyone has ever
+ *                                taken of it. The blast radius reaches other
+ *                                users' rows, which is the property this tier
+ *                                exists for.
+ *
+ * DELETE /api/sessions/:id deliberately stays on RATE_LIMIT_WRITE: it cascades
+ * only its own interruptions and detaches the caller's own posts.
+ */
+
+/**
+ * Joining a group - POST /api/groups/:id/join.
+ *
+ * The ONLY tier in this file defined against a guessing attack rather than a
+ * cost. Every other route here refuses work that is expensive; this one refuses
+ * ATTEMPTS, because the request body carries a secret that can be guessed:
+ * joinGroup compares the supplied joinCode against the stored one and answers
+ * 403 on a miss, which is a free oracle to anyone willing to keep asking.
+ *
+ * The generated code is six characters of base36, so ~2.2e9 possibilities.
+ * RATE_LIMIT_WRITE at 20/min would exhaust a code space that size in roughly
+ * 200 years, which is already fine - but updateGroupSchema lets an owner rotate
+ * to a code as short as four characters (~1.7e6), and 20/min walks THAT in
+ * about two months. 10/min doubles it, and more to the point makes the attempt
+ * visible: nobody joins ten groups a minute, so hitting this tier is a signal
+ * rather than a normal state.
+ *
+ * Keyed on the caller's user id like every other tier, which bounds one account
+ * rather than one attacker - a determined one registers more accounts. That is
+ * the known limit of a per-user limiter, and the reason a real fix is a
+ * per-GROUP failure counter, not a bigger number here.
+ */
+export const RATE_LIMIT_GROUP_JOIN = { max: 10, windowSec: 60 };
