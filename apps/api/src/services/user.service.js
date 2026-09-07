@@ -19,6 +19,7 @@ import {
   likePostVersionKey,
   followUserVersionKey,
   blockUserVersionKey,
+  bookmarkUserVersionKey,
 } from "../utils/cache.js";
 
 /**
@@ -128,6 +129,15 @@ const buildUserData = async (input) => {
  *    list on the other side — see the block block in utils/cache.js — so there is
  *    no second direction to walk.
  *
+ * NO BOOKMARK FAN-OUT, and the absence is reasoned rather than forgotten. Their
+ * own saved-list counter is bumped below with the rest of their own scopes, but
+ * nobody else's is: a saved list embeds bare Post rows with no user fields, so a
+ * renamed user cannot go stale in anyone's bookmarks. It is the "No post scope"
+ * argument below, applied to the one social entity whose payload carries posts
+ * rather than people. The post side of that relationship IS walked — by
+ * invalidatePostFanout in post.service.js, which is the layer that sees a post
+ * change.
+ *
  * No post scope. Post payloads are bare Post rows with no embedded user fields
  * (see the postKey block in utils/cache.js), so nothing there can go stale.
  *
@@ -151,13 +161,14 @@ const collectUserVersionKeys = async (userId) => {
   return [
     // The user's own scopes: their profile, their comment list, their like list,
     // their follower/following lists — which share one counter, because a follow
-    // edge has a user at both ends — and their own block list. See the follow and
-    // block blocks in utils/cache.js.
+    // edge has a user at both ends — their own block list, and their own saved
+    // list. See the follow, block and bookmark blocks in utils/cache.js.
     userProfileVersionKey(userId),
     userVersionKey(userId),
     likeUserVersionKey(userId),
     followUserVersionKey(userId),
     blockUserVersionKey(userId),
+    bookmarkUserVersionKey(userId),
     // Everywhere else they appear. bumpVersions de-duplicates via a Set, so the
     // repeats a mutual follow produces here cost nothing.
     ...comments.map(({ postId }) => postVersionKey(postId)),
