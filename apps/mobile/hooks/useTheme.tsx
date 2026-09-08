@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage"; // AsyncStorage is used to persist the theme preference across app restarts
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { useColorScheme } from "react-native";
 
 export interface ColorScheme {
   bg: string;
@@ -94,7 +95,8 @@ interface ThemeContextType {
 const ThemeContext = createContext<undefined | ThemeContextType>(undefined);
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const systemScheme = useColorScheme(); // "dark" | "light" | null
+  const [isDarkMode, setIsDarkMode] = useState(systemScheme === "dark");
 
   useEffect(() => {
     // Load the theme preference from AsyncStorage on mount
