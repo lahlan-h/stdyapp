@@ -28,6 +28,31 @@ model User {
 
   avatarUrl    String?
   bio          String?
+
+  // NOT the same concept as StudyGroup.isPrivate below, which only means
+  // "joining requires a joinCode" — a private group is still searchable. This
+  // one is a PROFILE VISIBILITY flag on the account itself. The identifier is
+  // otherwise owned by the group domain (studyGroup.validation/service/
+  // controller/repository), so read any bare `isPrivate` in that code as the
+  // group's, not this.
+  //
+  // Declared but NOT YET ENFORCED: nothing reads it, so GET /api/users/:id
+  // still returns the same body to every viewer. That is what keeps the viewer
+  // out of userKey in apps/api/src/utils/cache.js — see the warning there
+  // before making this flag change the response per-viewer.
+  isPrivate    Boolean   @default(false)
+
+  // Account-level moderation flag, server-owned: there is deliberately NO write
+  // path through the API, so it is set out of band (directly in the database)
+  // for now. It is absent from createUserSchema — and therefore from the
+  // derived updateUserSchema and registerSchema — precisely so a user cannot
+  // suspend, or un-suspend, their own account.
+  //
+  // Also NOT YET ENFORCED: a suspended user still logs in and still passes
+  // requireAuth. See the doc block in apps/api/src/middleware/requireAuth.js,
+  // which already names this gap.
+  isSuspended  Boolean   @default(false)
+
   lastActiveAt DateTime?
 
   createdAt    DateTime  @default(now())

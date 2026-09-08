@@ -70,6 +70,8 @@ const USER_PUBLIC_SELECT = {
   lastName: true,
   avatarUrl: true,
   bio: true,
+  isPrivate: true,
+  isSuspended: true,
   lastActiveAt: true,
   createdAt: true,
   updatedAt: true,
@@ -84,6 +86,12 @@ const USER_PUBLIC_SELECT = {
  * request to set passwordHash, id, createdAt or lastActiveAt - defence in
  * depth, one line each.
  *
+ * `isSuspended` is absent for that same reason and is the case where the two
+ * layers genuinely differ in value: it is READ-ONLY over the API, returned by
+ * USER_PUBLIC_SELECT but never assignable here, so even if a future edit to
+ * createUserSchema let the key through the Zod layer, a user still could not
+ * suspend - or un-suspend - their own account. It is set out of band for now.
+ *
  * @param {object} input - output of createUserSchema or updateUserSchema
  * @returns {Promise<object>} a Prisma `data` object
  */
@@ -96,6 +104,7 @@ const buildUserData = async (input) => {
   if (input.lastName !== undefined) data.lastName = input.lastName;
   if (input.avatarUrl !== undefined) data.avatarUrl = input.avatarUrl;
   if (input.bio !== undefined) data.bio = input.bio;
+  if (input.isPrivate !== undefined) data.isPrivate = input.isPrivate;
 
   if (input.password !== undefined) {
     // Async, never hashSync: bcryptjs's sync path blocks Node's single thread
