@@ -113,28 +113,6 @@ export const listAll = async (req, res, next) => {
   }
 };
 
-/**
- * PATCH /api/bookmarks/post/:postId — move this post back to the top.
- *
- * 200 with the updated row rather than the 204 its DELETE sibling returns: the
- * new savedAt is the whole point of the call, and a client re-ordering its list
- * optimistically needs the server's value to reconcile against.
- *
- * Takes no body at all — savedAt is server-set, so there is nothing for a caller
- * to supply. See createBookmarkSchema for why letting them would be a bug.
- */
-export const resave = async (req, res, next) => {
-  try {
-    const bookmark = await bookmarkService.resaveBookmark(
-      req.validated.params.postId,
-      req.user.id,
-    );
-    res.status(200).json(bookmark);
-  } catch (err) {
-    next(err);
-  }
-};
-
 export const remove = async (req, res, next) => {
   try {
     // Always 204, even when there was nothing to delete: this is a toggle, and

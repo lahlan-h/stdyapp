@@ -467,18 +467,25 @@ model Bookmark {
   postId  String
   post    Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 
-  // Server-set, never client-supplied. PATCH /api/bookmarks/post/:postId
-  // refreshes it to now(), which is what re-orders a saved list — the one
-  // mutation this entity has, and the reason it has a PATCH where Like, Follow
-  // and Block have none.
+  // Server-set on insert and NEVER moved afterwards. It exists to order the saved
+  // list, which is the whole reason this entity is not just a second Like: those
+  // rows have no chronological key, a gap findLikesByPost and findAllLikes both
+  // record in prose.
+  //
+  // Write-once is enforced by there being no route that updates this table at
+  // all — a bookmark is a toggle, so the API offers a create and a delete and
+  // nothing else. See the note at the foot of
+  // apps/api/src/routes/bookmark.routes.js. It is kept out of the create schema
+  // too, so a client cannot plant a row dated in the far future and pin itself to
+  // the top of its own list forever.
   //
   // Deliberately NOT @updatedAt, unlike comments.updatedAt: that would move this
   // column on any future write to the row, making "when I saved it" an accident
-  // of unrelated edits. The one mutation that should move it sets it explicitly.
+  // of some unrelated edit a later feature introduces.
   //
   // Named savedAt rather than createdAt following group_memberships.joinedAt: the
-  // column means something specific to the entity, and it is not merely the row's
-  // creation time once PATCH can move it.
+  // column means something specific to the entity, and "when this person saved
+  // this post" reads as the fact it is rather than as row bookkeeping.
   savedAt DateTime @default(now())
 
   // One save per person per post — the entire integrity model of the entity, as

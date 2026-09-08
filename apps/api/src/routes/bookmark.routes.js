@@ -4,7 +4,6 @@ import {
   status,
   listMine,
   listAll,
-  resave,
   remove,
   removeMine,
 } from "../controllers/bookmark.controller.js";
@@ -52,8 +51,8 @@ router.use(requireAuth);
  * Note the write tier: RATE_LIMIT_WRITE, not the RATE_LIMIT_LIKE_WRITE its
  * closest structural sibling uses. See config/cache.js — that tier is 60/min
  * because a feed gets double-tapped rapidly, and saving a post is a deliberate
- * act. The write bucket covers POST, PATCH and DELETE together, which is right:
- * all three are the same kind of considered action on one row.
+ * act. The write bucket covers the save and the unsave together, which is right:
+ * both are the same kind of considered action on one row.
  */
 const readLimit = rateLimit({ name: "bookmark-read", ...RATE_LIMIT_READ });
 const writeLimit = rateLimit({ name: "bookmark-write", ...RATE_LIMIT_WRITE });
@@ -85,9 +84,9 @@ const cacheMyList = cache({
 });
 
 // Stamped with the VIEWER's counter, and it needs no post counter: savedByMe and
-// savedAt can only change when THIS viewer saves, re-saves or unsaves THIS post,
-// and every one of those writes bumps the viewer's counter. Same reasoning
-// cacheStatus in block.routes.js gives.
+// savedAt can only change when THIS viewer saves or unsaves THIS post, and both
+// of those writes bump the viewer's counter. Same reasoning cacheStatus in
+// block.routes.js gives.
 const cacheStatus = cache({
   ttlSec: CACHE_TTL_BOOKMARK_STATUS_SEC,
   versionKeys: (req) => [bookmarkUserVersionKey(req.user.id)],
@@ -138,19 +137,6 @@ router.get(
   status,
 );
 
-// The one PATCH among this API's pair-shaped entities. like.routes.js,
-// follow.routes.js and block.routes.js all close by explaining why they have
-// none: every column on those rows is the primary key or half the row's identity.
-// savedAt is neither — it is ordering data the user owns — so "move this back to
-// the top of my list" is a real edit rather than a delete plus a create. See
-// resaveBookmark for why it is a 404 rather than an upsert when nothing is saved.
-router.patch(
-  "/post/:postId",
-  writeLimit,
-  validate({ params: bookmarkPostIdParamSchema }),
-  resave,
-);
-
 router.delete(
   "/post/:postId",
   writeLimit,
@@ -183,5 +169,23 @@ router.get("/all", readLimit, validate({ query: paginationQuerySchema }), listAl
 
 router.post("/", writeLimit, validate({ body: createBookmarkSchema }), create);
 router.get("/", readLimit, cacheMyList, listMine);
+
+// No PATCH, and its absence is deliberate rather than an oversight — the same
+// reasoning like.routes.js, follow.routes.js and block.routes.js all give. A
+// bookmark is a TOGGLE: you save a post or you do not. id is the primary key,
+// userId and postId are the row's identity, and rewriting either does not EDIT a
+// bookmark, it makes it a different one — a delete plus a create.
+//
+// That leaves savedAt, which is the only column a PATCH could touch, and it is
+// server-set ordering data rather than anything the user authors. A route that
+// re-dated it would exist to serve a "move this back to the top" gesture, and
+// this product has none: the bookmark icon is a two-state toggle, so tapping a
+// saved post unsaves it and there is no second gesture left to mean "save it
+// again". Adding the verb because CRUD has four letters would be inventing a
+// route for a use case that does not exist.
+//
+// If saved posts ever grow collections or notes — the fields a user actually
+// authors — that is when a PATCH earns its place, and it should edit those
+// rather than the timestamp.
 
 export default router;

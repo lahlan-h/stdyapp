@@ -38,8 +38,9 @@ export const bookmarkPostIdParamSchema = z.strictObject({
  *
  * savedAt is absent for the same reason. The server sets it, and a caller-chosen
  * value would let anyone forge their own list ordering — or plant a row dated in
- * the far future that pins itself to the top forever. PATCH /post/:postId is the
- * only way to move it, and it takes no body at all.
+ * the far future that pins itself to the top forever. Nothing moves it after the
+ * insert: there is no route on this resource that updates a row at all. See the
+ * note at the foot of bookmark.routes.js.
  */
 export const createBookmarkSchema = z.strictObject({
   postId: z.uuid("postId must be a UUID"),

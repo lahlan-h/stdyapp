@@ -470,8 +470,8 @@ export const bookmarkListKey = (viewerId, version) =>
  *
  * Stamped with the VIEWER's counter and needs no post counter, for the reason
  * blockStatusKey gives: savedByMe and savedAt can only change when THIS viewer
- * saves, re-saves or unsaves THIS post, and every one of those writes bumps the
- * viewer's counter already.
+ * saves or unsaves THIS post, and both of those writes bump the viewer's counter
+ * already.
  *
  * @param {string} viewerId @param {string} postId @param {number} version
  */

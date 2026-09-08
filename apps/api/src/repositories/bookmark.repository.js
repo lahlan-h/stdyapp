@@ -84,26 +84,12 @@ export const findBookmarksPageByUser = ({ userId, skip, take }) => {
 };
 
 /**
- * Moves an existing bookmark back to the top of the list.
- *
- * update, NOT updateMany, and that is load-bearing rather than a style choice:
- * update throws P2025 when no row matches, which is exactly what makes PATCH a
- * 404 on a post the caller has not saved. This is the mirror image of
- * deleteBookmarkByUserAndPost below, which uses deleteMany precisely to AVOID
- * throwing — the two routes want opposite behaviour on a miss, because a PATCH
- * names a row that should already exist while a DELETE is a toggle.
- *
- * new Date() rather than a database now(): the column is not @updatedAt (see the
- * schema), so nothing sets it implicitly and the one mutation that should move it
- * says so out loud. The few milliseconds of clock skew against Postgres do not
- * matter to a list ordered at second-scale granularity.
+ * NOTHING IN THIS FILE UPDATES A ROW, and that is the shape of the entity rather
+ * than a gap. A bookmark is a toggle: it exists or it does not. Every column is
+ * the primary key, half the row's identity, or a timestamp the server stamps
+ * once — so there is no edit to make, only a create and a delete. See the note
+ * at the foot of bookmark.routes.js.
  */
-export const touchBookmark = (userId, postId) => {
-  return prisma.bookmark.update({
-    where: { userId_postId: { userId, postId } },
-    data: { savedAt: new Date() },
-  });
-};
 
 // deleteMany rather than delete, for the same reason deleteLikeByUserAndPost uses
 // it: it does not throw when nothing matches. That is what makes unsave a safe

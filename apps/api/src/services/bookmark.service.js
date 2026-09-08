@@ -58,7 +58,6 @@ const notFound = (what) => {
 
 const PRISMA_UNIQUE_VIOLATION = "P2002";
 const PRISMA_FOREIGN_KEY_VIOLATION = "P2003";
-const PRISMA_RECORD_NOT_FOUND = "P2025";
 
 /**
  * Existence only — note what is NOT here.
@@ -121,9 +120,11 @@ const invalidateBookmark = async (userId) => {
  * write "if 409, treat as success" — a branch that exists only to undo the API's
  * unhelpfulness, and one some client will forget.
  *
- * A repeat save does NOT move savedAt either. That is what PATCH is for, and
- * keeping the two apart is what lets a client retry a save without silently
- * re-ordering the user's list. The early return below is the whole of that rule.
+ * A repeat save does NOT move savedAt, which is what makes the retry above
+ * genuinely free: a client that fires the same save twice cannot silently
+ * re-order the user's list by doing so. Nothing in this API moves savedAt after
+ * the insert — see the note at the foot of bookmark.routes.js. The early return
+ * below is the whole of that rule.
  *
  * The distinction is still preserved where it is free — `created` lets the
  * controller answer 201 or 200 without the caller having to care.
@@ -160,46 +161,6 @@ export const saveBookmark = async ({ userId, postId }) => {
     // The post was deleted inside that same window. The check above was honest
     // when it ran, so this is still a 404 rather than a 500.
     if (isPrismaError(err, PRISMA_FOREIGN_KEY_VIOLATION)) throw notFound("Post");
-    throw err;
-  }
-};
-
-/**
- * Moves an already-saved post back to the top of the caller's list.
- *
- * THE ONE NON-IDEMPOTENT ROUTE IN THIS MODULE, and the only PATCH any of the
- * pair-shaped entities in this API has. like.routes.js, follow.routes.js and
- * block.routes.js all close with a note explaining why they have none: every
- * column on those rows is either the primary key or half the row's identity, so
- * rewriting one does not EDIT the row, it makes it a different one.
- *
- * savedAt is the exception that earns this route. It is neither the key nor half
- * the identity — it is ordering data the user owns, and "move this back to the
- * top" is a real thing to want from a saved list.
- *
- * A 404 rather than an upsert when the post is not saved, and that is deliberate:
- * PATCH names a row the caller believes exists. Creating one instead would make a
- * typo'd postId silently save something, and it would make PATCH a second, subtly
- * different POST. touchBookmark's use of update (not updateMany) is what produces
- * the P2025 this translates.
- *
- * The post existence check runs FIRST so that PATCHing an unknown post says
- * "Post not found" rather than "Bookmark not found" — the client's actual
- * mistake, and the same ordering assertPostExists gets everywhere else here.
- *
- * @returns {Promise<object>} the bookmark, with savedAt moved to now
- */
-export const resaveBookmark = async (postId, userId) => {
-  await assertPostExists(postId);
-
-  try {
-    const bookmark = await bookmarkRepo.touchBookmark(userId, postId);
-    await invalidateBookmark(userId);
-    return bookmark;
-  } catch (err) {
-    // The caller has not saved this post — or unsaved it between the check above
-    // and this update. Either way the row they named is not there.
-    if (isPrismaError(err, PRISMA_RECORD_NOT_FOUND)) throw notFound("Bookmark");
     throw err;
   }
 };
