@@ -1,12 +1,15 @@
-import { View, Text } from "react-native";
-import React from "react";
 import { createHomeStyles } from "assets/styles/home.styles";
-import useTheme from "@hooks/useTheme";
 import { LinearGradient } from "expo-linear-gradient";
+import useTheme from "@hooks/useTheme";
+import { Image } from "react-native";
 
-import { api, Doc, Id } from "@stdyapp/core";
-import PostCardHeader from "./PostCardHeader";
+import { api, Doc } from "@stdyapp/core";
 import { useQuery } from "convex/react";
+
+import PostCardHeader from "./PostCardHeader";
+import PostCardBody from "./PostCardBody";
+import PostCardStats from "./PostCardStats";
+import PostCardFooter from "./PostCardFooter";
 
 type User = Doc<"users">;
 
@@ -33,6 +36,17 @@ const PostCard = ({ post }: PostCardProps) => {
         avatarUrl={author.avatarUrl}
         createdAt={post._creationTime}
       />
+      <PostCardBody title={post.title} caption={post.caption} />
+      <PostCardStats durationMinutes={post.durationMinutes} goalsHit={post.goalsHit} />
+      {/* Logic for whether to add an image or not ... */}
+      {post.imageUrl && (
+        <Image
+          style={homeStyles.postCardImage}
+          source={{ uri: post.imageUrl }}
+          resizeMode="cover"
+        />
+      )}
+      <PostCardFooter postId={post._id} />
     </LinearGradient>
   );
 };

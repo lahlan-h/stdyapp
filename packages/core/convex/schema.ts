@@ -14,7 +14,7 @@ export default defineSchema({
     caption: v.optional(v.string()), // "Library was packed!!! Monster came in clutch tho"
     durationMinutes: v.number(), // 80 → display as "1h 20m"
     goalsHit: v.number(), // 4
-    imageUrl: v.string(), // resolved Convex storage URL for the proof photo
+    imageUrl: v.optional(v.string()), // resolved Convex storage URL for the proof photo
     likeCount: v.number(), // denormalized, for the "13"
   }).index("by_author", ["authorId"]),
   // no manual timestamp field — sort the feed with

@@ -28,8 +28,8 @@ const PostCardHeader = ({ displayName, avatarUrl, createdAt }: PostCardHeaderPro
         style={homeStyles.postCardAvatar}
       />
       <View>
-        <Text style={homeStyles.username}>{displayName}</Text>
-        <Text style={homeStyles.timestamp}>{time}</Text>
+        <Text style={homeStyles.bold}>{displayName}</Text>
+        <Text style={homeStyles.soft}>{time}</Text>
       </View>
     </View>
   );

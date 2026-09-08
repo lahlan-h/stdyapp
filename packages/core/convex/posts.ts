@@ -8,13 +8,19 @@ export const addPost = mutation({
     caption: v.optional(v.string()),
     durationMinutes: v.number(),
     goalsHit: v.number(),
-    storageId: v.id("_storage"),
+    storageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
     const { storageId, ...rest } = args;
-    const imageUrl = await ctx.storage.getUrl(storageId);
-    if (!imageUrl) throw new Error("Upload failed");
-    await ctx.db.insert("posts", { ...rest, imageUrl, likeCount: 0 });
+    let imageUrl: string | undefined = undefined;
+
+    if (storageId) {
+      const url = await ctx.storage.getUrl(storageId);
+      if (!url) throw new Error("Upload failed");
+      imageUrl = url;
+    }
+
+    return await ctx.db.insert("posts", { ...rest, imageUrl, likeCount: 0 });
   },
 });
 
