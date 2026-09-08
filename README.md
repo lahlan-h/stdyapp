@@ -36,5 +36,5 @@ npm install
 2. Open the app and create an account (remember your credentials! you'll need to sign into the same account on your terminal too)
 3. Run `npm run start --workspace @stdyapp/mobile` (running for the first time should prompt you for password details)
 4. If it doesn't prompt automatically, run `npx expo login` first, then repeat step 3
-5. On the app you should see `stdyapp` on `http://xx.xx.xx.xx:8081` — simply tap!
+5. On the app you should see `stdyapp` on `http://xx.xx.xx.xx:8081` simply tap!
 6. It's a tad temperamental if you don't create a `.env.local` file in `@stdyapp/core` base directory. So if you need the file, reach out and then paste there.
