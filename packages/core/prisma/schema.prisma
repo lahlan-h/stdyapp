@@ -48,6 +48,14 @@ model User {
   following     Follow[]           @relation("Following")
   followers     Follow[]           @relation("Followers")
 
+  // Gamification and account state. `streak` and `subscription` are SINGULAR
+  // and nullable because both are at-most-one per user - see the @unique on
+  // their userId columns and the note above each model.
+  goals         Goal[]
+  streak        Streak?
+  subscription  Subscription?
+  notifications Notification[]
+
   @@map("users")
 }
 
@@ -369,5 +377,191 @@ model Follow {
   @@map("follows")
 }
 
-// TODO: remaining entities from the ERD — gamification/streaks, discover,
-// analytics, and stretch-goal entities (wearable data, Discord sync).
+/// How often a goal resets. An enum rather than the ERD's bare `string`, for
+/// GroupRole's reason: "daily" and "Daily" and "DAILY" are three different rows
+/// to Postgres and one concept to a user, and nothing but a constraint stops a
+/// client inventing a fourth.
+///
+/// The two values are also load-bearing beyond validation - goal.service.js
+/// switches on them to compute a period start, so a third value added here
+/// without a matching branch there is a runtime failure rather than a silent
+/// no-op.
+enum GoalPeriod {
+  DAILY
+  WEEKLY
+}
+
+/// A study target the user sets for themselves - "90 minutes a day".
+///
+/// AT MOST ONE PER PERIOD, which is what @@unique([userId, period]) enforces and
+/// is the entire integrity model of the entity. Without it a user accumulates
+/// duplicate DAILY rows and "what is my daily target" stops having an answer,
+/// which is the only question this table exists to answer. It is also what lets
+/// the API address a goal by its PERIOD rather than its id - see goal.routes.js.
+///
+/// Cascade on delete, following likes and follows rather than posts and
+/// sessions: a goal is a SETTING, not authored content worth blocking a user
+/// delete over.
+model Goal {
+  id            String     @id @default(uuid())
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  period        GoalPeriod
+  targetMinutes Int
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([userId, period])
+  @@map("goals")
+}
+
+/// The consecutive-days counter behind the streak on a user's profile.
+///
+/// ONE ROW PER USER - note the @unique on userId, which makes this a 1:1 with
+/// User rather than the 1:N the ERD's crow's foot shows. That is a deliberate
+/// divergence and the ERD should be corrected to `||--o|` to match: the columns
+/// here describe a CURRENT streak, not a historical one. A history table would
+/// need startedOn and endedOn, and nothing in the app asks for it.
+///
+/// DERIVED STATE, NOT USER INPUT. Nothing in the API lets a client write these
+/// columns; the only writer is recordStudyDay() in streak.service.js, which
+/// endSession calls. A PATCH here would make the number a claim rather than a
+/// record, and the leaderboard in the pitch deck depends on it being a record.
+model Streak {
+  id             String    @id @default(uuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  currentCount   Int       @default(0)
+
+  /// @db.Date, not a full timestamp, and that is the point: the streak rule is
+  /// "did they study YESTERDAY", a question about calendar days rather than
+  /// instants. Storing a timestamp would invite comparing them directly and
+  /// getting "yesterday at 23:00 vs today at 01:00" wrong.
+  ///
+  /// Nullable: a user who has never finished a session has no last active day,
+  /// and 1970-01-01 would be a lie that compares as a real date.
+  ///
+  /// TIMEZONE: this is UTC, because the server has no idea where the user is.
+  /// See the note above recordStudyDay in streak.service.js - for a Sydney user
+  /// the day boundary lands at 10am local, and the real fix is a timezone
+  /// column on User rather than anything in this file.
+  lastActiveDate DateTime? @db.Date
+
+  updatedAt      DateTime  @updatedAt
+
+  @@map("streaks")
+}
+
+/// Where a subscription is in its lifecycle.
+///
+/// An enum for GoalPeriod's reason. CANCELLED and EXPIRED are deliberately
+/// distinct: a cancelled subscription keeps its access until renewsAt passes,
+/// so the two answer different questions and collapsing them would either cut
+/// someone off early or leave them premium forever.
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+/// The premium tier, from the pitch deck's stretch goals.
+///
+/// AT MOST ONE PER USER (@unique on userId), matching the ERD's `||--o|`. The
+/// absence of a row IS the free tier - there is no FREE status, because a
+/// status column that every user needs a row for is just a column on User.
+///
+/// ⚠ EVERY FIELD BELOW IS SERVER-WRITTEN. No request body reaches this table:
+/// subscription.validation.js parses both write routes as an EMPTY strictObject,
+/// so a client that tries to send `{"status":"ACTIVE"}` gets a 400 rather than a
+/// free upgrade. This is the one table in the schema where that property is a
+/// security boundary rather than tidiness, and it must survive any future edit.
+///
+/// There is no payment provider behind this yet. paymentReference holds a
+/// locally generated stub id so the column has the shape it will need when a
+/// real provider is wired in - see subscription.service.js.
+model Subscription {
+  id               String             @id @default(uuid())
+  userId           String             @unique
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status           SubscriptionStatus @default(ACTIVE)
+
+  /// Nullable because a real provider assigns this asynchronously, and a stub
+  /// should not pretend otherwise.
+  paymentReference String?
+
+  /// When the current period ends. Also the access deadline for a CANCELLED
+  /// subscription, which is why cancelling does not clear it.
+  renewsAt         DateTime?
+
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@map("subscriptions")
+}
+
+/// What happened, for a notification. An enum for GoalPeriod's reason, and one
+/// with a second job: the client renders a different icon and deep link per
+/// type, so this is an API contract rather than a label.
+///
+/// FOLLOW, POST_LIKE and POST_COMMENT have no emitter yet - the services that
+/// would raise them live in the follow, like and comment routers, which this
+/// change deliberately does not touch. They are declared here so that wiring
+/// them up later is a one-line call rather than a migration.
+enum NotificationType {
+  FOLLOW
+  POST_LIKE
+  POST_COMMENT
+  GROUP_JOIN
+  STREAK_MILESTONE
+  GOAL_REACHED
+  SYSTEM
+}
+
+/// One item in a user's notification list.
+///
+/// SYSTEM-EMITTED, like Streak and unlike Goal: no route creates one. The only
+/// writer is emitNotification() in notification.service.js. A client can mark
+/// them read and delete them, which is the whole of its write surface.
+///
+/// The message is DENORMALISED - stored as rendered text rather than assembled
+/// on read from the actor and target. That is the opposite call to Comment,
+/// which deliberately joins the author's username so a rename is picked up, and
+/// it is the right one here: a notification is a record of a moment ("Sam liked
+/// your post"), and rewriting history when Sam changes their username would be
+/// wrong rather than fresh. It also means this table needs no fanout
+/// invalidation, because it embeds no row any counter tracks.
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type      NotificationType
+  message   String
+  isRead    Boolean          @default(false)
+
+  /// Not in the ERD, and added anyway: a notification list is meaningless in
+  /// any order but newest-first, and without a column to sort on Postgres is
+  /// free to return them in whatever order it likes. The ERD should gain it.
+  createdAt DateTime         @default(now())
+
+  /// The list query - one user's notifications, newest first. Composite rather
+  /// than an index on userId alone so Postgres satisfies the ORDER BY from the
+  /// index instead of sorting the matched rows. Same reasoning as posts.
+  @@index([userId, createdAt])
+
+  /// The unread badge, which is the single most frequently hit read in this
+  /// router - a client polls it on every app foreground. Counting from
+  /// (userId, createdAt) would mean reading every row this user has ever
+  /// received to discard the read ones.
+  @@index([userId, isRead])
+
+  @@map("notifications")
+}
+
+// TODO: remaining entities from the ERD - discover, analytics, moderation
+// (BLOCKS, REPORTS, POST_BOOKMARKS) and stretch-goal entities (wearable data,
+// Discord sync).

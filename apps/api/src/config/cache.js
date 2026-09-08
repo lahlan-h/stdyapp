@@ -310,3 +310,107 @@ export const CACHE_TTL_ROUTINE_LIST_SEC = 60;
  * per-GROUP failure counter, not a bigger number here.
  */
 export const RATE_LIMIT_GROUP_JOIN = { max: 10, windowSec: 60 };
+
+/**
+ * Goals, streaks, subscriptions and notifications.
+ *
+ * Separate constants again, for the reason every block above gives: they
+ * describe different surfaces, and retuning a study timer should not silently
+ * retune a notification badge.
+ *
+ * ⚠ TWO OF THE TTLs BELOW BOUND SOMETHING NO VERSION COUNTER CAN. Everywhere
+ * else in this file a TTL is pure reclamation, because every input to the
+ * cached payload is covered by a counter that some service bumps. The streak
+ * and goal-progress payloads are the exception: both depend on WHAT DAY IT IS,
+ * and no write happens at midnight to bump anything. A streak cached at 23:59
+ * is wrong at 00:01 and nothing knows it. Their TTLs are therefore the real
+ * staleness ceiling and must stay short - see the note on each.
+ */
+
+// The caller's goals. The longest TTL of the four: a goal is a setting someone
+// changes rarely, and every write that can change it bumps its counter.
+export const CACHE_TTL_GOAL_LIST_SEC = 120;
+
+/**
+ * Goal progress. Short, and for TWO reasons where most entries here have one.
+ *
+ * It is a live surface - a progress bar a user watches after finishing a
+ * session - and it is one of the two payloads above whose period boundary no
+ * counter tracks. 30s bounds both.
+ */
+export const CACHE_TTL_GOAL_PROGRESS_SEC = 30;
+
+/**
+ * A streak, shared by GET /me and GET /user/:userId.
+ *
+ * The other day-dependent payload. Its effective count is computed on read from
+ * today's date (see toEffectiveStreak), so a cached copy that outlives midnight
+ * reports yesterday's answer. A minute is a tolerable window for a number that
+ * only changes once a day, and short enough that the wrong answer is never on
+ * screen for long.
+ */
+export const CACHE_TTL_STREAK_SEC = 60;
+
+/**
+ * A subscription. Matches the single post and the single user profile at 120s -
+ * the most static row a user has, and one only they can read.
+ *
+ * Note this payload has the same day-dependence problem in principle, since
+ * isPremium is computed against renewsAt on read. It is not the same in
+ * practice: a renewal date is 30 days out rather than hours, so being two
+ * minutes late to notice an expiry is immaterial where being two minutes late
+ * to a streak is not.
+ */
+export const CACHE_TTL_SUBSCRIPTION_SEC = 120;
+
+/**
+ * The unread notification badge. The shortest TTL in this file alongside the
+ * like summary, and for the same reason: a badge that still shows 3 after you
+ * have read everything is the most visible staleness this feature can produce,
+ * and the query behind it is a single indexed count.
+ *
+ * The paginated LIST is deliberately uncached - see listMyNotifications.
+ */
+export const CACHE_TTL_NOTIFICATION_COUNT_SEC = 15;
+
+/**
+ * Goals and streaks reuse RATE_LIMIT_READ and RATE_LIMIT_WRITE as they stand.
+ * The streak router has no write tier at all, because it has no write routes.
+ *
+ * DELETE /api/goals/:period stays on RATE_LIMIT_WRITE rather than
+ * RATE_LIMIT_BULK, unlike most deletes in this file: it removes exactly one row
+ * belonging to the caller, cascades nothing, and reaches nobody else's data -
+ * which is the property the bulk tier exists to bound.
+ *
+ * DELETE /api/notifications - clearing the whole list - IS on RATE_LIMIT_BULK,
+ * and there by row count as well as by irreversibility.
+ */
+
+/**
+ * Marking notifications read.
+ *
+ * Reuses the LIKE write tier's number rather than RATE_LIMIT_WRITE, and for the
+ * reason that tier was created: 20/min is tuned for a human typing a comment,
+ * and marking notifications read is a tap. A user working down a backlog after
+ * a week away legitimately fires a burst, and 20/min would throttle exactly
+ * that ordinary use. Still an order of magnitude below a script.
+ *
+ * A separate constant despite the identical number, per the rule this file
+ * states throughout - the surfaces differ and must be free to diverge.
+ */
+export const RATE_LIMIT_NOTIFICATION_WRITE = { max: 60, windowSec: 60 };
+
+/**
+ * Subscribing and cancelling.
+ *
+ * THE TIGHTEST TIER IN THIS FILE, and the only one bounding an operation
+ * because of what it MEANS rather than what it costs. Subscribing is a
+ * once-a-month decision; nobody subscribes and cancels five times an hour, so
+ * traffic at this ceiling is a bug or an attack rather than a busy user.
+ *
+ * It matters more than the numbers suggest while subscribe() is a stub that
+ * grants premium to anyone who asks - see the header of
+ * subscription.service.js. When a real provider is wired in, each call becomes
+ * a request to that provider's API, and a loop here would become a bill.
+ */
+export const RATE_LIMIT_SUBSCRIPTION_WRITE = { max: 5, windowSec: 3600 };

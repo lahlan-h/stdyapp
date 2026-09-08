@@ -70,6 +70,19 @@ const GROUP_EPOCH = "g1";
 const ROUTINE_EPOCH = "r1";
 
 /**
+ * And four more, for the gamification and account entities. Same reasoning an
+ * eleventh through fourteenth time - a goal-progress payload embeds a computed
+ * total, a streak payload embeds an EFFECTIVE count rather than the stored one,
+ * a subscription payload embeds a derived isPremium flag and a notification
+ * payload is a bare count. Each of those shapes must be free to change and
+ * orphan only its own keys.
+ */
+const GOAL_EPOCH = "go1";
+const STREAK_EPOCH = "st1";
+const SUBSCRIPTION_EPOCH = "sb1";
+const NOTIFICATION_EPOCH = "nt1";
+
+/**
  * Version counters outlive the payloads beneath them by a wide margin, and that
  * gap is deliberate.
  *
@@ -544,6 +557,147 @@ export const routineKey = (routineId, viewerId, version) =>
  */
 export const routineUserListKey = (userId, version) =>
   `${ROUTINE_EPOCH}:routine:byuser:${userId}:u${version}`;
+
+/**
+ * Goal version counter.
+ *
+ * ONE scope, per owner, where sessions and routines each need two. That falls
+ * out of the shape of the entity rather than being an omission: GET
+ * /api/goals/:period returns one row of the very list GET /api/goals returns,
+ * so no write can change one without changing the other and a second counter
+ * would only ever be bumped in lockstep with the first.
+ *
+ * @param {string} userId
+ */
+export const goalOwnerVersionKey = (userId) =>
+  `${VERSION_PREFIX}goal:owner:${userId}`;
+
+/**
+ * Goal key builders.
+ *
+ * NO VIEWER SEGMENT, and unlike userKey that is not a judgement call: every
+ * route in this router is /me-shaped, taking the owner from req.user.id with no
+ * path parameter naming a user at all. The caller IS the subject, so the key
+ * built from the subject is already per-viewer and a second copy of the same id
+ * would say nothing.
+ *
+ * @param {string} userId @param {number} version
+ */
+export const goalListKey = (userId, version) =>
+  `${GOAL_EPOCH}:goal:byuser:${userId}:u${version}`;
+
+/**
+ * One period's goal. Not shared with goalListKey despite being a subset of it -
+ * the payloads are genuinely different shapes (a row versus an array), which is
+ * the test userListKey's comment sets for when two routes may share a key.
+ *
+ * @param {string} userId @param {string} period @param {number} version
+ */
+export const goalKey = (userId, period, version) =>
+  `${GOAL_EPOCH}:goal:one:${userId}:${period}:u${version}`;
+
+/**
+ * Goal progress.
+ *
+ * ⚠ STAMPED WITH TWO COUNTERS FROM DIFFERENT DOMAINS, which no other key in
+ * this file does, and the second one is load-bearing. The payload is
+ * minutesStudied measured against targetMinutes: the target moves when a GOAL
+ * is written, and the minutes move when a SESSION ends. A key carrying only the
+ * goal counter would keep serving this morning's progress all day, because
+ * finishing a session bumps nothing in the goal namespace.
+ *
+ * Note what NEITHER counter covers: the period boundary. Progress is measured
+ * from midnight (or Monday), and nothing bumps at midnight. That is what
+ * CACHE_TTL_GOAL_PROGRESS_SEC is really bounding - see the warning in
+ * config/cache.js.
+ *
+ * @param {string} userId @param {string} period
+ * @param {number} goalVersion @param {number} sessionVersion
+ */
+export const goalProgressKey = (userId, period, goalVersion, sessionVersion) =>
+  `${GOAL_EPOCH}:goal:progress:${userId}:${period}:g${goalVersion}:s${sessionVersion}`;
+
+/**
+ * Streak version counter. Keyed on the user the streak BELONGS to, not the one
+ * reading it - see the note on streakKey.
+ *
+ * @param {string} userId
+ */
+export const streakUserVersionKey = (userId) =>
+  `${VERSION_PREFIX}streak:user:${userId}`;
+
+/**
+ * Streak key builder.
+ *
+ * SHARED BY GET /me AND GET /user/:userId, which is the userListKey pattern and
+ * passes its test: both routes resolve to readStreak(id) and return
+ * byte-identical data - getMyStreak merely skips the existence check. Separate
+ * keys would cache the same payload twice and halve the hit rate. If those two
+ * response shapes ever diverge, they must stop sharing this key.
+ *
+ * NO VIEWER, and here that IS a judgement call rather than a structural fact,
+ * so it is worth stating: a streak is deliberately public to any authenticated
+ * caller, because the leaderboard is the feature. Every reader gets the same
+ * body, so a per-viewer key would store one copy per reader of identical data.
+ * If streaks are ever made private or follower-gated, the viewer goes into this
+ * key in the same commit.
+ *
+ * @param {string} userId @param {number} version
+ */
+export const streakKey = (userId, version) =>
+  `${STREAK_EPOCH}:streak:one:${userId}:v${version}`;
+
+/**
+ * Subscription version counter.
+ *
+ * @param {string} userId
+ */
+export const subscriptionUserVersionKey = (userId) =>
+  `${VERSION_PREFIX}subscription:user:${userId}`;
+
+/**
+ * Subscription key builder.
+ *
+ * No viewer segment, for goalListKey's structural reason rather than
+ * streakKey's judgement: GET /api/subscriptions/me has no path parameter, so
+ * the userId in this key is always the caller's own and already identifies the
+ * viewer. Only one person can ever read a given key, which is the property
+ * postKey needs an explicit viewer segment to achieve.
+ *
+ * If a by-user route is ever added - an admin view, say - it must NOT share
+ * this key without a viewer segment, or it would replay one caller's
+ * subscription to the next.
+ *
+ * @param {string} userId @param {number} version
+ */
+export const subscriptionKey = (userId, version) =>
+  `${SUBSCRIPTION_EPOCH}:sub:one:${userId}:v${version}`;
+
+/**
+ * Notification version counter. One per user, covering the single cached read
+ * in that router.
+ *
+ * @param {string} userId
+ */
+export const notificationUserVersionKey = (userId) =>
+  `${VERSION_PREFIX}notification:user:${userId}`;
+
+/**
+ * The unread badge.
+ *
+ * The ONLY cached read in the notification router. The paginated list is
+ * deliberately uncached, exactly as GET /all is in the post, like, comment and
+ * follow routers: every notification this user receives would invalidate every
+ * page of it, and the key would have to carry page, limit and unreadOnly - so
+ * it would thrash and grow at once.
+ *
+ * No viewer segment, for subscriptionKey's reason: the route is /me-shaped and
+ * the userId is the caller's own.
+ *
+ * @param {string} userId @param {number} version
+ */
+export const notificationUnreadKey = (userId, version) =>
+  `${NOTIFICATION_EPOCH}:notif:unread:${userId}:v${version}`;
 
 /**
  * Reads version counters, in the order asked for.

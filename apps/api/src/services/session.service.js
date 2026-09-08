@@ -1,4 +1,12 @@
+import { createLogger } from "@stdyapp/core";
+
 import * as sessionRepo from "../repositories/session.repository.js";
+// Gamification, hung off the end of endSession. Service imports rather than
+// repository ones, unlike the cross-domain reads elsewhere in this file: these
+// carry real rules - the consecutive-day test, the goal-crossing test - and
+// reaching past them into a repository would mean re-deriving both here.
+import { recordStudyDay } from "./streak.service.js";
+import { notifyGoalsReached } from "./goal.service.js";
 // Deleting a session nulls posts.sessionId via ON DELETE SET NULL — a write to
 // posts that never passes through post.service.js, so its cache has to be told.
 import { findPostRefsBySession } from "../repositories/post.repository.js";
@@ -13,6 +21,8 @@ import {
 const INTERRUPTION_PENALTY_THRESHOLD_SEC = 20 * 60;
 const FOCUS_POINTS_PER_MINUTE = 1;
 const INTERRUPTION_PENALTY_POINTS = 10;
+
+const log = createLogger("sessions");
 
 const notFound = () => {
   const err = new Error("Session not found");
@@ -141,6 +151,39 @@ export const endSession = async (sessionId, userId) => {
   // Both scopes: endedAt and focusPoints appear in the single-session payload
   // and in every row of findSessionsByUser.
   await invalidateSession({ sessionIds: [sessionId], ownerIds: [userId] });
+
+  /**
+   * Gamification, and everything about the placement of this block is
+   * deliberate.
+   *
+   * AFTER the session write and its invalidation, because a streak is a
+   * consequence of the session having ended rather than part of ending it.
+   *
+   * NON-FATAL. The session HAS ended - the row is written and the points are
+   * banked - so a Redis hiccup or a slow query while updating a streak must not
+   * turn a successful request into a 500 that tells the user their session did
+   * not save. Ending a session is the single most important write in this app
+   * and nothing bolted onto it may be allowed to fail it.
+   *
+   * SEQUENTIAL rather than Promise.all, and this one is load-bearing:
+   * notifyGoalsReached reads the caller's completed sessions to decide whether
+   * the goal was just crossed, and recordStudyDay may raise a milestone
+   * notification. Running them concurrently would interleave two writers on the
+   * same user's notification counter for no measurable gain on two queries.
+   *
+   * recordStudyDay is idempotent per day, so hanging it off EVERY session end
+   * rather than trying to detect the first one of the day is both correct and
+   * simpler - see the note on that function.
+   */
+  try {
+    await recordStudyDay(userId);
+    await notifyGoalsReached(userId, minutesStudied);
+  } catch (err) {
+    // WARN, not ERROR: the user-visible operation succeeded and this is a
+    // degraded outcome. Logged with the session so a systematic failure is
+    // traceable rather than merely counted.
+    log.warn(`gamification failed for session ${sessionId}: ${err?.message}`);
+  }
 
   return updated;
 };
