@@ -2,12 +2,16 @@
   "name": "@stdyapp/core",
   "version": "0.0.0",
   "description": "The core logic of stdyapp!",
+  "main": "index.ts",
+  "types": "index.ts",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "npx convex dev"
+    "start": "npx convex dev",
+    "upload": "node --env-file=.env.local uploadScript.js"
   },
   "dependencies": {
-    "convex": "^1.45.0"
+    "convex": "^1.45.0",
+    "dotenv": "^16.4.5"
   }
 }
