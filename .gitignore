@@ -1,3 +1,5 @@
 node_modules
 apps/mobile/.expo
 apps/mobile/node_modules
+packages/core/.env.local
+node_modules

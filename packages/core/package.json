@@ -5,8 +5,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "echo \"Error: no dev step for shared\" && exit 0",
-    "build": "echo \"Error: no build step for shared\" && exit 0"
+    "start": "npx convex dev"
   },
-  "dependencies": {}
+  "dependencies": {
+    "convex": "^1.45.0"
+  }
 }
