@@ -11,6 +11,7 @@ import { getUserById } from "./user.service.js";
 // for findPostById: going through the services would drag their gates along.
 import { findCommenterIdsByPosts } from "../repositories/comment.repository.js";
 import { findLikerIdsByPosts } from "../repositories/like.repository.js";
+import { findBookmarkerIdsByPosts } from "../repositories/bookmark.repository.js";
 // Object storage for post photos. This service owns WHEN an object is written or
 // reclaimed; photoStorage owns the key layout and the ownership rule that says
 // which objects a caller may touch at all.
@@ -27,6 +28,7 @@ import {
   postAuthorVersionKey,
   userVersionKey,
   likeUserVersionKey,
+  bookmarkUserVersionKey,
 } from "../utils/cache.js";
 
 const notFound = (what) => {
@@ -100,21 +102,29 @@ const invalidatePost = async ({ postIds = [], authorId }) => {
 };
 
 /**
- * The above, PLUS the comment and like caches that embed these Post rows.
+ * The above, PLUS the comment, like and bookmark caches that embed these Post
+ * rows.
  *
- * This closes the hole utils/cache.js documents: the per-user comment and like
- * lists carry a whole Post row, so an edited caption or a deleted post leaves
- * those cached responses wrong for everyone who commented on or liked it. No
- * comment and no like was written, so nothing in those modules bumps — this is
- * the only place that can.
+ * This closes the hole utils/cache.js documents: the per-user comment, like and
+ * saved lists each carry a whole Post row, so an edited caption or a deleted post
+ * leaves those cached responses wrong for everyone who commented on, liked or
+ * saved it. No comment, no like and no bookmark was written, so nothing in those
+ * modules bumps — this is the only place that can.
  *
- * The two lookups are by-post rather than per-post and take the whole id array,
- * so clearing an account with a hundred posts still costs two queries. Both run
+ * The three lookups are by-post rather than per-post and take the whole id array,
+ * so clearing an account with a hundred posts still costs three queries. All run
  * in parallel, and the whole fan-out is a single bumpVersions call so its Set
  * de-duplicates a user who both commented and liked.
  *
- * Only for UPDATE and DELETE. A brand new post has no comments or likes yet, so
- * createPost deliberately calls the cheaper invalidatePost instead.
+ * Note the bookmark half fans out in ONE direction only, where the comment and
+ * like halves are the post side of a two-sided relationship. A saved list embeds
+ * bare Post rows with no user fields, so nothing on the bookmark side goes stale
+ * when a USER changes — which is why collectUserVersionKeys in user.service.js
+ * has no bookmark counterpart walk. See the bookmark block in utils/cache.js.
+ *
+ * Only for UPDATE and DELETE. A brand new post has no comments, likes or
+ * bookmarks yet, so createPost deliberately calls the cheaper invalidatePost
+ * instead.
  *
  * @param {string[]} postIds
  * @param {string} authorId
@@ -122,9 +132,10 @@ const invalidatePost = async ({ postIds = [], authorId }) => {
 const invalidatePostFanout = async (postIds, authorId) => {
   if (postIds.length === 0) return invalidatePost({ authorId });
 
-  const [commenters, likers] = await Promise.all([
+  const [commenters, likers, bookmarkers] = await Promise.all([
     findCommenterIdsByPosts(postIds),
     findLikerIdsByPosts(postIds),
+    findBookmarkerIdsByPosts(postIds),
   ]);
 
   await bumpVersions([
@@ -132,6 +143,7 @@ const invalidatePostFanout = async (postIds, authorId) => {
     postAuthorVersionKey(authorId),
     ...commenters.map(({ userId }) => userVersionKey(userId)),
     ...likers.map(({ userId }) => likeUserVersionKey(userId)),
+    ...bookmarkers.map(({ userId }) => bookmarkUserVersionKey(userId)),
   ]);
 };
 
