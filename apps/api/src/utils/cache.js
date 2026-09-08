@@ -83,6 +83,17 @@ const GROUP_EPOCH = "g1";
 const ROUTINE_EPOCH = "r1";
 
 /**
+ * And a seventh, for bookmarks. The saved list embeds whole Post rows where the
+ * block list above embeds users, so the two shapes must be free to change and
+ * orphan only their own keys.
+ *
+ * Note the literal: "bm1", not "b1", which blocks already own. A shared prefix
+ * between the API's two PRIVATE payloads is the one collision this file cannot
+ * tolerate — it would serve one caller's saved posts from the other's key.
+ */
+const BOOKMARK_EPOCH = "bm1";
+
+/**
  * And four more, for the gamification and account entities. Same reasoning an
  * eleventh through fourteenth time - a goal-progress payload embeds a computed
  * total, a streak payload embeds an EFFECTIVE count rather than the stored one,
@@ -419,6 +430,65 @@ export const blockListKey = (viewerId, version) =>
  */
 export const blockStatusKey = (viewerId, targetUserId, version) =>
   `${BLOCK_EPOCH}:block:status:${viewerId}:${targetUserId}:v${version}`;
+
+/**
+ * Bookmark key builders.
+ *
+ * ⚠ THE VIEWER IS IN BOTH OF THESE, AND THAT IS A SECURITY REQUIREMENT rather
+ * than a cache-shaping choice — the same warning the block block above carries,
+ * for the same reason. cache() runs BEFORE the controller and therefore before
+ * the service's scoping WHERE clause, so a viewer-less key would store one
+ * caller's private saved list and hand it to the next caller as a HIT. Caching
+ * would become the authorization bypass.
+ *
+ * ONE COUNTER PER USER, like blocks and unlike likes. Likes need two
+ * (like:post:* and like:user:*) because a like has a PUBLIC per-post surface —
+ * the count and the "liked by" list — that changes for everyone when anyone
+ * likes. A bookmark has no per-post read at all, so every cached read here hangs
+ * off the saver and one counter covers the lot.
+ *
+ * THE COHERENCE HOLE IS CLOSED from the post side, not this one. These payloads
+ * embed whole Post rows, so an edited caption or a deleted post leaves the saved
+ * list of everyone who saved it stale — and no bookmark was written, so nothing
+ * in bookmark.service.js bumps. invalidatePostFanout in post.service.js bumps
+ * this counter for every saver, via findBookmarkerIdsByPosts. Note that fan-out
+ * is one-directional: the rows carry no user fields, so a RENAMED user cannot go
+ * stale in anyone's bookmarks and collectUserVersionKeys needs no counterpart
+ * walk — only the user's own counter.
+ */
+
+/** @param {string} userId */
+export const bookmarkUserVersionKey = (userId) =>
+  `${VERSION_PREFIX}bookmark:user:${userId}`;
+
+/**
+ * The caller's own saved list, shared by GET / and GET /all.
+ *
+ * The parameter is named viewerId rather than userId on purpose, exactly as
+ * blockListKey's is: the two are always the same person here, and naming it for
+ * the VIEWER is what makes a future "someone else's saved list" route look as
+ * wrong as it is.
+ *
+ * @param {string} viewerId @param {number} version
+ */
+export const bookmarkListKey = (viewerId, version) =>
+  `${BOOKMARK_EPOCH}:bookmark:byuser:${viewerId}:v${version}`;
+
+/**
+ * savedByMe for one post.
+ *
+ * Viewer FIRST, post second — the ordering says whose data this is, and it is
+ * the viewer's, as in blockStatusKey.
+ *
+ * Stamped with the VIEWER's counter and needs no post counter, for the reason
+ * blockStatusKey gives: savedByMe and savedAt can only change when THIS viewer
+ * saves or unsaves THIS post, and both of those writes bump the viewer's counter
+ * already.
+ *
+ * @param {string} viewerId @param {string} postId @param {number} version
+ */
+export const bookmarkStatusKey = (viewerId, postId, version) =>
+  `${BOOKMARK_EPOCH}:bookmark:status:${viewerId}:${postId}:v${version}`;
 
 /**
  * Post key builders.

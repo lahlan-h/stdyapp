@@ -90,6 +90,31 @@ export const CACHE_TTL_BLOCK_LIST_SEC = 60;
 export const CACHE_TTL_BLOCK_STATUS_SEC = 15;
 
 /**
+ * Bookmarks.
+ *
+ * Separate constants again, per the rule this file states throughout. These join
+ * blocks as the API's only PRIVATE cached payloads, and sit at the same short end
+ * for the same reason: a stale entry here is a caller looking at their own
+ * out-of-date list, and the queries behind both are single indexed lookups —
+ * cheap to get wrong, cheap to redo.
+ *
+ * NO WRITE TIER OF THEIR OWN. Bookmarks reuse RATE_LIMIT_READ, RATE_LIMIT_WRITE
+ * and RATE_LIMIT_BULK unchanged — the call blocks make, and deliberately NOT the
+ * RATE_LIMIT_LIKE_WRITE their closest structural sibling uses. That tier is 60/min
+ * because a feed gets double-tapped rapidly; saving a post is a deliberate act,
+ * and nothing bulk-saves.
+ */
+
+// The caller's own saved list, shared by GET / and GET /all. Matches every other
+// per-user list in this file.
+export const CACHE_TTL_BOOKMARK_LIST_SEC = 60;
+
+// savedByMe for one post. Matches the like, follow and block summaries, and for
+// the same reason: a bookmark icon that still says "Save" after you tap it is the
+// most visible staleness this feature can produce.
+export const CACHE_TTL_BOOKMARK_STATUS_SEC = 15;
+
+/**
  * Posts.
  *
  * Separate constants again, for the reason the like block gives: these describe
