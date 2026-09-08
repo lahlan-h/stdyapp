@@ -65,6 +65,21 @@ model User {
   blocking      Block[]            @relation("BlockerUser")
   blockedBy     Block[]            @relation("BlockedUser")
 
+  // Both sides of the report graph. Named after the COLUMN they hang off, like
+  // the block pair directly above and unlike the follow pair above that — there
+  // is no direction left to invert, "ReportReporter" is the relation through
+  // reports.reporterId, full stop.
+  //
+  // The FIELD names are from the user's point of view: `reportsFiled` is what
+  // this user wrote, `reportsAgainst` is what was written about them.
+  // `reportsAgainst` has NO route and must never get one — it is here so Prisma
+  // can express the second foreign key, and so cache invalidation can traverse it
+  // to reach the reporters whose cached lists embed this user. Handing it to the
+  // user themselves would name their own accusers to them, which is the exact
+  // fact this entity withholds. See the note on the Report model.
+  reportsFiled   Report[]           @relation("ReportReporter")
+  reportsAgainst Report[]           @relation("ReportTargetUser")
+
   @@map("users")
 }
 
@@ -252,6 +267,13 @@ model Post {
   likes     Like[]
   comments  Comment[]
   bookmarks Bookmark[]
+
+  // The reports filed against this post. NO ROUTE reads this side, for the reason
+  // `bookmarks` above has no "saved by" route: a report count on a post would tell
+  // its author they had been reported, and the count moving would say it again
+  // every time. It is here so Prisma can express the foreign key, and for
+  // findReporterIdsByPosts. See the note on the Report model.
+  reports   Report[]     @relation("ReportTargetPost")
 
   // Covers the per-user feed — the caller's own posts, newest first. Composite
   // rather than an index on userId alone so Postgres can satisfy the ORDER BY
@@ -512,6 +534,117 @@ model Bookmark {
   @@index([postId])
 
   @@map("bookmarks")
+}
+
+/// One accusation filed by one user, against another USER or against one POST.
+///
+/// THE FIRST MODEL HERE WITH A POLYMORPHIC TARGET, and that shape drives most of
+/// what follows. Every other pair-shaped entity in this schema — Like, Follow,
+/// Block, Bookmark — points at exactly one fixed kind of thing, so its target is a
+/// single NOT NULL column. A report may name a user or a post, so it carries TWO
+/// nullable columns of which exactly one is ever set.
+///
+/// That XOR is not expressible in Prisma's schema language. It lives as a CHECK
+/// constraint added by hand to the migration, and is re-stated in
+/// report.validation.js and again in report.service.js — three places, because the
+/// database is the only one that cannot be bypassed and the other two are the only
+/// ones that can produce a decent error message.
+///
+/// PRIVACY FOLLOWS BLOCK, AND HARDER. A block is private to the blocker; a report
+/// is private to the reporter, and the reported party must never learn one exists.
+/// "X reported Y" handed to a third party is a smear, and handed to Y it is a
+/// retaliation vector — it names an accuser to the person they accused. Nothing in
+/// the API may expose the targetUserId or targetPostId side of this table to
+/// anyone but the reporter: no "reports against me" list, no report count on a
+/// post or a profile, and no route from which either can be derived. See the
+/// authorisation note at the top of apps/api/src/services/report.service.js.
+///
+/// There is no admin or moderator role in this codebase, so the reporter is today
+/// the only reader of their own rows and GET /api/reports/all means "mine" — the
+/// call block.service.js and bookmark.service.js already make.
+model Report {
+  id           String   @id @default(uuid())
+
+  // The accuser, and the ONLY person any route lets read this row. Cascade,
+  // exactly as blocks.blockerId and bookmarks.userId are: a report is metadata
+  // that means nothing once the person who filed it is gone, not authored content
+  // worth blocking a user delete over the way posts.userId and comments.userId
+  // are.
+  reporterId   String
+  reporter     User     @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  // The reported user, when this report is about a person; NULL when it is about
+  // a post. Cascade for likes.postId's reason, and load-bearing: Restrict here
+  // would make deleting a user fail with a foreign-key error for anyone who had
+  // ever been reported.
+  targetUserId String?
+  targetUser   User?    @relation("ReportTargetUser", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  // The reported post, when this report is about content; NULL when it is about a
+  // person. Cascade for the same reason: Restrict would break
+  // DELETE /api/posts/:id for any post anyone had ever reported.
+  targetPostId String?
+  targetPost   Post?    @relation("ReportTargetPost", fields: [targetPostId], references: [id], onDelete: Cascade)
+
+  // Why it was filed. A plain String rather than an enum, unlike GroupRole above,
+  // and the difference is deliberate: a moderation vocabulary is the most
+  // churn-prone list in a product like this, and every addition to a Postgres enum
+  // is a migration. The set is closed at the edge instead — REPORT_REASONS in
+  // report.validation.js — so the API rejects an unknown reason while the column
+  // stays free to grow one.
+  reason       String
+
+  // Where the report sits in its lifecycle. A String for reason's reason, plus a
+  // second one: the interesting values (REVIEWED, ACTIONED, DISMISSED) belong to a
+  // moderator role this codebase does not have, so the vocabulary is expected to
+  // move before anything reads it. See REPORT_STATUSES in report.validation.js for
+  // the set, and REPORTER_ALLOWED_STATUSES in report.service.js — the single place
+  // the transition rule lives, and therefore the single place a moderator check
+  // will later go.
+  status       String   @default("PENDING")
+
+  createdAt    DateTime @default(now())
+
+  // The only model in the social half of this schema to carry BOTH timestamps
+  // besides Comment, and for Comment's reason: this row has a genuinely mutable
+  // column. Like, Follow, Block and Bookmark are toggles whose every column is the
+  // primary key or half the row's identity, so they offer no edit to make. status
+  // is an edit, which is why this is the only one of the six routers with a PATCH.
+  updatedAt    DateTime @updatedAt
+
+  // ONE REPORT PER REPORTER PER TARGET — the integrity model of the entity, as
+  // @@unique([userId, postId]) is for Bookmark. It makes filing safely retryable
+  // from a double-tapped menu item, and it is the index that answers "have I
+  // reported this" on every profile and feed render.
+  //
+  // TWO constraints rather than one because the target is polymorphic, and the two
+  // do the right thing for free: Postgres treats NULL as DISTINCT in a unique
+  // index, so the first constrains only user-reports — every post-report has
+  // targetUserId NULL and is therefore never compared against another — and the
+  // second only post-reports. No partial index is needed, and none should be
+  // added.
+  @@unique([reporterId, targetUserId])
+  @@unique([reporterId, targetPostId])
+
+  // The reporter's own list, newest first. The uniques above lead with reporterId
+  // but carry a target second, so neither can satisfy an ORDER BY createdAt —
+  // without this, every read of the list sorts the matched rows. Same reasoning as
+  // the composite indexes on posts, comments and bookmarks.
+  @@index([reporterId, createdAt])
+
+  // Neither unique can serve a lookup by target alone. NO ROUTE does that lookup —
+  // "who reported me" does not exist and must not. These two are here for non-route
+  // callers only, exactly as blocks' @@index([blockedId]) and bookmarks'
+  // @@index([postId]) are:
+  //   - Postgres itself, which scans these columns on every user and post delete to
+  //     apply the ON DELETE CASCADE above;
+  //   - findReporterIdsByTargetUser and findReporterIdsByPosts, which the fan-outs
+  //     in user.service.js and post.service.js use to bump the report-list counter
+  //     of everyone who reported a renamed user or an edited post.
+  @@index([targetUserId])
+  @@index([targetPostId])
+
+  @@map("reports")
 }
 
 // TODO: remaining entities from the ERD — gamification/streaks, discover,

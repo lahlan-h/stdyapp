@@ -95,6 +95,20 @@ const ROUTINE_EPOCH = "r1";
 const BOOKMARK_EPOCH = "bm1";
 
 /**
+ * And an eleventh, for reports. The payload embeds a {id, username, avatarUrl}
+ * row for a reported USER and a partial Post row for a reported POST — it is the
+ * only shape in this file that can carry either, where the block list carries
+ * only people and the saved list only posts. It must be free to change and
+ * orphan its own keys alone.
+ *
+ * Note the literal: "rp1", not "r1", which routines already own. The two-letter
+ * form follows "bm1" and "se1" for the reason the bookmark note gives — a shared
+ * prefix is the one collision this file cannot tolerate, and here it would serve
+ * a PRIVATE accusation from a routine's key.
+ */
+const REPORT_EPOCH = "rp1";
+
+/**
  * Version counters outlive the payloads beneath them by a wide margin, and that
  * gap is deliberate.
  *
@@ -477,6 +491,127 @@ export const bookmarkListKey = (viewerId, version) =>
  */
 export const bookmarkStatusKey = (viewerId, postId, version) =>
   `${BOOKMARK_EPOCH}:bookmark:status:${viewerId}:${postId}:v${version}`;
+
+/**
+ * Report key builders.
+ *
+ * ⚠ THE VIEWER IS IN EVERY ONE OF THESE, AND THAT IS A SECURITY REQUIREMENT —
+ * the same warning the block and bookmark blocks above carry, on the payload
+ * where it matters most. cache() runs BEFORE the controller and therefore before
+ * the service's scoping WHERE clause, so a viewer-less key would store one
+ * caller's accusations and hand them to the next caller as a HIT. Caching would
+ * become the authorization bypass, on the one payload in this API that names an
+ * accuser to the person they accused.
+ *
+ * ONE COUNTER PER USER, like blocks and bookmarks and unlike likes. Likes need a
+ * second, per-post counter because a like has a PUBLIC per-post surface that
+ * changes for everyone when anyone likes. A report has no per-target read at all —
+ * "who reported this post" does not exist and must not — so every cached read
+ * here hangs off the reporter and one counter covers the lot.
+ *
+ * Bumped ONLY when the user is the REPORTER, never the target, exactly as
+ * v:block:user:<U> is bumped only for the blocker. Somebody reporting U changes
+ * nothing U can read, so it bumps nothing here. Do not "fix" this to bump both
+ * ends: it would invalidate for no reason, and it would imply the reported side
+ * has an observable surface. It does not, and must not acquire one.
+ *
+ * THE COHERENCE HOLE IS CLOSED FROM BOTH SIDES, which makes this the only entity
+ * in this file that needs both walks. A report payload embeds a reported USER's
+ * username and avatarUrl AND a reported POST's caption and photoUrl, where the
+ * block payload carries only people and the bookmark payload only posts:
+ *   - findReporterIdsByPosts, called by invalidatePostFanout in post.service.js,
+ *     covers an edited or deleted post;
+ *   - findReporterIdsByTargetUser, called by collectUserVersionKeys in
+ *     user.service.js, covers a renamed or re-avatared user.
+ * Both fan out ONE-directionally, for the reason the block block gives: there is
+ * no readable surface on the target's side to walk back from.
+ */
+
+/** @param {string} userId */
+export const reportUserVersionKey = (userId) =>
+  `${VERSION_PREFIX}report:user:${userId}`;
+
+/**
+ * The caller's own filed reports, unpaginated — GET /api/reports.
+ *
+ * The parameter is named viewerId rather than reporterId on purpose, exactly as
+ * blockListKey's and bookmarkListKey's are: the two are always the same person
+ * here, and naming it for the VIEWER is what makes a future "someone else's
+ * reports" route look as wrong as it is.
+ *
+ * @param {string} viewerId @param {number} version
+ */
+export const reportListKey = (viewerId, version) =>
+  `${REPORT_EPOCH}:report:byuser:${viewerId}:v${version}`;
+
+/**
+ * One page of the caller's own reports — GET /api/reports/all.
+ *
+ * THE ONLY PAGINATED READ CACHED ANYWHERE IN THIS FILE, and the divergence from
+ * every other /all is deliberate rather than an oversight.
+ *
+ * The reasons those are uncached do not apply here. GET /api/users caches nothing
+ * because its ?q is unbounded client input; GET /api/posts/all is a global list
+ * that every write in the system invalidates. This route is neither — it is one
+ * viewer's private rows, invalidated only by that viewer's own writes, over a page
+ * and a limit that paginationQuerySchema has already validated and capped at
+ * MAX_PAGE_SIZE. The keyspace is bounded by pages-per-user rather than by client
+ * imagination, and a user files a handful of reports, not a feed of them.
+ *
+ * BOTH parameters are in the key because both change the body. Omitting limit
+ * would serve a 20-row page to a caller who asked for 100.
+ *
+ * @param {string} viewerId @param {number} page @param {number} limit
+ * @param {number} version
+ */
+export const reportPageKey = (viewerId, page, limit, version) =>
+  `${REPORT_EPOCH}:report:page:${viewerId}:p${page}:n${limit}:v${version}`;
+
+/**
+ * One report — GET /api/reports/:id.
+ *
+ * STAMPED WITH THE VIEWER'S COUNTER RATHER THAN A PER-REPORT ONE, which is the
+ * opposite call from commentKey above, so read this before "fixing" it to match.
+ *
+ * commentKey needs a per-comment counter because at middleware time the URL
+ * carries only the comment id — that row's postId and author are unknown until
+ * something reads it, which is the very thing the cache exists to avoid. Here
+ * there is nothing to look up: only the reporter can ever get a 200 from this
+ * route, so the viewer IS the owner, and every write that can change this row is
+ * a write BY that viewer and bumps their counter already.
+ *
+ * The cost is that editing one report orphans this viewer's other cached reports
+ * too. That is the right trade at this scale, and it buys a counter that a delete
+ * cannot strand — a per-report counter outlives the row it describes.
+ *
+ * @param {string} reportId @param {string} viewerId @param {number} version
+ */
+export const reportOneKey = (reportId, viewerId, version) =>
+  `${REPORT_EPOCH}:report:one:${reportId}:${viewerId}:v${version}`;
+
+/**
+ * reportedByMe for one target — GET /api/reports/user/:userId/status and
+ * GET /api/reports/post/:postId/status.
+ *
+ * Viewer FIRST, target second, as in blockStatusKey and bookmarkStatusKey: the
+ * ordering says whose data this is, and it is entirely a fact about the viewer.
+ *
+ * targetKind is what makes ONE builder safe for TWO routes. It is a literal "u"
+ * or "p" rather than the bare id because a user id and a post id are both uuids
+ * drawn from the same space — without the discriminator a post whose id happened
+ * to equal a user's would collide, and the two answers are different facts. Same
+ * trick as the literal `self` and `profile` segments further up, and cheaper than
+ * a second builder differing in one segment.
+ *
+ * Needs no target VERSION, for the reason blockStatusKey gives: the flag can only
+ * change via a row whose reporterId is the viewer, and every such write bumps the
+ * viewer's counter already.
+ *
+ * @param {string} viewerId @param {"u" | "p"} targetKind
+ * @param {string} targetId @param {number} version
+ */
+export const reportStatusKey = (viewerId, targetKind, targetId, version) =>
+  `${REPORT_EPOCH}:report:status:${viewerId}:${targetKind}:${targetId}:v${version}`;
 
 /**
  * Post key builders.

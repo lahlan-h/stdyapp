@@ -12,6 +12,7 @@ import { getUserById } from "./user.service.js";
 import { findCommenterIdsByPosts } from "../repositories/comment.repository.js";
 import { findLikerIdsByPosts } from "../repositories/like.repository.js";
 import { findBookmarkerIdsByPosts } from "../repositories/bookmark.repository.js";
+import { findReporterIdsByPosts } from "../repositories/report.repository.js";
 // Object storage for post photos. This service owns WHEN an object is written or
 // reclaimed; photoStorage owns the key layout and the ownership rule that says
 // which objects a caller may touch at all.
@@ -29,6 +30,7 @@ import {
   userVersionKey,
   likeUserVersionKey,
   bookmarkUserVersionKey,
+  reportUserVersionKey,
 } from "../utils/cache.js";
 
 const notFound = (what) => {
@@ -102,17 +104,17 @@ const invalidatePost = async ({ postIds = [], authorId }) => {
 };
 
 /**
- * The above, PLUS the comment, like and bookmark caches that embed these Post
- * rows.
+ * The above, PLUS the comment, like, bookmark and report caches that embed these
+ * Post rows.
  *
- * This closes the hole utils/cache.js documents: the per-user comment, like and
- * saved lists each carry a whole Post row, so an edited caption or a deleted post
- * leaves those cached responses wrong for everyone who commented on, liked or
- * saved it. No comment, no like and no bookmark was written, so nothing in those
- * modules bumps — this is the only place that can.
+ * This closes the hole utils/cache.js documents: the per-user comment, like,
+ * saved and report lists each carry a Post row, so an edited caption or a deleted
+ * post leaves those cached responses wrong for everyone who commented on, liked,
+ * saved or reported it. No comment, no like, no bookmark and no report was
+ * written, so nothing in those modules bumps — this is the only place that can.
  *
- * The three lookups are by-post rather than per-post and take the whole id array,
- * so clearing an account with a hundred posts still costs three queries. All run
+ * The four lookups are by-post rather than per-post and take the whole id array,
+ * so clearing an account with a hundred posts still costs four queries. All run
  * in parallel, and the whole fan-out is a single bumpVersions call so its Set
  * de-duplicates a user who both commented and liked.
  *
@@ -122,8 +124,15 @@ const invalidatePost = async ({ postIds = [], authorId }) => {
  * when a USER changes — which is why collectUserVersionKeys in user.service.js
  * has no bookmark counterpart walk. See the bookmark block in utils/cache.js.
  *
- * Only for UPDATE and DELETE. A brand new post has no comments, likes or
- * bookmarks yet, so createPost deliberately calls the cheaper invalidatePost
+ * THE REPORT HALF IS THE EXCEPTION TO THAT EXCEPTION, and the only entity here
+ * that fans out both ways. A report payload embeds a reported POST's caption and
+ * photoUrl AND a reported USER's username and avatarUrl, so collectUserVersionKeys
+ * DOES have a report counterpart walk where it has no bookmark one. Note also
+ * that its rows key on reporterId rather than userId, which is why its map reads
+ * differently from the three above it.
+ *
+ * Only for UPDATE and DELETE. A brand new post has no comments, likes, bookmarks
+ * or reports yet, so createPost deliberately calls the cheaper invalidatePost
  * instead.
  *
  * @param {string[]} postIds
@@ -132,10 +141,11 @@ const invalidatePost = async ({ postIds = [], authorId }) => {
 const invalidatePostFanout = async (postIds, authorId) => {
   if (postIds.length === 0) return invalidatePost({ authorId });
 
-  const [commenters, likers, bookmarkers] = await Promise.all([
+  const [commenters, likers, bookmarkers, reporters] = await Promise.all([
     findCommenterIdsByPosts(postIds),
     findLikerIdsByPosts(postIds),
     findBookmarkerIdsByPosts(postIds),
+    findReporterIdsByPosts(postIds),
   ]);
 
   await bumpVersions([
@@ -144,6 +154,7 @@ const invalidatePostFanout = async (postIds, authorId) => {
     ...commenters.map(({ userId }) => userVersionKey(userId)),
     ...likers.map(({ userId }) => likeUserVersionKey(userId)),
     ...bookmarkers.map(({ userId }) => bookmarkUserVersionKey(userId)),
+    ...reporters.map(({ reporterId }) => reportUserVersionKey(reporterId)),
   ]);
 };
 
