@@ -57,3 +57,47 @@ export const findSessionRefsByGroup = (groupId) => {
     select: { id: true, userId: true },
   });
 };
+
+/**
+ * The caller's FINISHED sessions since a moment in time.
+ *
+ * Read by goal.service.js to work out how much of a target has been met. It
+ * lives here rather than in goal.repository.js because it queries the sessions
+ * table, following the placement findPostRefsByRoutine established: a
+ * cross-table read belongs to the repository of the table it reads, not the
+ * feature that wants it.
+ *
+ * ⚠ RETURNS ROWS, NOT A SUM, and that is a compromise worth understanding
+ * before anyone "optimises" it. Session stores startedAt and endedAt but no
+ * duration column, so the thing to add up is a computed difference - which
+ * Prisma's aggregate() cannot express and which would otherwise need raw SQL.
+ * Summing a narrow projection in JavaScript keeps the query builder honest at
+ * the cost of transferring one small row per session in the window.
+ *
+ * That cost is bounded by the window (a day or a week) and by the fact that a
+ * session is a human sitting down to study, so a heavy user produces tens of
+ * rows rather than thousands. The real fix is a durationSec column written by
+ * endSession, which would make this a one-line aggregate - worth doing when
+ * anything else needs to total study time.
+ *
+ * endedAt: { not: null } is what makes these FINISHED sessions. A running
+ * session has no duration yet, and counting it as zero would be a lie that
+ * flickers to the truth the moment it ends.
+ *
+ * @param {string} userId
+ * @param {Date} since
+ * @returns {Promise<Array<{ startedAt: Date, endedAt: Date }>>}
+ */
+export const findCompletedSessionsSince = (userId, since) => {
+  return prisma.session.findMany({
+    where: {
+      userId,
+      endedAt: { not: null },
+      // Filtered on startedAt rather than endedAt so a session that began
+      // before the window and finished inside it counts in full, which is how a
+      // person would describe it: the study happened, and it happened today.
+      startedAt: { gte: since },
+    },
+    select: { startedAt: true, endedAt: true },
+  });
+};
