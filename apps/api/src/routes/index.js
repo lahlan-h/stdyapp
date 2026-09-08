@@ -9,6 +9,7 @@ import postRoutes from "./post.routes.js"
 import likeRoutes from "./like.routes.js"
 import commentRoutes from "./comment.routes.js"
 import followRoutes from "./follow.routes.js"
+import blockRoutes from "./block.routes.js"
 import goalRoutes from "./goal.routes.js"
 import streakRoutes from "./streak.routes.js"
 import subscriptionRoutes from "./subscription.routes.js"
@@ -28,6 +29,7 @@ router.use("/posts", postRoutes);
 router.use("/likes", likeRoutes);
 router.use("/comments", commentRoutes);
 router.use("/follows", followRoutes);
+router.use("/blocks", blockRoutes);
 router.use("/goals", goalRoutes);
 router.use("/streaks", streakRoutes);
 router.use("/subscriptions", subscriptionRoutes);

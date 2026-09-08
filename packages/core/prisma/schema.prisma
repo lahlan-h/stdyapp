@@ -48,6 +48,22 @@ model User {
   following     Follow[]           @relation("Following")
   followers     Follow[]           @relation("Followers")
 
+  // Both sides of the block graph. NOTE the relation names differ in style from
+  // the follow pair directly above, deliberately: Follow's "Following" and
+  // "Followers" are written from the ROW's point of view and therefore read as
+  // the INVERSE of the field they land on, which is a trap every reader falls
+  // into once. These are named after the COLUMN they hang off instead, so there
+  // is no direction left to invert — "BlockerUser" is the relation through
+  // blocks.blockerId, full stop.
+  //
+  // The FIELD names are still from the user's point of view, which is what a
+  // caller actually wants: `blocking` is the people I block, `blockedBy` is the
+  // people who block me. `blockedBy` has NO route and must never get one — it is
+  // here so Prisma can express the second foreign key, and so cache invalidation
+  // can traverse it.
+  blocking      Block[]            @relation("BlockerUser")
+  blockedBy     Block[]            @relation("BlockedUser")
+
   // Gamification and account state. `streak` and `subscription` are SINGULAR
   // and nullable because both are at-most-one per user - see the @unique on
   // their userId columns and the note above each model.
@@ -375,6 +391,52 @@ model Follow {
   @@index([followingId])
 
   @@map("follows")
+}
+
+/// One directed edge of the block graph — the privacy counterpart of Follow.
+///
+/// Structurally identical to Follow: an ordered pair of users, no createdAt, one
+/// row per pair. Read left-to-right, a row says "blocker blocks blocked".
+///
+/// EVERYTHING ELSE ABOUT IT IS THE OPPOSITE. A follow is public social data and
+/// its reads are open to any authenticated caller. A block is private to the
+/// blocker and MUST NOT be visible to the person blocked: "X blocked Y" handed to
+/// a third party is a privacy leak, and handed to Y it is a harassment vector —
+/// it tells someone precisely when to create an alt account. Nothing in the API
+/// may expose the blockedId side of this table to anyone but the blocker. See the
+/// authorisation note at the top of apps/api/src/services/block.service.js.
+model Block {
+  id        String @id @default(uuid())
+
+  // The person doing the blocking, and the ONLY person any route lets read this
+  // row. Cascade, exactly as follows.followerId is: a block is one bit of
+  // metadata that means nothing once the person who set it is gone, not authored
+  // content worth blocking a user delete over.
+  blockerId String
+  blocker   User   @relation("BlockerUser", fields: [blockerId], references: [id], onDelete: Cascade)
+
+  // The person being blocked. Cascade for the same reason, and load-bearing:
+  // Restrict here would make deleting a user fail with a foreign-key error for
+  // anyone who had ever been blocked — the trap likes.postId's comment describes.
+  blockedId String
+  blocked   User   @relation("BlockedUser", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  // One edge per ordered pair, the entire integrity model of the entity as it is
+  // for Like and Follow: it makes blocking safely retryable from a double-tapped
+  // menu item, and it is the index that answers "have I blocked this person" on
+  // every profile render.
+  @@unique([blockerId, blockedId])
+
+  // The unique above leads with blockerId and therefore CANNOT serve a lookup by
+  // blockedId alone. NO ROUTE does that lookup — "who blocked me" does not exist
+  // and must not. This index exists for two non-route callers:
+  //   - collectUserVersionKeys in user.service.js, which must bump the block-list
+  //     counter of everyone who blocks a renamed user;
+  //   - findBlockBetween, which followUser uses to refuse an edge in either
+  //     direction.
+  @@index([blockedId])
+
+  @@map("blocks")
 }
 
 /// How often a goal resets. An enum rather than the ERD's bare `string`, for

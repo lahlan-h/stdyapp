@@ -59,6 +59,18 @@ const USER_EPOCH = "u1";
 const FOLLOW_EPOCH = "f1";
 
 /**
+ * And a sixth time for blocks. The block list embeds a {id, username, avatarUrl}
+ * row per blocked user, and changing that shape must orphan every cached block
+ * list without touching a comment, like, post, profile or follow payload.
+ *
+ * It earns its own epoch for a second reason the others do not have. A block
+ * payload and a follow payload have the SAME shape — a list of those three-field
+ * rows — so a shared prefix would make a collision between them structurally
+ * possible, and a collision here would serve a PRIVATE list from a public
+ * route's key. The distinct literal is what makes that impossible rather than
+ * merely unlikely.
+ */
+const BLOCK_EPOCH = "b1";
  * And three more, one each for the routers that predate this cache. Same
  * reasoning an eighth, ninth and tenth time - a session payload embeds its
  * interruptions, a group payload embeds a membership COUNT and a routine
@@ -332,6 +344,80 @@ export const followersKey = (userId, version) =>
 /** @param {string} userId @param {number} version */
 export const followingKey = (userId, version) =>
   `${FOLLOW_EPOCH}:follow:following:${userId}:v${version}`;
+
+/**
+ * Block key builders.
+ *
+ * ⚠ THE VIEWER IS IN EVERY ONE OF THESE, AND THAT IS A SECURITY REQUIREMENT —
+ * the same rule the postKey block below states, applied to a whole router rather
+ * than to one route.
+ *
+ * Every cached read in block.routes.js is scoped to the token holder inside the
+ * service, and cache() runs BEFORE the service. A viewer-less key would store one
+ * caller's block list and hand it to the next caller as a HIT — serving somebody
+ * else's blocked-users list and never reaching the scoping WHERE clause at all.
+ * Caching would become the authorization bypass, and on the one payload in this
+ * API that is genuinely private.
+ *
+ * For the same reason NONE of these keys is shared between a "mine" route and a
+ * "/user/:userId" route, the way userListKey, likeUserListKey, followersKey and
+ * followingKey all are. There is no /user/:userId read of this table to share
+ * with, and there must never be one.
+ *
+ * ONE COUNTER PER USER, as for follows — but with the OPPOSITE semantics, and the
+ * difference matters:
+ *
+ *   v:follow:user:<U> covers every follow-shaped answer ABOUT U, and is bumped
+ *   from BOTH ends of every edge, because U's follower list and following list
+ *   are both public and both change.
+ *
+ *   v:block:user:<U> covers only U's OWN block list and U's own status flags, and
+ *   is bumped ONLY when U is the BLOCKER. Somebody blocking U changes nothing U
+ *   can read, so it bumps nothing here. Do not "fix" this to bump both ends: it
+ *   would invalidate for no reason, and it would imply the blocked side has an
+ *   observable surface. It does not, and must not acquire one.
+ *
+ * THE COHERENCE HOLE IS CLOSED as it is for follows: the list embeds each blocked
+ * user's username and avatarUrl, so a rename is stale in the list of everyone who
+ * blocks them — collectUserVersionKeys in user.service.js bumps this counter for
+ * every such blocker, via findBlockerIdsByBlockedUser. Note that fan-out is
+ * ONE-directional where the follow one is two, for the same reason the counter is
+ * one-ended.
+ */
+
+/** @param {string} userId */
+export const blockUserVersionKey = (userId) =>
+  `${VERSION_PREFIX}block:user:${userId}`;
+
+/**
+ * The caller's own block list.
+ *
+ * The parameter is named viewerId rather than blockerId on purpose: the two are
+ * the same value today only because no route serves anyone else's list, and the
+ * name is what forces a reader who adds one to notice that this key would then
+ * need a second component.
+ *
+ * @param {string} viewerId @param {number} version
+ */
+export const blockListKey = (viewerId, version) =>
+  `${BLOCK_EPOCH}:block:byuser:${viewerId}:v${version}`;
+
+/**
+ * blockedByMe for one target.
+ *
+ * Viewer FIRST, target second — the ordering says whose data this is, and it is
+ * the reverse of followSummaryKey, which leads with the target because a follow
+ * summary is mostly public facts about that user. This payload is entirely a fact
+ * about the viewer.
+ *
+ * Needs no target VERSION: the flag can only change via an edge whose blockerId
+ * is the viewer, and every such write bumps the viewer's counter already. Same
+ * reasoning as likeSummaryKey, reached from the other side.
+ *
+ * @param {string} viewerId @param {string} targetUserId @param {number} version
+ */
+export const blockStatusKey = (viewerId, targetUserId, version) =>
+  `${BLOCK_EPOCH}:block:status:${viewerId}:${targetUserId}:v${version}`;
 
 /**
  * Post key builders.

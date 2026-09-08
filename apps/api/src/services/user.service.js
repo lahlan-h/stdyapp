@@ -9,6 +9,7 @@ import { toHttpError } from "../utils/prismaError.js";
 import { findCommentTargetsByUser } from "../repositories/comment.repository.js";
 import { findLikeTargetsByUser } from "../repositories/like.repository.js";
 import { findFollowCounterpartIdsByUser } from "../repositories/follow.repository.js";
+import { findBlockerIdsByBlockedUser } from "../repositories/block.repository.js";
 import {
   bumpVersions,
   userProfileVersionKey,
@@ -17,6 +18,7 @@ import {
   postVersionKey,
   likePostVersionKey,
   followUserVersionKey,
+  blockUserVersionKey,
 } from "../utils/cache.js";
 
 /**
@@ -106,8 +108,8 @@ const buildUserData = async (input) => {
  * Collects the version keys for every cached payload that embeds this user.
  *
  * The mirror image of invalidatePostFanout in post.service.js, pointed the other
- * way, and it exists because the fan-out is genuinely two-sided. Three of these
- * scopes are the user's own; the other two are not, and those are the ones that
+ * way, and it exists because the fan-out is genuinely two-sided. Four of these
+ * scopes are the user's own; the other three are not, and those are the ones that
  * make this more than a one-line bump:
  *
  *  - postVersionKey per post they have COMMENTED on. The cached comment thread
@@ -119,37 +121,51 @@ const buildUserData = async (input) => {
  *    reason a third time, and the widest of the three: this user appears in the
  *    following list of each of their followers AND in the follower list of
  *    everyone they follow, so a rename is stale on both sides of every edge.
+ *  - blockUserVersionKey per person who BLOCKS them. The same reason a fourth
+ *    time, but ONE-directional where the follow bullet is two: a block list
+ *    embeds the blocked user's username and avatarUrl, and this user appears in
+ *    the list of everyone who blocks them and nowhere else. There is no readable
+ *    list on the other side — see the block block in utils/cache.js — so there is
+ *    no second direction to walk.
  *
  * No post scope. Post payloads are bare Post rows with no embedded user fields
  * (see the postKey block in utils/cache.js), so nothing there can go stale.
  *
  * SPLIT from the bump rather than doing both, because deleteUser has to read
- * these BEFORE the delete — afterwards the comment and like rows it reads from
- * are gone, and the fan-out would silently shrink to nothing.
+ * these BEFORE the delete — afterwards the comment, like, follow and block rows
+ * it reads from are gone, and the fan-out would silently shrink to nothing. That
+ * ordering is what stops a deleted user lingering as a phantom entry in the block
+ * lists of everyone who blocked them for the whole TTL.
  *
  * @param {string} userId
  * @returns {Promise<string[]>} version keys, for bumpVersions
  */
 const collectUserVersionKeys = async (userId) => {
-  const [comments, likes, followCounterparts] = await Promise.all([
+  const [comments, likes, followCounterparts, blockers] = await Promise.all([
     findCommentTargetsByUser(userId),
     findLikeTargetsByUser(userId),
     findFollowCounterpartIdsByUser(userId),
+    findBlockerIdsByBlockedUser(userId),
   ]);
 
   return [
     // The user's own scopes: their profile, their comment list, their like list,
-    // and their follower/following lists — which share one counter, because a
-    // follow edge has a user at both ends. See the follow block in utils/cache.js.
+    // their follower/following lists — which share one counter, because a follow
+    // edge has a user at both ends — and their own block list. See the follow and
+    // block blocks in utils/cache.js.
     userProfileVersionKey(userId),
     userVersionKey(userId),
     likeUserVersionKey(userId),
     followUserVersionKey(userId),
+    blockUserVersionKey(userId),
     // Everywhere else they appear. bumpVersions de-duplicates via a Set, so the
     // repeats a mutual follow produces here cost nothing.
     ...comments.map(({ postId }) => postVersionKey(postId)),
     ...likes.map(({ postId }) => likePostVersionKey(postId)),
     ...followCounterparts.map((id) => followUserVersionKey(id)),
+    // The blocker's counter, never the blocked party's — bumping this user's own
+    // key above covers the list THEY can read. See invalidateBlock.
+    ...blockers.map((id) => blockUserVersionKey(id)),
   ];
 };
 
