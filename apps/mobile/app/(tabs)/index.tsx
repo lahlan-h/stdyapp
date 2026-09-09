@@ -6,7 +6,7 @@ import { useTheme, useHomeStyles } from "@theme";
 import { usePosts, type FeedPost } from "@data";
 
 import PostCard from "@components/PostCard";
-import FeedSkeleton from "@components/FeedSkeleton";
+import FeedSkeleton from "@components/FeedSkeleton"; // I think I might change to a spinner ...
 import EmptyFeed from "@components/EmptyFeed";
 
 const Index = () => {
@@ -16,7 +16,11 @@ const Index = () => {
 
   return (
     <LinearGradient colors={colors.gradients.background} style={homeStyles.container}>
-      <StatusBar barStyle={colors.statusBarStyle} />
+      <StatusBar
+        barStyle={colors.statusBarStyle}
+        translucent
+        backgroundColor="transparent"
+      />
       <SafeAreaView style={homeStyles.safeArea} edges={["top", "left", "right"]}>
         {isLoading ? (
           <FeedSkeleton />
