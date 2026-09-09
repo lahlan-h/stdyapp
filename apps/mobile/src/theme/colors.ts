@@ -1,5 +1,3 @@
-import type { ColorSchemeName } from "react-native";
-
 /**
  * The app's colour palette.
  *
@@ -91,6 +89,3 @@ export const darkColors: ColorScheme = {
   },
   statusBarStyle: "light-content" as const,
 };
-
-export const paletteFor = (scheme: ColorSchemeName | boolean) =>
-  (typeof scheme === "boolean" ? scheme : scheme === "dark") ? darkColors : lightColors;
