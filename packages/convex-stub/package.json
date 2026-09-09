@@ -12,5 +12,6 @@
   },
   "dependencies": {
     "convex": "^1.45.0"
-  }
+  },
+  "license": "Apache-2.0"
 }

@@ -50,5 +50,6 @@
     "@expo/env": "^2.4.3",
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
-  }
+  },
+  "license": "Apache-2.0"
 }

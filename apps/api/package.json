@@ -7,7 +7,7 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "node --watch src/index.js",
-    "build": "echo \"Error: no build step for api\" && exit 0",
+    "build": "echo \"no build step for @stdyapp/api\" && exit 0",
     "start": "node src/index.js"
   },
   "dependencies": {
@@ -19,5 +19,6 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.3.0",
     "zod": "^4.4.3"
-  }
+  },
+  "license": "Apache-2.0"
 }

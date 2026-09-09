@@ -6,8 +6,8 @@
   "type": "module",
   "main": "src/index.js",
   "scripts": {
-    "dev": "echo \"Error: no dev step for shared\" && exit 0",
-    "build": "echo \"Error: no build step for shared\" && exit 0",
+    "dev": "echo \"no dev step for @stdyapp/core\" && exit 0",
+    "build": "echo \"no build step for @stdyapp/core\" && exit 0",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
@@ -22,5 +22,6 @@
   },
   "devDependencies": {
     "prisma": "^6.10.1"
-  }
+  },
+  "license": "Apache-2.0"
 }
