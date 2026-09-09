@@ -18,6 +18,8 @@ import {
 import routes from "./routes/index.js";
 import { requestLogger } from "./middleware/requestLogger.js";
 import { assertAuthConfig, isDevAuthEnabled } from "./config/auth.js";
+import { corsOptions, warnIfCorsUnconfigured } from "./config/cors.js";
+import { HttpError } from "./utils/httpError.js";
 
 const log = createLogger("api");
 
@@ -47,16 +49,28 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(cors());
+app.use(cors(corsOptions));
+warnIfCorsUnconfigured(log);
 
 // BEFORE express.json(), so a malformed JSON body - which body-parser rejects
 // with a 400 before any route runs - is still logged. Registering it after
 // would make exactly those requests invisible.
 app.use(requestLogger);
 
-app.use(express.json());
+// Bounded: an unbounded JSON body lets one request buffer arbitrary memory in
+// the process. 1mb is far above any payload this API accepts - image uploads
+// go through multipart, not here.
+app.use(express.json({ limit: "1mb" }));
 
 app.use("/api", routes);
+
+// Anything that reached here matched no route. Without this, Express falls
+// back to its built-in handler, which answers with an HTML page - so the one
+// response a client is most likely to hit by accident was the only one that
+// broke the JSON contract every other response follows. Handed to the error
+// middleware below rather than answered here, so 404s are logged and shaped
+// exactly like every other error.
+app.use((req, _res, next) => next(new HttpError(404, `Cannot ${req.method} ${req.originalUrl}`)));
 
 app.use((err, req, res, next) => {
   const status = err.status || 500;
