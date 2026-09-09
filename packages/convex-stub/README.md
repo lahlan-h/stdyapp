@@ -30,6 +30,20 @@ that is the point of the seam, and it should stay that way.
 only thing that resolves this package. Do not import it from Node — `apps/api`
 must never depend on it.
 
+## The deployment link
+
+`convex dev` records which Convex deployment this checkout talks to in
+`.env.local` **in this directory**. That file is gitignored, so it does not
+travel with a clone or follow the code when it moves.
+
+It caused a real outage once: when this package was split out of
+`packages/core`, the code moved and `.env.local` stayed behind, so `convex dev`
+no longer found the deployment and the mobile feed silently rendered nothing.
+If you see that symptom, check this file exists here before anything else.
+
+A fresh clone gets one by running `convex:dev` below and selecting the existing
+project rather than creating a new one.
+
 ## Running it
 
 Not started by `npm run dev` — it would block on an interactive prompt for

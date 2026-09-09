@@ -16,6 +16,7 @@ const PAGE_SIZE = 10;
  */
 interface RawFeedRow {
   _id: string;
+  authorId: string;
   _creationTime: number;
   title: string;
   caption?: string;
@@ -38,7 +39,16 @@ interface RawFeedRow {
  * getPosts in packages/convex-stub/convex/posts.ts.
  */
 const toFeedPost = (row: RawFeedRow): FeedPost | null => {
-  if (!row.author) return null;
+  if (!row.author) {
+    // Loud in development, because this failure is otherwise invisible: a post
+    // dropped here just does not appear, so a feed where every author dangled
+    // would render empty with no error - indistinguishable from a backend that
+    // is not answering at all.
+    if (__DEV__) {
+      console.warn(`[usePosts] dropping post ${row._id}: author ${row.authorId} did not resolve`);
+    }
+    return null;
+  }
 
   return {
     id: row._id,
