@@ -115,6 +115,47 @@ export const CACHE_TTL_BOOKMARK_LIST_SEC = 60;
 export const CACHE_TTL_BOOKMARK_STATUS_SEC = 15;
 
 /**
+ * Reports.
+ *
+ * Separate constants again, per the rule this file states throughout. These join
+ * blocks and bookmarks as the API's PRIVATE cached payloads and sit at the same
+ * short end, for a reason stronger than either has: a stale entry here is a
+ * caller looking at their own out-of-date accusations, and every one of those
+ * rows names somebody else.
+ *
+ * NO WRITE TIER OF THEIR OWN. Reports reuse RATE_LIMIT_READ, RATE_LIMIT_WRITE and
+ * RATE_LIMIT_BULK unchanged — the call blocks, posts and bookmarks all make.
+ * RATE_LIMIT_LIKE_WRITE exists for a reflexively tapped heart and
+ * RATE_LIMIT_FOLLOW_WRITE for an onboarding burst; filing a report is neither. It
+ * is the most deliberate action in this app, made once per target after a
+ * decision about that target, and nothing bulk-reports. 20/min is exactly the
+ * tier RATE_LIMIT_WRITE was written for.
+ *
+ * DELETE /api/reports/mine sits on RATE_LIMIT_BULK for the reason every bulk
+ * delete does: dropping every report you have ever filed is irreversible, and
+ * there is no legitimate reason to do it five times in an hour.
+ */
+
+// The caller's own filed reports, shared by GET / and GET /all — and GET /all is
+// the ONLY paginated read cached anywhere in this API. See reportPageKey in
+// utils/cache.js for why that route can be cached where its siblings cannot.
+// Matches every other per-user list in this file.
+export const CACHE_TTL_REPORT_LIST_SEC = 60;
+
+// A single report. Takes CACHE_TTL_POST_SEC's reasoning as well as its number:
+// the only caller who can read it is the same person whose writes bump its
+// counter, so staleness here is self-inflicted and corrected on the very next
+// read.
+export const CACHE_TTL_REPORT_SEC = 120;
+
+// reportedByMe for one target. Matches the like, follow, block and bookmark
+// summaries, and for the same reason plus one: a "Report" menu item that still
+// offers to report someone you just reported is the most visible staleness this
+// feature can produce, and it is also the one most likely to produce a duplicate
+// the API then has to absorb as a no-op.
+export const CACHE_TTL_REPORT_STATUS_SEC = 15;
+
+/**
  * Posts.
  *
  * Separate constants again, for the reason the like block gives: these describe

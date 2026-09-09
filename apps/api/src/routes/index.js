@@ -11,6 +11,7 @@ import commentRoutes from "./comment.routes.js"
 import followRoutes from "./follow.routes.js"
 import blockRoutes from "./block.routes.js"
 import bookmarkRoutes from "./bookmark.routes.js"
+import reportRoutes from "./report.routes.js"
 import goalRoutes from "./goal.routes.js"
 import streakRoutes from "./streak.routes.js"
 import subscriptionRoutes from "./subscription.routes.js"
@@ -32,6 +33,7 @@ router.use("/comments", commentRoutes);
 router.use("/follows", followRoutes);
 router.use("/blocks", blockRoutes);
 router.use("/bookmarks", bookmarkRoutes);
+router.use("/reports", reportRoutes);
 router.use("/goals", goalRoutes);
 router.use("/streaks", streakRoutes);
 router.use("/subscriptions", subscriptionRoutes);

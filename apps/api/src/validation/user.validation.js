@@ -78,6 +78,15 @@ export const passwordSchema = z
  * `lastActiveAt` and `avatarUrl` are both absent by design, because both are
  * server-owned: a client must not be able to fake "studying right now", nor to
  * point its own profile picture at a URL the server did not create.
+ *
+ * `isSuspended` is absent for a sharper reason than either of those. Everything
+ * added HERE is inherited twice over - updateUserSchema below omits/partials
+ * this object, and registerSchema in auth.validation.js .extend()s it - so a
+ * moderation flag placed here would be settable at signup AND clearable by the
+ * suspended account itself via PATCH /api/users/:id, which inverts the whole
+ * point of the flag. Leaving it out means strictObject answers with a loud 400.
+ * buildUserData in services/user.service.js declines to copy it as well, so the
+ * read-only-ness survives an edit to this file.
  */
 export const createUserSchema = z.strictObject({
   email: emailSchema,
@@ -95,6 +104,14 @@ export const createUserSchema = z.strictObject({
   // not own, which the remove path would then have deleted on their behalf - see
   // parseOwnedKey in services/photoStorage.service.js.
   bio: z.string().trim().max(MAX_BIO_LENGTH).optional(),
+  // A raw JSON boolean, NOT z.coerce - matching isPrivate in
+  // studyGroup.validation.js. Coercion here would read the string "false" as
+  // true and silently make a profile public when the client asked for private.
+  //
+  // Being here means it is inherited by both derivations described above, which
+  // is the intent: settable at signup, and toggleable afterwards by the owner -
+  // PATCH /api/users/:id is already gated by requireSelf.
+  isPrivate: z.boolean().optional(),
 });
 
 /**

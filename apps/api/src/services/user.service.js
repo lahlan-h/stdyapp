@@ -10,6 +10,7 @@ import { findCommentTargetsByUser } from "../repositories/comment.repository.js"
 import { findLikeTargetsByUser } from "../repositories/like.repository.js";
 import { findFollowCounterpartIdsByUser } from "../repositories/follow.repository.js";
 import { findBlockerIdsByBlockedUser } from "../repositories/block.repository.js";
+import { findReporterIdsByTargetUser } from "../repositories/report.repository.js";
 import {
   bumpVersions,
   userProfileVersionKey,
@@ -20,6 +21,7 @@ import {
   followUserVersionKey,
   blockUserVersionKey,
   bookmarkUserVersionKey,
+  reportUserVersionKey,
 } from "../utils/cache.js";
 
 /**
@@ -68,6 +70,8 @@ const USER_PUBLIC_SELECT = {
   lastName: true,
   avatarUrl: true,
   bio: true,
+  isPrivate: true,
+  isSuspended: true,
   lastActiveAt: true,
   createdAt: true,
   updatedAt: true,
@@ -82,6 +86,12 @@ const USER_PUBLIC_SELECT = {
  * request to set passwordHash, id, createdAt or lastActiveAt - defence in
  * depth, one line each.
  *
+ * `isSuspended` is absent for that same reason and is the case where the two
+ * layers genuinely differ in value: it is READ-ONLY over the API, returned by
+ * USER_PUBLIC_SELECT but never assignable here, so even if a future edit to
+ * createUserSchema let the key through the Zod layer, a user still could not
+ * suspend - or un-suspend - their own account. It is set out of band for now.
+ *
  * @param {object} input - output of createUserSchema or updateUserSchema
  * @returns {Promise<object>} a Prisma `data` object
  */
@@ -94,6 +104,7 @@ const buildUserData = async (input) => {
   if (input.lastName !== undefined) data.lastName = input.lastName;
   if (input.avatarUrl !== undefined) data.avatarUrl = input.avatarUrl;
   if (input.bio !== undefined) data.bio = input.bio;
+  if (input.isPrivate !== undefined) data.isPrivate = input.isPrivate;
 
   if (input.password !== undefined) {
     // Async, never hashSync: bcryptjs's sync path blocks Node's single thread
@@ -128,6 +139,13 @@ const buildUserData = async (input) => {
  *    the list of everyone who blocks them and nowhere else. There is no readable
  *    list on the other side — see the block block in utils/cache.js — so there is
  *    no second direction to walk.
+ *  - reportUserVersionKey per person who has REPORTED them. The same reason a
+ *    fifth time, and one-directional for the block bullet's reason exactly: a
+ *    report payload embeds the reported user's username and avatarUrl, and there
+ *    is no readable surface on the other side to walk back from. This is the one
+ *    that matters most, because the "other side" here is the reported user, who
+ *    must never learn that a report exists at all. See the report block in
+ *    utils/cache.js.
  *
  * NO BOOKMARK FAN-OUT, and the absence is reasoned rather than forgotten. Their
  * own saved-list counter is bumped below with the rest of their own scopes, but
@@ -137,6 +155,12 @@ const buildUserData = async (input) => {
  * rather than people. The post side of that relationship IS walked — by
  * invalidatePostFanout in post.service.js, which is the layer that sees a post
  * change.
+ *
+ * REPORTS ARE THE EXCEPTION TO THAT EXCEPTION, which is why they earn a bullet
+ * above where bookmarks do not. A report payload carries BOTH kinds of embedded
+ * row — a reported post's caption and a reported user's username — so it is the
+ * only entity in this API walked from both sides: from here when a user is
+ * renamed, and from invalidatePostFanout when a post is edited.
  *
  * No post scope. Post payloads are bare Post rows with no embedded user fields
  * (see the postKey block in utils/cache.js), so nothing there can go stale.
@@ -151,24 +175,28 @@ const buildUserData = async (input) => {
  * @returns {Promise<string[]>} version keys, for bumpVersions
  */
 const collectUserVersionKeys = async (userId) => {
-  const [comments, likes, followCounterparts, blockers] = await Promise.all([
-    findCommentTargetsByUser(userId),
-    findLikeTargetsByUser(userId),
-    findFollowCounterpartIdsByUser(userId),
-    findBlockerIdsByBlockedUser(userId),
-  ]);
+  const [comments, likes, followCounterparts, blockers, reporters] =
+    await Promise.all([
+      findCommentTargetsByUser(userId),
+      findLikeTargetsByUser(userId),
+      findFollowCounterpartIdsByUser(userId),
+      findBlockerIdsByBlockedUser(userId),
+      findReporterIdsByTargetUser(userId),
+    ]);
 
   return [
     // The user's own scopes: their profile, their comment list, their like list,
     // their follower/following lists — which share one counter, because a follow
-    // edge has a user at both ends — their own block list, and their own saved
-    // list. See the follow, block and bookmark blocks in utils/cache.js.
+    // edge has a user at both ends — their own block list, their own saved list,
+    // and their own filed reports. See the follow, block, bookmark and report
+    // blocks in utils/cache.js.
     userProfileVersionKey(userId),
     userVersionKey(userId),
     likeUserVersionKey(userId),
     followUserVersionKey(userId),
     blockUserVersionKey(userId),
     bookmarkUserVersionKey(userId),
+    reportUserVersionKey(userId),
     // Everywhere else they appear. bumpVersions de-duplicates via a Set, so the
     // repeats a mutual follow produces here cost nothing.
     ...comments.map(({ postId }) => postVersionKey(postId)),
@@ -177,6 +205,11 @@ const collectUserVersionKeys = async (userId) => {
     // The blocker's counter, never the blocked party's — bumping this user's own
     // key above covers the list THEY can read. See invalidateBlock.
     ...blockers.map((id) => blockUserVersionKey(id)),
+    // The reporter's counter, never the reported party's — for the reason the
+    // block line above gives, and harder: the reported party has no readable
+    // surface containing this row at all, so there is nothing on their side to
+    // invalidate. See invalidateReport.
+    ...reporters.map((id) => reportUserVersionKey(id)),
   ];
 };
 
