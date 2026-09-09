@@ -1,3 +1,27 @@
 node_modules
 .DS_Store
-*.env
+
+# Env files. `*.env` matched .env but NOT .env.local or .env.production, so
+# those were tracked by default.
+.env
+.env.*
+!.env.example
+
+# Build output and tool caches
+dist/
+build/
+.turbo/
+coverage/
+*.log
+
+# Expo / React Native
+.expo/
+apps/mobile/.expo/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Prisma generated client
+packages/core/generated/

@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "stdyapp",
+    "slug": "stdyapp",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "stdyapp",
+    "icon": "./assets/images/icon.png",
+    "ios": {
+      "icon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#208AEF",
+          "image": "./assets/images/icon.png",
+          "imageWidth": 76
+        }
+      ],
+      "expo-font"
+    ]
+  }
+}

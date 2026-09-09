@@ -1,0 +1,16 @@
+{
+  "name": "@stdyapp/convex-stub",
+  "version": "0.0.0",
+  "description": "TEMPORARY Convex backend for the mobile app. Scheduled for deletion - see README.",
+  "private": true,
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy"
+  },
+  "dependencies": {
+    "convex": "^1.45.0"
+  }
+}

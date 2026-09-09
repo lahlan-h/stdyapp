@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@theme": ["src/theme"],
+      "@theme/*": ["src/theme/*"],
+      "@components/*": ["src/components/*"],
+      "@data": ["src/data"],
+      "@data/*": ["src/data/*"]
+    }
+  },
+  "extends": "expo/tsconfig.base"
+}
