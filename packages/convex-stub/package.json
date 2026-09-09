@@ -7,8 +7,8 @@
   "main": "index.ts",
   "types": "index.ts",
   "scripts": {
-    "dev": "convex dev",
-    "deploy": "convex deploy"
+    "convex:dev": "convex dev",
+    "convex:deploy": "convex deploy"
   },
   "dependencies": {
     "convex": "^1.45.0"

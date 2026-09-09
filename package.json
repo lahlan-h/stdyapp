@@ -20,8 +20,12 @@
     "apps/*",
     "packages/*"
   ],
+  "license": "Apache-2.0",
+  "packageManager": "npm@11.16.0",
+  "engines": {
+    "node": ">=20"
+  },
   "devDependencies": {
     "turbo": "^2.10.2"
-  },
-  "license": "Apache-2.0"
+  }
 }

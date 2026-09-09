@@ -29,3 +29,15 @@ that is the point of the seam, and it should stay that way.
 `main` points at `index.ts` rather than compiled JavaScript because Metro is the
 only thing that resolves this package. Do not import it from Node — `apps/api`
 must never depend on it.
+
+## Running it
+
+Not started by `npm run dev` — it would block on an interactive prompt for
+anyone who has not configured a deployment, which is most of the team. Start it
+explicitly when working on mobile:
+
+```bash
+npm run convex:dev -w @stdyapp/convex-stub
+```
+
+Then put the URL it prints into `EXPO_PUBLIC_CONVEX_URL` in the root `.env`.
