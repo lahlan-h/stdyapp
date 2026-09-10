@@ -5,7 +5,11 @@
   "private": true,
   "scripts": {
     "dev": "turbo run dev",
-    "build": "turbo run build"
+    "build": "turbo run build",
+    "db:generate": "npm run db:generate -w @stdyapp/core",
+    "db:migrate": "npm run db:migrate -w @stdyapp/core",
+    "db:deploy": "npm run db:deploy -w @stdyapp/core",
+    "db:studio": "npm run db:studio -w @stdyapp/core"
   },
   "repository": {
     "type": "git",
@@ -16,6 +20,11 @@
     "apps/*",
     "packages/*"
   ],
+  "license": "Apache-2.0",
+  "packageManager": "npm@11.16.0",
+  "engines": {
+    "node": ">=20"
+  },
   "devDependencies": {
     "turbo": "^2.10.2"
   }

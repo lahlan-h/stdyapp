@@ -8,32 +8,170 @@ datasource db {
   url       = env("DATABASE_URL")
   // direct connection — required for migrations, bypasses the pooler
   directUrl = env("DIRECT_URL")
+  // local throwaway database — see the postgres-shadow service in
+  // docker-compose.yml. Used ONLY by `prisma migrate dev`, which needs
+  // CREATE/DROP DATABASE rights that the Supabase pooler cannot grant.
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
-// --- Starter models, expand these to match the full 14-entity ERD ---
-
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  username  String   @unique
+  id           String    @id @default(uuid())
+  email        String    @unique
+  username     String    @unique
   passwordHash String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
-  sessions  Session[]
+  // The account-level real name. Nullable in the database so this migration
+  // needed no backfill, but REQUIRED at signup — see registerSchema in
+  // apps/api/src/validation/auth.validation.js.
+  firstName    String?
+  lastName     String?
+
+  avatarUrl    String?
+  bio          String?
+
+  // NOT the same concept as StudyGroup.isPrivate below, which only means
+  // "joining requires a joinCode" — a private group is still searchable. This
+  // one is a PROFILE VISIBILITY flag on the account itself. The identifier is
+  // otherwise owned by the group domain (studyGroup.validation/service/
+  // controller/repository), so read any bare `isPrivate` in that code as the
+  // group's, not this.
+  //
+  // Declared but NOT YET ENFORCED: nothing reads it, so GET /api/users/:id
+  // still returns the same body to every viewer. That is what keeps the viewer
+  // out of userKey in apps/api/src/utils/cache.js — see the warning there
+  // before making this flag change the response per-viewer.
+  isPrivate    Boolean   @default(false)
+
+  // Account-level moderation flag, server-owned: there is deliberately NO write
+  // path through the API, so it is set out of band (directly in the database)
+  // for now. It is absent from createUserSchema — and therefore from the
+  // derived updateUserSchema and registerSchema — precisely so a user cannot
+  // suspend, or un-suspend, their own account.
+  //
+  // Also NOT YET ENFORCED: a suspended user still logs in and still passes
+  // requireAuth. See the doc block in apps/api/src/middleware/requireAuth.js,
+  // which already names this gap.
+  isSuspended  Boolean   @default(false)
+
+  lastActiveAt DateTime?
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions      Session[]
+  ownedGroups   StudyGroup[]       @relation("GroupOwner")
+  memberships   GroupMembership[]
+  routines      StudyRoutine[]
+  refreshTokens RefreshToken[]
+  posts         Post[]
+  likes         Like[]
+  comments      Comment[]
+  bookmarks     Bookmark[]
+
+  // Both sides of the follow graph. The relation names are written from the
+  // ROW's point of view, so they read as the inverse of the field they land on:
+  // the rows where this user is the follower ARE this user's following list.
+  following     Follow[]           @relation("Following")
+  followers     Follow[]           @relation("Followers")
+
+  // Both sides of the block graph. NOTE the relation names differ in style from
+  // the follow pair directly above, deliberately: Follow's "Following" and
+  // "Followers" are written from the ROW's point of view and therefore read as
+  // the INVERSE of the field they land on, which is a trap every reader falls
+  // into once. These are named after the COLUMN they hang off instead, so there
+  // is no direction left to invert — "BlockerUser" is the relation through
+  // blocks.blockerId, full stop.
+  //
+  // The FIELD names are still from the user's point of view, which is what a
+  // caller actually wants: `blocking` is the people I block, `blockedBy` is the
+  // people who block me. `blockedBy` has NO route and must never get one — it is
+  // here so Prisma can express the second foreign key, and so cache invalidation
+  // can traverse it.
+  blocking      Block[]            @relation("BlockerUser")
+  blockedBy     Block[]            @relation("BlockedUser")
+
+  // Gamification and account state. `streak` and `subscription` are SINGULAR
+  // and nullable because both are at-most-one per user - see the @unique on
+  // their userId columns and the note above each model.
+  goals         Goal[]
+  streak        Streak?
+  subscription  Subscription?
+  notifications Notification[]
+  // Both sides of the report graph. Named after the COLUMN they hang off, like
+  // the block pair directly above and unlike the follow pair above that — there
+  // is no direction left to invert, "ReportReporter" is the relation through
+  // reports.reporterId, full stop.
+  //
+  // The FIELD names are from the user's point of view: `reportsFiled` is what
+  // this user wrote, `reportsAgainst` is what was written about them.
+  // `reportsAgainst` has NO route and must never get one — it is here so Prisma
+  // can express the second foreign key, and so cache invalidation can traverse it
+  // to reach the reporters whose cached lists embed this user. Handing it to the
+  // user themselves would name their own accusers to them, which is the exact
+  // fact this entity withholds. See the note on the Report model.
+  reportsFiled   Report[]           @relation("ReportReporter")
+  reportsAgainst Report[]           @relation("ReportTargetUser")
 
   @@map("users")
+}
+
+/// One row per issued refresh token — effectively "one logged-in device".
+///
+/// NOT called Session: `Session` above already means a STUDY session, which is
+/// the app's core domain object. Naming this one Session too would make every
+/// conversation and every import ambiguous.
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String
+  // Cascade, unlike sessions.userId which is RESTRICT: a study session is a
+  // historical record worth protecting from an accidental user delete, a
+  // refresh token is disposable and should die with its owner.
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // SHA-256 of the token, never the token itself: a database leak must not hand
+  // out working sessions. Deliberately NOT bcrypt — these are 32 bytes of CSPRNG
+  // output with no guessable structure, so there is nothing to slow down, and
+  // bcrypt would add ~300ms to every refresh for no security gain.
+  tokenHash  String    @unique
+
+  // Set when this token is rotated away or explicitly revoked. A request that
+  // presents an ALREADY-revoked token means the token leaked — the service
+  // responds by revoking every token for that user. Storing them is what makes
+  // that detection possible at all.
+  revokedAt  DateTime?
+  expiresAt  DateTime
+
+  // Purely so a user can recognise their own devices in a future "active
+  // sessions" screen. Never trusted for auth decisions — clients set it freely.
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  // revokeAllForUser() and any "list my devices" query filter on userId; the
+  // @unique on tokenHash already indexes the lookup path used on every refresh.
+  @@index([userId])
+  @@map("refresh_tokens")
 }
 
 model Session {
   id            String    @id @default(uuid())
   userId        String
   user          User      @relation(fields: [userId], references: [id])
+
+  // nullable: a session is solo unless it's tied to a group session.
+  // SetNull (not Cascade) on delete: if the group is deleted, past sessions
+  // should keep existing as historical records, just no longer tied to a group.
+  groupId       String?
+  group         StudyGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  // nullable: only generated for group sessions, meaningless for solo ones
+  inviteCode    String?   @unique
+
   startedAt     DateTime  @default(now())
   endedAt       DateTime?
   focusPoints   Int       @default(0)
 
   interruptions SessionInterruption[]
+  posts         Post[]
 
   @@map("sessions")
 }
@@ -41,15 +179,691 @@ model Session {
 model SessionInterruption {
   id          String   @id @default(uuid())
   sessionId   String
-  session     Session  @relation(fields: [sessionId], references: [id])
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   startedAt   DateTime @default(now())
   durationSec Int
-  // per your focus-points rule: 20+ min away deducts points / breaks streak
   penaltyApplied Boolean @default(false)
 
   @@map("session_interruptions")
 }
 
-// TODO: add the remaining entities from the ERD —
-// study groups, social feed, gamification/streaks, discover, analytics,
-// and stretch-goal entities (wearable data, Discord status sync).
+model StudyGroup {
+  id          String   @id @default(uuid())
+  ownerId     String
+  owner       User     @relation("GroupOwner", fields: [ownerId], references: [id])
+
+  name        String
+  description String?
+
+  // private groups still show up in search — joining just requires joinCode
+  isPrivate   Boolean  @default(false)
+  joinCode    String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships GroupMembership[]
+  sessions    Session[]
+
+  @@map("study_groups")
+}
+
+enum GroupRole {
+  MEMBER
+  ADMIN
+}
+
+model GroupMembership {
+  id        String     @id @default(uuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id])
+  groupId   String
+  group     StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  // separate from StudyGroup.ownerId — the owner is always the owner
+  // regardless of role; this just marks a second tier of trusted members
+  role      GroupRole  @default(MEMBER)
+
+  joinedAt  DateTime   @default(now())
+
+  @@unique([userId, groupId])
+  @@map("group_memberships")
+}
+
+model StudyRoutine {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+
+  // set when this routine was cloned ("taken") from someone else's shared
+  // routine. SetNull on delete: if the original is deleted, clones remain
+  // valid standalone routines, just lose the "cloned from" trace.
+  sourceRoutineId String?
+  sourceRoutine   StudyRoutine?  @relation("RoutineClones", fields: [sourceRoutineId], references: [id], onDelete: SetNull)
+  clones          StudyRoutine[] @relation("RoutineClones")
+
+  title           String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  todoItems       TodoItem[]
+  posts           Post[]
+
+  @@map("study_routines")
+}
+
+model TodoItem {
+  id          String       @id @default(uuid())
+  routineId   String
+  routine     StudyRoutine @relation(fields: [routineId], references: [id], onDelete: Cascade)
+
+  title       String
+  dueDate     DateTime?
+  isComplete  Boolean      @default(false)
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@map("todo_items")
+}
+
+/// A photo + caption published about a finished study session — the first
+/// piece of the social feed.
+model Post {
+  id        String       @id @default(uuid())
+
+  // The author. Restrict on delete (Prisma's default, as on sessions.userId
+  // and study_routines.userId): deleting a user should be BLOCKED by the
+  // content they still own rather than silently shredding it.
+  userId    String
+  user      User         @relation(fields: [userId], references: [id])
+
+  // Optional: a post may be a plain status update, or it may be tied to the
+  // session it came out of.
+  //
+  // SetNull, exactly as sessions.groupId does for groups: deleting a session
+  // should cost you the LINK, not the post. Cascade stood here only while the
+  // column was NOT NULL, which left no third option — Restrict would have
+  // permanently broken DELETE /api/sessions/:id for anyone who had posted.
+  sessionId String?
+  session   Session?      @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  // Same reasoning as sessionId.
+  routineId String?
+  routine   StudyRoutine? @relation(fields: [routineId], references: [id], onDelete: SetNull)
+
+  caption   String
+  photoUrl  String
+  createdAt DateTime     @default(now())
+
+  likes     Like[]
+  comments  Comment[]
+  bookmarks Bookmark[]
+
+  // The reports filed against this post. NO ROUTE reads this side, for the reason
+  // `bookmarks` above has no "saved by" route: a report count on a post would tell
+  // its author they had been reported, and the count moving would say it again
+  // every time. It is here so Prisma can express the foreign key, and for
+  // findReporterIdsByPosts. See the note on the Report model.
+  reports   Report[]     @relation("ReportTargetPost")
+
+  // Covers the per-user feed — the caller's own posts, newest first. Composite
+  // rather than an index on userId alone so Postgres can satisfy the ORDER BY
+  // from the index instead of sorting the matched rows.
+  @@index([userId, createdAt])
+
+  // The composite above CANNOT serve the global feed: createdAt is its second
+  // column, and with no equality predicate on the leading userId there is no
+  // usable ordering, so Postgres falls back to a sequential scan plus a sort.
+  // GET /api/posts/all orders every post by date, so it needs createdAt as a
+  // leading column of its own.
+  @@index([createdAt])
+  @@map("posts")
+}
+
+/// One tap of the heart on a post — the second piece of the social feed.
+///
+/// Deliberately has NO createdAt, unlike every other model here. Nothing this
+/// app does cares WHEN a like happened: a heart renders from a count and a
+/// "did I like this", and the row's mere existence answers both. The cost is
+/// real and is paid in findLikesByPost — see the comment there.
+model Like {
+  id     String @id @default(uuid())
+
+  // Cascade, unlike posts.userId which is Restrict. The reasoning is
+  // refresh_tokens.userId's, not posts.userId's: a post is authored content
+  // worth blocking a user delete over; a like is one bit of metadata that
+  // means nothing once the person who left it is gone.
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Cascade for the same reason, and load-bearing: Restrict here would make
+  // DELETE /api/posts/:id start failing with a foreign-key error for any post
+  // anyone had ever liked — the same trap sessionId's comment describes.
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  // One like per person per post. This is the entire integrity model of the
+  // entity: it makes liking safely retryable from a double-tapped heart, and
+  // it is the index that answers "have I liked this" on every feed render.
+  @@unique([userId, postId])
+
+  // The unique above indexes (userId, postId) and therefore CANNOT serve a
+  // lookup by postId alone — which the like count and the "liked by" list
+  // both do. Same reasoning as the composite index on posts.
+  @@index([postId])
+
+  @@map("likes")
+}
+
+/// A message left by one user on a post — the third piece of the social feed.
+///
+/// The commenter's display name and picture are deliberately NOT stored here.
+/// They live on User and are joined on read through the same
+/// {id, username, avatarUrl} allowlist the rest of the feed uses — a copy on the
+/// comment would go stale the moment someone changed their avatar.
+model Comment {
+  id        String   @id @default(uuid())
+
+  // Restrict (Prisma's default), matching posts.userId rather than likes.userId:
+  // a comment is authored content worth blocking a user delete over, not one bit
+  // of disposable metadata. DELETE /api/comments/user/me is the escape hatch,
+  // exactly as DELETE /api/posts/user/me is for posts.
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+
+  // Cascade, and load-bearing for the same reason likes.postId is: Restrict here
+  // would make DELETE /api/posts/:id start failing with a foreign-key error for
+  // any post anyone had ever commented on.
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  body      String
+  createdAt DateTime @default(now())
+
+  // Unlike Like, a comment IS editable, so unlike Like it earns a second
+  // timestamp: this is authored prose, and a typo left in public text is worth
+  // fixing. PATCH /api/comments/:id is what this column exists for.
+  updatedAt DateTime @updatedAt
+
+  // The thread query — one post's comments in conversation order. Composite
+  // rather than an index on postId alone so Postgres can satisfy the ORDER BY
+  // from the index instead of sorting the matched rows.
+  @@index([postId, createdAt])
+
+  // The profile's "comments I've left" list. Same shape, and the same reasoning,
+  // as the per-user index on posts.
+  @@index([userId, createdAt])
+
+  // Neither composite above can serve GET /api/comments/all: createdAt is the
+  // second column of both, and with no equality predicate on the leading column
+  // there is no usable ordering. See the note on posts' @@index([createdAt]).
+  @@index([createdAt])
+
+  @@map("comments")
+}
+
+/// One directed edge of the follow graph — the last piece of the social feed.
+///
+/// Directed, not mutual: A following B says nothing about B following A, so the
+/// pair is ordered and the two columns are never interchangeable. Everything
+/// here is that ordering — read left-to-right, a row says "follower follows
+/// following".
+///
+/// Carries no createdAt, for Like's reason: a follow renders from a count and a
+/// "do I follow this person", and the row's mere existence answers both.
+model Follow {
+  id          String @id @default(uuid())
+
+  // The person doing the following. Cascade, like likes.userId and unlike
+  // posts.userId: a follow is one bit of metadata that means nothing once the
+  // person who left it is gone, not authored content worth blocking a delete over.
+  followerId  String
+  follower    User   @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+
+  // The person being followed. Cascade for the same reason, and load-bearing:
+  // Restrict here would make deleting a user fail with a foreign-key error for
+  // anyone who had ever been followed — the trap likes.postId's comment describes.
+  followingId String
+  following   User   @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  // One edge per ordered pair. As with Like, this is the entire integrity model
+  // of the entity: it makes following safely retryable from a double-tapped
+  // button, and it is the index that answers "do I follow this person" on every
+  // profile render.
+  @@unique([followerId, followingId])
+
+  // The unique above leads with followerId and therefore CANNOT serve a lookup
+  // by followingId alone — which the follower count and the followers list both
+  // do. Same reasoning as the standalone index on likes.postId.
+  @@index([followingId])
+
+  @@map("follows")
+}
+
+/// One directed edge of the block graph — the privacy counterpart of Follow.
+///
+/// Structurally identical to Follow: an ordered pair of users, no createdAt, one
+/// row per pair. Read left-to-right, a row says "blocker blocks blocked".
+///
+/// EVERYTHING ELSE ABOUT IT IS THE OPPOSITE. A follow is public social data and
+/// its reads are open to any authenticated caller. A block is private to the
+/// blocker and MUST NOT be visible to the person blocked: "X blocked Y" handed to
+/// a third party is a privacy leak, and handed to Y it is a harassment vector —
+/// it tells someone precisely when to create an alt account. Nothing in the API
+/// may expose the blockedId side of this table to anyone but the blocker. See the
+/// authorisation note at the top of apps/api/src/services/block.service.js.
+model Block {
+  id        String @id @default(uuid())
+
+  // The person doing the blocking, and the ONLY person any route lets read this
+  // row. Cascade, exactly as follows.followerId is: a block is one bit of
+  // metadata that means nothing once the person who set it is gone, not authored
+  // content worth blocking a user delete over.
+  blockerId String
+  blocker   User   @relation("BlockerUser", fields: [blockerId], references: [id], onDelete: Cascade)
+
+  // The person being blocked. Cascade for the same reason, and load-bearing:
+  // Restrict here would make deleting a user fail with a foreign-key error for
+  // anyone who had ever been blocked — the trap likes.postId's comment describes.
+  blockedId String
+  blocked   User   @relation("BlockedUser", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  // One edge per ordered pair, the entire integrity model of the entity as it is
+  // for Like and Follow: it makes blocking safely retryable from a double-tapped
+  // menu item, and it is the index that answers "have I blocked this person" on
+  // every profile render.
+  @@unique([blockerId, blockedId])
+
+  // The unique above leads with blockerId and therefore CANNOT serve a lookup by
+  // blockedId alone. NO ROUTE does that lookup — "who blocked me" does not exist
+  // and must not. This index exists for two non-route callers:
+  //   - collectUserVersionKeys in user.service.js, which must bump the block-list
+  //     counter of everyone who blocks a renamed user;
+  //   - findBlockBetween, which followUser uses to refuse an edge in either
+  //     direction.
+  @@index([blockedId])
+
+  @@map("blocks")
+}
+
+/// One post saved by one user to come back to — the private counterpart of Like.
+///
+/// Structurally Like plus a timestamp, and the timestamp is the whole reason this
+/// is its own model rather than a flag on Like. A saved list is useless without
+/// "newest first", and Like's deliberate lack of a chronological key is a debt
+/// findLikesByPost and findAllLikes both record in prose. savedAt pays it off here
+/// rather than inheriting it.
+///
+/// PRIVACY FOLLOWS BLOCK, NOT LIKE, and that is the whole authorisation model. A
+/// like is public social data whose "liked by" list is open to any authenticated
+/// caller. A bookmark is private to the saver: "X saved Y's post" handed to a
+/// third party discloses reading habits nobody opted into, and handed to the
+/// post's author it is a soft follow signal they were never promised. Nothing in
+/// the API may expose the userId side of this table to anyone but that user — no
+/// "saved by" list, no save count, and no route from which either can be derived.
+/// See the authorisation note at the top of
+/// apps/api/src/services/bookmark.service.js.
+model Bookmark {
+  id      String   @id @default(uuid())
+
+  // The saver, and the ONLY person any route lets read this row. Cascade,
+  // exactly as likes.userId and blocks.blockerId are: a bookmark is one bit of
+  // metadata that means nothing once the person who left it is gone, not
+  // authored content worth blocking a user delete over the way posts.userId and
+  // comments.userId are.
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // The saved post. Cascade for the same reason, and load-bearing: Restrict here
+  // would make DELETE /api/posts/:id start failing with a foreign-key error for
+  // any post anyone had ever saved — the trap likes.postId's comment describes.
+  postId  String
+  post    Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  // Server-set on insert and NEVER moved afterwards. It exists to order the saved
+  // list, which is the whole reason this entity is not just a second Like: those
+  // rows have no chronological key, a gap findLikesByPost and findAllLikes both
+  // record in prose.
+  //
+  // Write-once is enforced by there being no route that updates this table at
+  // all — a bookmark is a toggle, so the API offers a create and a delete and
+  // nothing else. See the note at the foot of
+  // apps/api/src/routes/bookmark.routes.js. It is kept out of the create schema
+  // too, so a client cannot plant a row dated in the far future and pin itself to
+  // the top of its own list forever.
+  //
+  // Deliberately NOT @updatedAt, unlike comments.updatedAt: that would move this
+  // column on any future write to the row, making "when I saved it" an accident
+  // of some unrelated edit a later feature introduces.
+  //
+  // Named savedAt rather than createdAt following group_memberships.joinedAt: the
+  // column means something specific to the entity, and "when this person saved
+  // this post" reads as the fact it is rather than as row bookkeeping.
+  savedAt DateTime @default(now())
+
+  // One save per person per post — the entire integrity model of the entity, as
+  // it is for Like, Follow and Block. It makes saving safely retryable from a
+  // double-tapped bookmark icon, and it is the index that answers "have I saved
+  // this" on every feed render.
+  @@unique([userId, postId])
+
+  // The saved list: the caller's own bookmarks, newest first. The unique above
+  // leads with userId but carries postId second, so it CANNOT satisfy an ORDER BY
+  // savedAt — without this index every read of the list sorts the matched rows.
+  // Same reasoning as the composite indexes on posts and comments.
+  @@index([userId, savedAt])
+
+  // The unique above leads with userId and therefore cannot serve a lookup by
+  // postId alone. NO ROUTE does that lookup — "who saved this post" does not
+  // exist and must not. This index is here for two non-route callers, exactly as
+  // blocks' @@index([blockedId]) is:
+  //   - Postgres itself, which scans this column on every post delete to apply
+  //     the ON DELETE CASCADE above;
+  //   - findBookmarkerIdsByPosts, which invalidatePostFanout in post.service.js
+  //     uses to bump the saved-list counter of everyone who saved an edited or
+  //     deleted post.
+  @@index([postId])
+
+  @@map("bookmarks")
+}
+
+/// How often a goal resets. An enum rather than the ERD's bare `string`, for
+/// GroupRole's reason: "daily" and "Daily" and "DAILY" are three different rows
+/// to Postgres and one concept to a user, and nothing but a constraint stops a
+/// client inventing a fourth.
+///
+/// The two values are also load-bearing beyond validation - goal.service.js
+/// switches on them to compute a period start, so a third value added here
+/// without a matching branch there is a runtime failure rather than a silent
+/// no-op.
+enum GoalPeriod {
+  DAILY
+  WEEKLY
+}
+
+/// A study target the user sets for themselves - "90 minutes a day".
+///
+/// AT MOST ONE PER PERIOD, which is what @@unique([userId, period]) enforces and
+/// is the entire integrity model of the entity. Without it a user accumulates
+/// duplicate DAILY rows and "what is my daily target" stops having an answer,
+/// which is the only question this table exists to answer. It is also what lets
+/// the API address a goal by its PERIOD rather than its id - see goal.routes.js.
+///
+/// Cascade on delete, following likes and follows rather than posts and
+/// sessions: a goal is a SETTING, not authored content worth blocking a user
+/// delete over.
+model Goal {
+  id            String     @id @default(uuid())
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  period        GoalPeriod
+  targetMinutes Int
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([userId, period])
+  @@map("goals")
+}
+
+/// The consecutive-days counter behind the streak on a user's profile.
+///
+/// ONE ROW PER USER - note the @unique on userId, which makes this a 1:1 with
+/// User rather than the 1:N the ERD's crow's foot shows. That is a deliberate
+/// divergence and the ERD should be corrected to `||--o|` to match: the columns
+/// here describe a CURRENT streak, not a historical one. A history table would
+/// need startedOn and endedOn, and nothing in the app asks for it.
+///
+/// DERIVED STATE, NOT USER INPUT. Nothing in the API lets a client write these
+/// columns; the only writer is recordStudyDay() in streak.service.js, which
+/// endSession calls. A PATCH here would make the number a claim rather than a
+/// record, and the leaderboard in the pitch deck depends on it being a record.
+model Streak {
+  id             String    @id @default(uuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  currentCount   Int       @default(0)
+
+  /// @db.Date, not a full timestamp, and that is the point: the streak rule is
+  /// "did they study YESTERDAY", a question about calendar days rather than
+  /// instants. Storing a timestamp would invite comparing them directly and
+  /// getting "yesterday at 23:00 vs today at 01:00" wrong.
+  ///
+  /// Nullable: a user who has never finished a session has no last active day,
+  /// and 1970-01-01 would be a lie that compares as a real date.
+  ///
+  /// TIMEZONE: this is UTC, because the server has no idea where the user is.
+  /// See the note above recordStudyDay in streak.service.js - for a Sydney user
+  /// the day boundary lands at 10am local, and the real fix is a timezone
+  /// column on User rather than anything in this file.
+  lastActiveDate DateTime? @db.Date
+
+  updatedAt      DateTime  @updatedAt
+
+  @@map("streaks")
+}
+
+/// Where a subscription is in its lifecycle.
+///
+/// An enum for GoalPeriod's reason. CANCELLED and EXPIRED are deliberately
+/// distinct: a cancelled subscription keeps its access until renewsAt passes,
+/// so the two answer different questions and collapsing them would either cut
+/// someone off early or leave them premium forever.
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+/// The premium tier, from the pitch deck's stretch goals.
+///
+/// AT MOST ONE PER USER (@unique on userId), matching the ERD's `||--o|`. The
+/// absence of a row IS the free tier - there is no FREE status, because a
+/// status column that every user needs a row for is just a column on User.
+///
+/// ⚠ EVERY FIELD BELOW IS SERVER-WRITTEN. No request body reaches this table:
+/// subscription.validation.js parses both write routes as an EMPTY strictObject,
+/// so a client that tries to send `{"status":"ACTIVE"}` gets a 400 rather than a
+/// free upgrade. This is the one table in the schema where that property is a
+/// security boundary rather than tidiness, and it must survive any future edit.
+///
+/// There is no payment provider behind this yet. paymentReference holds a
+/// locally generated stub id so the column has the shape it will need when a
+/// real provider is wired in - see subscription.service.js.
+model Subscription {
+  id               String             @id @default(uuid())
+  userId           String             @unique
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status           SubscriptionStatus @default(ACTIVE)
+
+  /// Nullable because a real provider assigns this asynchronously, and a stub
+  /// should not pretend otherwise.
+  paymentReference String?
+
+  /// When the current period ends. Also the access deadline for a CANCELLED
+  /// subscription, which is why cancelling does not clear it.
+  renewsAt         DateTime?
+
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@map("subscriptions")
+}
+
+/// What happened, for a notification. An enum for GoalPeriod's reason, and one
+/// with a second job: the client renders a different icon and deep link per
+/// type, so this is an API contract rather than a label.
+///
+/// FOLLOW, POST_LIKE and POST_COMMENT have no emitter yet - the services that
+/// would raise them live in the follow, like and comment routers, which this
+/// change deliberately does not touch. They are declared here so that wiring
+/// them up later is a one-line call rather than a migration.
+enum NotificationType {
+  FOLLOW
+  POST_LIKE
+  POST_COMMENT
+  GROUP_JOIN
+  STREAK_MILESTONE
+  GOAL_REACHED
+  SYSTEM
+}
+
+/// One item in a user's notification list.
+///
+/// SYSTEM-EMITTED, like Streak and unlike Goal: no route creates one. The only
+/// writer is emitNotification() in notification.service.js. A client can mark
+/// them read and delete them, which is the whole of its write surface.
+///
+/// The message is DENORMALISED - stored as rendered text rather than assembled
+/// on read from the actor and target. That is the opposite call to Comment,
+/// which deliberately joins the author's username so a rename is picked up, and
+/// it is the right one here: a notification is a record of a moment ("Sam liked
+/// your post"), and rewriting history when Sam changes their username would be
+/// wrong rather than fresh. It also means this table needs no fanout
+/// invalidation, because it embeds no row any counter tracks.
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type      NotificationType
+  message   String
+  isRead    Boolean          @default(false)
+
+  /// Not in the ERD, and added anyway: a notification list is meaningless in
+  /// any order but newest-first, and without a column to sort on Postgres is
+  /// free to return them in whatever order it likes. The ERD should gain it.
+  createdAt DateTime         @default(now())
+
+  /// The list query - one user's notifications, newest first. Composite rather
+  /// than an index on userId alone so Postgres satisfies the ORDER BY from the
+  /// index instead of sorting the matched rows. Same reasoning as posts.
+  @@index([userId, createdAt])
+
+  /// The unread badge, which is the single most frequently hit read in this
+  /// router - a client polls it on every app foreground. Counting from
+  /// (userId, createdAt) would mean reading every row this user has ever
+  /// received to discard the read ones.
+  @@index([userId, isRead])
+
+  @@map("notifications")
+}
+
+/// One accusation filed by one user, against another USER or against one POST.
+///
+/// THE FIRST MODEL HERE WITH A POLYMORPHIC TARGET, and that shape drives most of
+/// what follows. Every other pair-shaped entity in this schema — Like, Follow,
+/// Block, Bookmark — points at exactly one fixed kind of thing, so its target is a
+/// single NOT NULL column. A report may name a user or a post, so it carries TWO
+/// nullable columns of which exactly one is ever set.
+///
+/// That XOR is not expressible in Prisma's schema language. It lives as a CHECK
+/// constraint added by hand to the migration, and is re-stated in
+/// report.validation.js and again in report.service.js — three places, because the
+/// database is the only one that cannot be bypassed and the other two are the only
+/// ones that can produce a decent error message.
+///
+/// PRIVACY FOLLOWS BLOCK, AND HARDER. A block is private to the blocker; a report
+/// is private to the reporter, and the reported party must never learn one exists.
+/// "X reported Y" handed to a third party is a smear, and handed to Y it is a
+/// retaliation vector — it names an accuser to the person they accused. Nothing in
+/// the API may expose the targetUserId or targetPostId side of this table to
+/// anyone but the reporter: no "reports against me" list, no report count on a
+/// post or a profile, and no route from which either can be derived. See the
+/// authorisation note at the top of apps/api/src/services/report.service.js.
+///
+/// There is no admin or moderator role in this codebase, so the reporter is today
+/// the only reader of their own rows and GET /api/reports/all means "mine" — the
+/// call block.service.js and bookmark.service.js already make.
+model Report {
+  id           String   @id @default(uuid())
+
+  // The accuser, and the ONLY person any route lets read this row. Cascade,
+  // exactly as blocks.blockerId and bookmarks.userId are: a report is metadata
+  // that means nothing once the person who filed it is gone, not authored content
+  // worth blocking a user delete over the way posts.userId and comments.userId
+  // are.
+  reporterId   String
+  reporter     User     @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  // The reported user, when this report is about a person; NULL when it is about
+  // a post. Cascade for likes.postId's reason, and load-bearing: Restrict here
+  // would make deleting a user fail with a foreign-key error for anyone who had
+  // ever been reported.
+  targetUserId String?
+  targetUser   User?    @relation("ReportTargetUser", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  // The reported post, when this report is about content; NULL when it is about a
+  // person. Cascade for the same reason: Restrict would break
+  // DELETE /api/posts/:id for any post anyone had ever reported.
+  targetPostId String?
+  targetPost   Post?    @relation("ReportTargetPost", fields: [targetPostId], references: [id], onDelete: Cascade)
+
+  // Why it was filed. A plain String rather than an enum, unlike GroupRole above,
+  // and the difference is deliberate: a moderation vocabulary is the most
+  // churn-prone list in a product like this, and every addition to a Postgres enum
+  // is a migration. The set is closed at the edge instead — REPORT_REASONS in
+  // report.validation.js — so the API rejects an unknown reason while the column
+  // stays free to grow one.
+  reason       String
+
+  // Where the report sits in its lifecycle. A String for reason's reason, plus a
+  // second one: the interesting values (REVIEWED, ACTIONED, DISMISSED) belong to a
+  // moderator role this codebase does not have, so the vocabulary is expected to
+  // move before anything reads it. See REPORT_STATUSES in report.validation.js for
+  // the set, and REPORTER_ALLOWED_STATUSES in report.service.js — the single place
+  // the transition rule lives, and therefore the single place a moderator check
+  // will later go.
+  status       String   @default("PENDING")
+
+  createdAt    DateTime @default(now())
+
+  // The only model in the social half of this schema to carry BOTH timestamps
+  // besides Comment, and for Comment's reason: this row has a genuinely mutable
+  // column. Like, Follow, Block and Bookmark are toggles whose every column is the
+  // primary key or half the row's identity, so they offer no edit to make. status
+  // is an edit, which is why this is the only one of the six routers with a PATCH.
+  updatedAt    DateTime @updatedAt
+
+  // ONE REPORT PER REPORTER PER TARGET — the integrity model of the entity, as
+  // @@unique([userId, postId]) is for Bookmark. It makes filing safely retryable
+  // from a double-tapped menu item, and it is the index that answers "have I
+  // reported this" on every profile and feed render.
+  //
+  // TWO constraints rather than one because the target is polymorphic, and the two
+  // do the right thing for free: Postgres treats NULL as DISTINCT in a unique
+  // index, so the first constrains only user-reports — every post-report has
+  // targetUserId NULL and is therefore never compared against another — and the
+  // second only post-reports. No partial index is needed, and none should be
+  // added.
+  @@unique([reporterId, targetUserId])
+  @@unique([reporterId, targetPostId])
+
+  // The reporter's own list, newest first. The uniques above lead with reporterId
+  // but carry a target second, so neither can satisfy an ORDER BY createdAt —
+  // without this, every read of the list sorts the matched rows. Same reasoning as
+  // the composite indexes on posts, comments and bookmarks.
+  @@index([reporterId, createdAt])
+
+  // Neither unique can serve a lookup by target alone. NO ROUTE does that lookup —
+  // "who reported me" does not exist and must not. These two are here for non-route
+  // callers only, exactly as blocks' @@index([blockedId]) and bookmarks'
+  // @@index([postId]) are:
+  //   - Postgres itself, which scans these columns on every user and post delete to
+  //     apply the ON DELETE CASCADE above;
+  //   - findReporterIdsByTargetUser and findReporterIdsByPosts, which the fan-outs
+  //     in user.service.js and post.service.js use to bump the report-list counter
+  //     of everyone who reported a renamed user or an edited post.
+  @@index([targetUserId])
+  @@index([targetPostId])
+
+  @@map("reports")
+}
+
+// TODO: remaining entities from the ERD - discover and analytics, plus the
+// stretch-goal entities (wearable data, Discord sync). Moderation (blocks,
+// reports, bookmarks) and gamification (goals, streaks) are now modelled above.

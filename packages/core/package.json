@@ -4,19 +4,24 @@
   "description": "The core logic of stdyapp!",
   "private": true,
   "type": "module",
-  "main": "src/db.js",
+  "main": "src/index.js",
   "scripts": {
-    "dev": "echo \"Error: no dev step for shared\" && exit 0",
-    "build": "echo \"Error: no build step for shared\" && exit 0",
+    "dev": "echo \"no dev step for @stdyapp/core\" && exit 0",
+    "build": "echo \"no build step for @stdyapp/core\" && exit 0",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio"
   },
   "dependencies": {
-    "@prisma/client": "^6.10.1"
+    "@aws-sdk/client-s3": "^3.1121.0",
+    "@prisma/client": "^6.10.1",
+    "amqp-connection-manager": "^5.0.0",
+    "amqplib": "^2.0.1",
+    "ioredis": "^6.0.0"
   },
   "devDependencies": {
     "prisma": "^6.10.1"
-  }
+  },
+  "license": "Apache-2.0"
 }

@@ -1,4 +1,5 @@
-<h1 font color=lightblue align="center"><font color=lightblue>stdyapp</font></h1>
+<h1 align="center">stdyapp</h1>
+
 <p align="center">Set goals, find friends, see results.</p>
 
 <p align="center">
@@ -7,55 +8,90 @@
 </p>
 
 <div align="center">
-  <img src="packages/shared/assets/stdy.png"></img>
+  <img src="packages/shared/assets/stdy.png" alt="stdyapp"/>
 </div>
 
 ## About
 
-<font color=lightblue>**stdy**</font> is a study-session tracker and feed built by students at the University of Technology Sydney. Our aim is to make studying engaging by logging, posting, and tracking your study sessions.
+**stdy** is a study-session tracker and feed built by students at the University
+of Technology Sydney. Our aim is to make studying engaging by logging, posting,
+and tracking your study sessions.
 
-## Features
+## Repository layout
 
-- Populate once features are completed
+An npm-workspaces monorepo, orchestrated by [Turborepo](https://turborepo.dev).
 
-## Screenshots
+| Workspace | What it is |
+| --- | --- |
+| `apps/api` | Express REST API. Controllers → services → repositories, with Redis caching, RabbitMQ and R2 uploads. |
+| `apps/mobile` | The Expo / React Native app. |
+| `apps/web` | Web client. Not started yet. |
+| `packages/core` | Prisma schema and client, plus the shared Redis, RabbitMQ, R2 and logging clients. |
+| `packages/shared` | Framework-agnostic helpers used by more than one app. |
+| `packages/ui` | Shared UI components. Not started yet. |
+| `packages/convex-stub` | **Temporary.** The Convex backend mobile used before the API was ready. [Scheduled for deletion.](packages/convex-stub/README.md) |
 
-- Include screenshots once completed
+## Getting started
 
-## Installation
+### Prerequisites
+
+- **Node.js 20+** and npm 10+
+- **Docker** — for Redis, RabbitMQ and the migration shadow database
+- A **Supabase** (or any Postgres) database
+
+### Setup
 
 ```bash
-git clone https://github.com/yourteam/stdyapp.git
+git clone https://github.com/lahlan-h/stdyapp.git
 cd stdyapp
 npm install
-npm run dev --workspace @stdy/gui
-
-# OR run the built docker image!
-
-# blah blah blah steps steps steps
-
 ```
 
-## Devs!
+Copy the environment template and fill it in. There is **one** `.env` at the
+repo root, shared by every workspace:
 
-Hey Devs! Some ground rules here:
+```bash
+cp .env.example .env
+```
 
-- **(1)** Clanker code is obviously allowed but you MUST understand how it actually works and please document it!
+Every variable is documented in [.env.example](.env.example). At minimum you
+need `DATABASE_URL`, `DIRECT_URL` and a `JWT_SECRET` of at least 32 characters
+(`openssl rand -base64 32`) — the API refuses to boot without a valid one.
 
-- **(2)** Follow the naming conventions!
-  - **(2.1)** Branches: kebab-case
-  - **(2.2)** Variables: camelCase
-  - **(2.3)** Functions: camelCase
-  - **(2.4)** Constants: SCREAMING_SNAKE_CASE
-  - **(2.5)** Classes: PascalCase
+Start the backing services and apply the database schema:
 
-- **(3)** File naming convections!
-  - **(2.1)**
-  - **(2.2)**
-  - **(2.3)**
+```bash
+docker compose up -d
+npm run db:generate
+npm run db:migrate
+```
 
-- **(4)** Commit messages: lower case please e.g. added user auth
+### Running
 
-Along with all that ensure your code is well **commented**. In order to merge into **main** will require another dev to review and approve.
+```bash
+npm run dev                        # everything, via turbo
+npm run dev -w @stdyapp/api        # just the API      → http://localhost:4000
+npm run dev -w @stdyapp/mobile     # just the Expo app
+```
 
-Finally, the 'works on my machine bro' ends here. Be responsible for managing packages and versions (suggest you use a tool called **mise**). And if you want to share something with the team please <font color="lightblue">dockerize!!</font>.
+Check the API is healthy — it reports every dependency, and returns 503 if any
+of them is unreachable:
+
+```bash
+curl localhost:4000/api/health
+```
+
+### Testing
+
+```bash
+npm test -w @stdyapp/shared
+```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for naming conventions, branch and commit
+rules, and the review process.
+
+## License
+
+[Apache 2.0](LICENSE).

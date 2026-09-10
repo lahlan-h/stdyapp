@@ -7,14 +7,18 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "node --watch src/index.js",
-    "build": "echo \"Error: no build step for api\" && exit 0",
+    "build": "echo \"no build step for @stdyapp/api\" && exit 0",
     "start": "node src/index.js"
   },
   "dependencies": {
     "@stdyapp/core": "*",
-    "express": "^4.19.2",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.3.0",
+    "zod": "^4.4.3"
   },
-  "devDependencies": {}
+  "license": "Apache-2.0"
 }
