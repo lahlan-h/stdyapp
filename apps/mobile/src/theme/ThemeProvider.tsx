@@ -14,7 +14,28 @@ import { darkColors, lightColors, type ColorScheme } from "./colors";
 import { createHomeStyles } from "./home.styles";
 import { createSettingsStyles } from "./settings.styles";
 
-const STORAGE_KEY = "darkMode";
+const STORAGE_KEY = "themePreference";
+
+/**
+ * Where this preference used to live, as a bare `true`/`false`.
+ *
+ * Migrated on first launch rather than dropped: the old value was two-state, and
+ * "follow the system" has no boolean spelling, so a straight switch to the new
+ * key would silently reset the theme for everyone already running the app.
+ */
+const LEGACY_STORAGE_KEY = "darkMode";
+
+/**
+ * What the user CHOSE, which is not the same as what is on screen.
+ *
+ * "system" is a real choice meaning "no override" - it is the state the provider
+ * starts in, and the settings screen has to be able to return to it. Modelling
+ * this as a boolean is what made following the OS a one-way door.
+ */
+export type ThemePreference = "light" | "dark" | "system";
+
+const isThemePreference = (value: unknown): value is ThemePreference =>
+  value === "light" || value === "dark" || value === "system";
 
 /**
  * Every stylesheet, built ONCE at module load.
@@ -36,6 +57,9 @@ const SETTINGS_STYLES = {
 
 interface ThemeContextType {
   isDarkMode: boolean;
+  /** The user's choice. "system" means no override - follow the OS. */
+  themePreference: ThemePreference;
+  setThemePreference: (preference: ThemePreference) => void;
   toggleDarkMode: () => void;
   colors: ColorScheme;
   homeStyles: (typeof HOME_STYLES)["light"];
@@ -47,56 +71,79 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const systemScheme = useColorScheme();
 
-  // null means "not chosen" - fall through to the system. Storing the override
-  // separately is what lets the system preference keep working after mount;
-  // seeding state from the system once meant later OS changes were ignored.
-  const [override, setOverride] = useState<boolean | null>(null);
+  // Starts at "system" - the OS decides until the user says otherwise. Keeping
+  // the choice separate from the resolved value is what lets the system
+  // preference keep working after mount; seeding state from the system once
+  // meant later OS changes were ignored.
+  const [preference, setPreference] = useState<ThemePreference>("system");
 
   useEffect(() => {
     let cancelled = false;
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((value) => {
-        if (cancelled || value === null) return;
-        // Guarded: a corrupt or hand-edited value must not take the app down on
-        // launch. An unreadable preference simply means "no preference".
-        try {
-          const parsed = JSON.parse(value);
-          if (typeof parsed === "boolean") setOverride(parsed);
-        } catch {
-          AsyncStorage.removeItem(STORAGE_KEY);
+
+    const load = async () => {
+      // Guarded throughout: a corrupt or hand-edited value must not take the app
+      // down on launch. An unreadable preference simply means "no preference".
+      try {
+        const stored = await AsyncStorage.getItem(STORAGE_KEY);
+        if (cancelled) return;
+        if (isThemePreference(stored)) {
+          setPreference(stored);
+          return;
         }
-      })
-      .catch(() => {
-        /* storage unavailable - fall back to the system scheme */
-      });
+
+        const legacy = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
+        if (cancelled || legacy === null) return;
+
+        const migrated: ThemePreference =
+          JSON.parse(legacy) === true ? "dark" : "light";
+        setPreference(migrated);
+        // Write forward before clearing, so an interruption between the two
+        // leaves the old key readable rather than losing the choice entirely.
+        await AsyncStorage.setItem(STORAGE_KEY, migrated);
+        await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
+      } catch {
+        /* storage unavailable or unparseable - fall back to the system scheme */
+      }
+    };
+
+    load();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const isDarkMode = override ?? systemScheme === "dark";
+  const isDarkMode =
+    preference === "system" ? systemScheme === "dark" : preference === "dark";
 
-  const toggleDarkMode = useCallback(() => {
-    setOverride((current) => {
-      const next = !(current ?? systemScheme === "dark");
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => {
-        /* the toggle still applies for this session */
-      });
-      return next;
+  const setThemePreference = useCallback((next: ThemePreference) => {
+    setPreference(next);
+    AsyncStorage.setItem(STORAGE_KEY, next).catch(() => {
+      /* the choice still applies for this session */
     });
-  }, [systemScheme]);
+  }, []);
+
+  /**
+   * Kept for callers that only want to flip the visible theme. Note this always
+   * lands on an explicit light/dark and so leaves "system" behind - use
+   * setThemePreference where returning to the OS setting matters.
+   */
+  const toggleDarkMode = useCallback(() => {
+    setThemePreference(isDarkMode ? "light" : "dark");
+  }, [isDarkMode, setThemePreference]);
 
   // Memoized so consumers re-render when the theme actually changes, rather
   // than on every render of this provider.
   const value = useMemo<ThemeContextType>(
     () => ({
       isDarkMode,
+      themePreference: preference,
+      setThemePreference,
       toggleDarkMode,
       colors: isDarkMode ? darkColors : lightColors,
       homeStyles: isDarkMode ? HOME_STYLES.dark : HOME_STYLES.light,
       settingsStyles: isDarkMode ? SETTINGS_STYLES.dark : SETTINGS_STYLES.light,
     }),
-    [isDarkMode, toggleDarkMode],
+    [isDarkMode, preference, setThemePreference, toggleDarkMode],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
