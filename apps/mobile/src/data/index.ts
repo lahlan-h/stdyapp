@@ -11,3 +11,9 @@
  */
 export type { FeedAuthor, FeedPost } from "./types";
 export { usePosts, type FeedState } from "./usePosts";
+export {
+  useNotificationPreferences,
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  type NotificationPreferences,
+  type NotificationPreferencesState,
+} from "./useNotificationPreferences";
