@@ -12,20 +12,26 @@ import { useColorScheme } from "react-native";
 
 import { darkColors, lightColors, type ColorScheme } from "./colors";
 import { createHomeStyles } from "./home.styles";
+import { createSettingsStyles } from "./settings.styles";
 
 const STORAGE_KEY = "darkMode";
 
 /**
- * Both stylesheets, built ONCE at module load.
+ * Every stylesheet, built ONCE at module load.
  *
  * createHomeStyles used to be called in the render body of every component that
  * needed it, so each card in the feed rebuilt an entire StyleSheet on every
- * render. There are only two palettes, so there only ever need to be two
- * stylesheets - useHomeStyles picks one rather than building one.
+ * render. There are only two palettes, so there only ever need to be two of each
+ * stylesheet - the hooks below pick one rather than building one.
  */
 const HOME_STYLES = {
   light: createHomeStyles(lightColors),
   dark: createHomeStyles(darkColors),
+} as const;
+
+const SETTINGS_STYLES = {
+  light: createSettingsStyles(lightColors),
+  dark: createSettingsStyles(darkColors),
 } as const;
 
 interface ThemeContextType {
@@ -33,6 +39,7 @@ interface ThemeContextType {
   toggleDarkMode: () => void;
   colors: ColorScheme;
   homeStyles: (typeof HOME_STYLES)["light"];
+  settingsStyles: (typeof SETTINGS_STYLES)["light"];
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -87,6 +94,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       toggleDarkMode,
       colors: isDarkMode ? darkColors : lightColors,
       homeStyles: isDarkMode ? HOME_STYLES.dark : HOME_STYLES.light,
+      settingsStyles: isDarkMode ? SETTINGS_STYLES.dark : SETTINGS_STYLES.light,
     }),
     [isDarkMode, toggleDarkMode],
   );
@@ -103,3 +111,5 @@ export const useTheme = () => {
 /** The home stylesheet for the active theme. Never rebuilds. */
 export const useHomeStyles = () => useTheme().homeStyles;
 
+/** The settings stylesheet for the active theme. Never rebuilds. */
+export const useSettingsStyles = () => useTheme().settingsStyles;
