@@ -23,6 +23,7 @@ const TABS: TabConfig[] = [
   { name: "index", label: "Home", family: AntDesign, icon: "home" },
   { name: "study", label: "Study", family: Feather, icon: "book" },
   { name: "profile", label: "Profile", family: FontAwesome5, icon: "user" },
+  { name: "settings", label: "Settings", family: Feather, icon: "settings" },
 ];
 
 const TabsLayout = () => {
