@@ -1,14 +1,13 @@
-import { FlatList, StatusBar } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { FlatList, StatusBar } from "react-native";
 
-import { useTheme, useStyles } from "@theme";
 import { usePosts, type FeedPost } from "@data";
+import { useTheme, useStyles } from "@theme";
 
-import PostCard from "@components/PostCard";
-import FeedSkeleton from "@components/FeedSkeleton"; // I think I might change to a spinner ...
 import LoadingSpinner from "@components/LoadingSpinner";
 import EmptyFeed from "@components/EmptyFeed";
+import PostCard from "@components/PostCard";
 
 const Index = () => {
   const { colors } = useTheme();
