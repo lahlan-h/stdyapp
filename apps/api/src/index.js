@@ -16,8 +16,10 @@ import {
   createLogger,
 } from "@stdyapp/core";
 import routes from "./routes/index.js";
+import stripeWebhookRoutes from "./routes/stripeWebhook.routes.js";
 import { requestLogger } from "./middleware/requestLogger.js";
 import { assertAuthConfig, isDevAuthEnabled } from "./config/auth.js";
+import { assertStripeConfig } from "./config/stripe.js";
 import { corsOptions, warnIfCorsUnconfigured } from "./config/cors.js";
 import { HttpError } from "./utils/httpError.js";
 
@@ -28,6 +30,7 @@ const log = createLogger("api");
 // imported above and has already populated process.env.
 try {
   assertAuthConfig();
+  assertStripeConfig();
 } catch (err) {
   log.error(err.message);
   process.exit(1);
@@ -56,6 +59,12 @@ warnIfCorsUnconfigured(log);
 // with a 400 before any route runs - is still logged. Registering it after
 // would make exactly those requests invisible.
 app.use(requestLogger);
+
+// ⚠ ABOVE express.json() ON PURPOSE. Stripe signs the raw request body, so this
+// route needs the bytes rather than a parsed object - see the note in
+// routes/stripeWebhook.routes.js. Below the logger so deliveries are still
+// logged like everything else.
+app.use("/api/webhooks/stripe", stripeWebhookRoutes);
 
 // Bounded: an unbounded JSON body lets one request buffer arbitrary memory in
 // the process. 1mb is far above any payload this API accepts - image uploads
