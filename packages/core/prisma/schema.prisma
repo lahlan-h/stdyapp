@@ -55,6 +55,23 @@ model User {
 
   lastActiveAt DateTime?
 
+  /// The Stripe Customer this user is billed as, created on their first
+  /// checkout and reused forever after.
+  ///
+  /// Lives here rather than on Subscription deliberately. It is created BEFORE
+  /// any subscription exists — a checkout session needs a customer to attach to
+  /// — and holding it on Subscription would mean inserting a row before anyone
+  /// has paid, which getMySubscription would then report as premium. It also
+  /// outlives the subscription, so cancelling and resubscribing reuses the same
+  /// customer instead of orphaning payment history under a new one.
+  ///
+  /// @unique because the webhook arrives knowing only this id and has to find
+  /// the local user from it — that is the lookup, and the constraint indexes it.
+  /// NOT a secret: it identifies a billing account, it does not authorise
+  /// anything. It is still absent from every response shape because no client
+  /// has a use for it.
+  stripeCustomerId String?   @unique
+
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -680,9 +697,19 @@ model Subscription {
 
   status           SubscriptionStatus @default(ACTIVE)
 
-  /// Nullable because a real provider assigns this asynchronously, and a stub
-  /// should not pretend otherwise.
-  paymentReference String?
+  /// The Stripe Subscription id (`sub_...`) this row mirrors.
+  ///
+  /// Nullable for the reason it always was — the row can briefly exist before
+  /// the webhook that names it — and now @unique, because the webhook resolves
+  /// the local row through this column the way it resolves the user through
+  /// users.stripeCustomerId.
+  ///
+  /// ⚠ STRIPE IS THE SOURCE OF TRUTH FOR THIS ROW. Everything beside it —
+  /// status, renewsAt — is a cached copy of what Stripe says, written only by
+  /// the webhook handler. That is a stronger version of the rule this model
+  /// already had: the values were merely server-written before, and are now
+  /// server-written from a provider the server cannot lie to either.
+  paymentReference String?            @unique
 
   /// When the current period ends. Also the access deadline for a CANCELLED
   /// subscription, which is why cancelling does not clear it.
