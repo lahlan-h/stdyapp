@@ -1,6 +1,6 @@
 import { View } from "react-native";
 
-import { useTheme, useHomeStyles } from "@theme";
+import { useTheme, useStyles } from "@theme";
 
 /**
  * Placeholder cards for the first page.
@@ -11,7 +11,7 @@ import { useTheme, useHomeStyles } from "@theme";
  */
 const FeedSkeleton = ({ count = 3 }: { count?: number }) => {
   const { colors } = useTheme();
-  const homeStyles = useHomeStyles();
+  const homeStyles = useStyles("home");
 
   return (
     <View style={homeStyles.skeletonList}>

@@ -1,6 +1,6 @@
 import { View, Text } from "react-native";
 
-import { useHomeStyles } from "@theme";
+import { useStyles } from "@theme";
 
 interface PostCardBodyProps {
   title: string;
@@ -8,7 +8,7 @@ interface PostCardBodyProps {
 }
 
 const PostCardBody = ({ title, caption }: PostCardBodyProps) => {
-  const homeStyles = useHomeStyles();
+  const homeStyles = useStyles("home");
 
   return (
     <View style={homeStyles.postCardBody}>

@@ -1,6 +1,6 @@
 import { View, Text } from "react-native";
 
-import { useHomeStyles } from "@theme";
+import { useStyles } from "@theme";
 import { formatDuration } from "@stdyapp/shared";
 
 interface PostCardStatsProps {
@@ -9,7 +9,7 @@ interface PostCardStatsProps {
 }
 
 const PostCardStats = ({ durationMinutes, goalsHit }: PostCardStatsProps) => {
-  const homeStyles = useHomeStyles();
+  const homeStyles = useStyles("home");
 
   return (
     <View style={homeStyles.statsContainer}>

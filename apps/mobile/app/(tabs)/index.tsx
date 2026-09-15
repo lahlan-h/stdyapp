@@ -2,7 +2,7 @@ import { FlatList, StatusBar } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { useTheme, useHomeStyles } from "@theme";
+import { useTheme, useStyles } from "@theme";
 import { usePosts, type FeedPost } from "@data";
 
 import PostCard from "@components/PostCard";
@@ -11,7 +11,7 @@ import EmptyFeed from "@components/EmptyFeed";
 
 const Index = () => {
   const { colors } = useTheme();
-  const homeStyles = useHomeStyles();
+  const homeStyles = useStyles("home");
   const { posts, isLoading, canLoadMore, loadMore } = usePosts();
 
   return (

@@ -2,7 +2,7 @@ import { View, Text, Pressable } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 import type { ComponentProps } from "react";
 
-import { useTheme, useSettingsStyles, type ThemePreference } from "@theme";
+import { useTheme, useStyles, type ThemePreference } from "@theme";
 
 interface SegmentConfig {
   preference: ThemePreference;
@@ -27,7 +27,7 @@ const SEGMENTS: SegmentConfig[] = [
  */
 const ThemeSegmentedControl = () => {
   const { colors, themePreference, setThemePreference } = useTheme();
-  const settingsStyles = useSettingsStyles();
+  const settingsStyles = useStyles("settings");
 
   return (
     <View style={settingsStyles.segmentGroup} accessibilityRole="radiogroup">
@@ -41,10 +41,7 @@ const ThemeSegmentedControl = () => {
             accessibilityRole="radio"
             accessibilityState={{ checked: isSelected }}
             accessibilityLabel={`${label} theme`}
-            style={[
-              settingsStyles.segment,
-              isSelected && settingsStyles.segmentSelected,
-            ]}
+            style={[settingsStyles.segment, isSelected && settingsStyles.segmentSelected]}
           >
             <Feather
               name={icon}

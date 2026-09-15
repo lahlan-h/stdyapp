@@ -2,7 +2,7 @@ import { View, Text } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import type { ReactNode } from "react";
 
-import { useTheme, useSettingsStyles } from "@theme";
+import { useTheme, useStyles } from "@theme";
 
 interface SettingsSectionProps {
   title: string;
@@ -25,7 +25,7 @@ interface SettingsSectionProps {
  */
 const SettingsSection = ({ title, footnote, children }: SettingsSectionProps) => {
   const { colors } = useTheme();
-  const settingsStyles = useSettingsStyles();
+  const settingsStyles = useStyles("settings");
 
   return (
     <View style={settingsStyles.section}>
