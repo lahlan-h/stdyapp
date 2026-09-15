@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useColorScheme } from "react-native";
+import { useColorScheme, Appearance } from "react-native";
 
 import { darkColors, lightColors, type ColorScheme } from "./colors";
 
@@ -115,6 +115,9 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     let cancelled = false;
 
     const load = async () => {
+      // Added as the iOS tab navigator colour scheme wouldn't change from system defaults
+      Appearance.setColorScheme(preference === "system" ? "unspecified" : preference);
+
       // A corrupt or hand-edited value must not take the app down on launch.
       // Anything unreadable simply means "no preference" - follow the OS.
       try {
@@ -145,7 +148,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [preference]); // Re-runs when preference changes and on mount...
 
   const isDarkMode =
     preference === "system" ? systemScheme === "dark" : preference === "dark";
