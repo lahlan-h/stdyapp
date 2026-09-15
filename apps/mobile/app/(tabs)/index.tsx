@@ -7,6 +7,7 @@ import { usePosts, type FeedPost } from "@data";
 
 import PostCard from "@components/PostCard";
 import FeedSkeleton from "@components/FeedSkeleton"; // I think I might change to a spinner ...
+import LoadingSpinner from "@components/LoadingSpinner";
 import EmptyFeed from "@components/EmptyFeed";
 
 const Index = () => {
@@ -23,7 +24,7 @@ const Index = () => {
       />
       <SafeAreaView style={homeStyles.safeArea} edges={["top", "left", "right"]}>
         {isLoading ? (
-          <FeedSkeleton />
+          <LoadingSpinner />
         ) : (
           <FlatList
             data={posts}
