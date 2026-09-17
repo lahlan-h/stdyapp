@@ -1,70 +1,92 @@
-import { useCallback } from "react";
-import { usePaginatedQuery } from "convex/react";
-import { api } from "@stdyapp/convex-stub";
+import { useCallback, useEffect, useState } from "react";
 
-import type { FeedPost } from "./types";
+import { request } from "./api";
+import { withAuth } from "./auth";
+import type { FeedPost, FeedSession } from "./types";
 
-/** How many posts to fetch per page. */
+/** How many posts to fetch per page. The API caps `limit` at 100. */
 const PAGE_SIZE = 10;
 
 /**
- * One row as the backend returns it, before mapping onto the UI's own shape.
+ * One row as GET /api/posts/all returns it.
  *
- * This is the boundary: Convex's `_id` / `_creationTime` naming stops here and
- * never reaches a component. Declared structurally rather than imported from the
- * generated Convex types so replacing the backend does not ripple outward.
+ * Declared structurally rather than generated from Prisma so replacing the
+ * backend does not ripple outward. `_count` and `photoUrl` stop here.
  */
 interface RawFeedRow {
-  _id: string;
-  authorId: string;
-  _creationTime: number;
-  title: string;
-  caption?: string;
-  durationMinutes: number;
-  goalsHit: number;
-  imageUrl?: string;
-  likeCount: number;
-  author: {
-    _id: string;
+  id: string;
+  caption: string;
+  photoUrl: string | null;
+  createdAt: string;
+  user: {
+    id: string;
     username: string;
-    displayName: string;
-    avatarUrl?: string;
+    avatarUrl: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  };
+  session: {
+    startedAt: string;
+    endedAt: string | null;
+    focusPoints: number;
   } | null;
+  _count: { likes: number; comments: number };
+}
+
+interface FeedResponse {
+  data: RawFeedRow[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+  };
 }
 
 /**
- * Returns null when the author is missing - the query joins the author but
- * leaves it nullable, because dropping rows inside a paginated query returns
- * short pages and confuses the cursor. Filtering belongs here instead. See
- * getPosts in packages/convex-stub/convex/posts.ts.
+ * Floored at zero the way the API does it, because a clock adjustment can put
+ * endedAt before startedAt and a negative duration renders as nonsense.
  */
-const toFeedPost = (row: RawFeedRow): FeedPost | null => {
-  if (!row.author) {
-    // Loud in development, because this failure is otherwise invisible: a post
-    // dropped here just does not appear, so a feed where every author dangled
-    // would render empty with no error - indistinguishable from a backend that
-    // is not answering at all.
-    if (__DEV__) {
-      console.warn(`[usePosts] dropping post ${row._id}: author ${row.authorId} did not resolve`);
-    }
-    return null;
-  }
+const toSession = (row: RawFeedRow): FeedSession | undefined => {
+  if (!row.session) return undefined;
+
+  const { startedAt, endedAt, focusPoints } = row.session;
 
   return {
-    id: row._id,
-    title: row.title,
+    durationMinutes: endedAt
+      ? Math.max(
+          0,
+          Math.round(
+            (new Date(endedAt).getTime() - new Date(startedAt).getTime()) /
+              60000,
+          ),
+        )
+      : null,
+    focusPoints,
+  };
+};
+
+const toFeedPost = (row: RawFeedRow): FeedPost => {
+  const { firstName, lastName, username } = row.user;
+  const name = [firstName, lastName].filter(Boolean).join(" ");
+
+  return {
+    id: row.id,
     caption: row.caption,
-    durationMinutes: row.durationMinutes,
-    goalsHit: row.goalsHit,
-    imageUrl: row.imageUrl,
-    likeCount: row.likeCount,
-    createdAt: row._creationTime,
+    imageUrl: row.photoUrl ?? undefined,
+    likeCount: row._count.likes,
+    commentCount: row._count.comments,
+    createdAt: new Date(row.createdAt).getTime(),
     author: {
-      id: row.author._id,
-      username: row.author.username,
-      displayName: row.author.displayName,
-      avatarUrl: row.author.avatarUrl,
+      id: row.user.id,
+      username,
+      // Both names are nullable in the database even though signup demands
+      // them, so an older row can have neither. The username always exists.
+      displayName: name || username,
+      avatarUrl: row.user.avatarUrl ?? undefined,
     },
+    session: toSession(row),
   };
 };
 
@@ -74,28 +96,66 @@ export interface FeedState {
   isLoading: boolean;
   canLoadMore: boolean;
   loadMore: () => void;
+  /** Set when the feed could not be read. The screen shows it rather than an empty feed. */
+  error?: string;
+  /** Re-reads from page one. Call after creating a post. */
+  refresh: () => void;
 }
 
 /**
  * The home feed, newest first.
  *
- * One subscription per page, with each post's author already attached. The feed
- * used to fetch every post in the table on load and then fire a query per card
- * for its author and another for its likes.
+ * Pages are appended rather than refetched, so scrolling does not re-request
+ * what is already on screen. Each row arrives with its author and linked
+ * session attached, which is why there is no per-card query.
  */
 export const usePosts = (): FeedState => {
-  const { results, status, loadMore } = usePaginatedQuery(
-    api.posts.getPosts,
-    {},
-    { initialNumItems: PAGE_SIZE },
-  );
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  const fetchPage = useCallback(async (target: number) => {
+    setIsFetching(true);
+    try {
+      const response = await withAuth((token) =>
+        request<FeedResponse>(
+          `/api/posts/all?page=${target}&limit=${PAGE_SIZE}`,
+          { token },
+        ),
+      );
+
+      const mapped = response.data.map(toFeedPost);
+      // Replacing on page one is what makes refresh() work without a second
+      // code path, and it drops rows deleted since the last read.
+      setPosts((current) => (target === 1 ? mapped : [...current, ...mapped]));
+      setHasNextPage(response.pagination.hasNextPage);
+      setPage(target);
+      setError(undefined);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load the feed.");
+    } finally {
+      setIsFetching(false);
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPage(1);
+  }, [fetchPage]);
 
   return {
-    posts: (results as RawFeedRow[])
-      .map(toFeedPost)
-      .filter((post): post is FeedPost => post !== null),
-    isLoading: status === "LoadingFirstPage",
-    canLoadMore: status === "CanLoadMore",
-    loadMore: useCallback(() => loadMore(PAGE_SIZE), [loadMore]),
+    posts,
+    isLoading,
+    canLoadMore: hasNextPage && !isFetching,
+    // Guarded rather than debounced: FlatList fires onEndReached repeatedly
+    // while a fetch is in flight, and each one would append the same page.
+    loadMore: useCallback(() => {
+      if (!isFetching && hasNextPage) fetchPage(page + 1);
+    }, [fetchPage, isFetching, hasNextPage, page]),
+    error,
+    refresh: useCallback(() => fetchPage(1), [fetchPage]),
   };
 };

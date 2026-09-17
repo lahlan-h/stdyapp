@@ -46,7 +46,23 @@ export const findAllPosts = ({ skip, take }) => {
   return prisma.$transaction([
     prisma.post.findMany({
       include: {
-        user: { select: { id: true, username: true, avatarUrl: true } },
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatarUrl: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        // Null whenever the post has no session, or the session was deleted -
+        // sessionId is nullable and SetNull. The feed renders the stats only
+        // when this resolves. endedAt is null while a session is still running,
+        // which is not the same as a duration of zero, so it is passed through
+        // rather than flattened here.
+        session: {
+          select: { startedAt: true, endedAt: true, focusPoints: true },
+        },
         _count: { select: { likes: true, comments: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "asc" }],

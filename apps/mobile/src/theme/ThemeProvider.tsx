@@ -13,6 +13,7 @@ import { useColorScheme } from "react-native";
 import { darkColors, lightColors, type ColorScheme } from "./colors";
 import { createHomeStyles } from "./home.styles";
 import { createSettingsStyles } from "./settings.styles";
+import { createNewPostStyles } from "./newPost.styles";
 import { createTabBarStyles } from "./tabBar.styles";
 
 const STORAGE_KEY = "themePreference";
@@ -56,6 +57,11 @@ const SETTINGS_STYLES = {
   dark: createSettingsStyles(darkColors),
 } as const;
 
+const NEW_POST_STYLES = {
+  light: createNewPostStyles(lightColors),
+  dark: createNewPostStyles(darkColors),
+} as const;
+
 const TAB_BAR_STYLES = {
   light: createTabBarStyles(lightColors),
   dark: createTabBarStyles(darkColors),
@@ -71,6 +77,7 @@ interface ThemeContextType {
   homeStyles: (typeof HOME_STYLES)["light"];
   settingsStyles: (typeof SETTINGS_STYLES)["light"];
   tabBarStyles: (typeof TAB_BAR_STYLES)["light"];
+  newPostStyles: (typeof NEW_POST_STYLES)["light"];
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -150,6 +157,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       homeStyles: isDarkMode ? HOME_STYLES.dark : HOME_STYLES.light,
       settingsStyles: isDarkMode ? SETTINGS_STYLES.dark : SETTINGS_STYLES.light,
       tabBarStyles: isDarkMode ? TAB_BAR_STYLES.dark : TAB_BAR_STYLES.light,
+      newPostStyles: isDarkMode ? NEW_POST_STYLES.dark : NEW_POST_STYLES.light,
     }),
     [isDarkMode, preference, setThemePreference, toggleDarkMode],
   );
@@ -171,3 +179,6 @@ export const useSettingsStyles = () => useTheme().settingsStyles;
 
 /** The tab bar stylesheet for the active theme. Never rebuilds. */
 export const useTabBarStyles = () => useTheme().tabBarStyles;
+
+/** The new-post stylesheet for the active theme. Never rebuilds. */
+export const useNewPostStyles = () => useTheme().newPostStyles;

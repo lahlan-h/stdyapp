@@ -4,6 +4,7 @@ import { BlurView } from "expo-blur";
 import AntDesign from "@expo/vector-icons/AntDesign";
 import Feather from "@expo/vector-icons/Feather";
 import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
+import { router } from "expo-router";
 import type { ComponentProps } from "react";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 
@@ -140,20 +141,20 @@ const TabBar = ({ state, navigation, insets }: BottomTabBarProps) => {
       </View>
 
       {/*
-        A placeholder, deliberately. There is no Add Post screen in the app yet
-        and no route to send anyone to, so this is a plain View rather than a
-        Pressable - the same rule SettingsRow follows, so a screen reader does
-        not announce a button that does nothing. It is drawn at full strength
-        rather than dimmed like a "Soon" row because it is the centrepiece of
-        the bar. Give it an onPress when the screen lands.
+        box-none, not none: the wrapper spans the full width so the circle can
+        centre itself, and catching touches across it would swallow presses
+        meant for the tabs either side.
       */}
-      <View
-        style={tabBarStyles.fabWrap}
-        pointerEvents="none"
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-      >
-        <View style={tabBarStyles.fabRing}>
+      <View style={tabBarStyles.fabWrap} pointerEvents="box-none">
+        <Pressable
+          style={({ pressed }) => [
+            tabBarStyles.fabRing,
+            pressed && { opacity: 0.6 },
+          ]}
+          onPress={() => router.push("/new-post")}
+          accessibilityRole="button"
+          accessibilityLabel="New post"
+        >
           <LinearGradient
             colors={colors.gradients.primary}
             start={{ x: 0.5, y: 0 }}
@@ -165,7 +166,7 @@ const TabBar = ({ state, navigation, insets }: BottomTabBarProps) => {
                 themes. */}
             <Feather name="plus" size={FAB_ICON_SIZE} color="#ffffff" />
           </LinearGradient>
-        </View>
+        </Pressable>
       </View>
     </View>
   );

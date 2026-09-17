@@ -4,6 +4,7 @@ export {
   useHomeStyles,
   useSettingsStyles,
   useTabBarStyles,
+  useNewPostStyles,
   type ThemePreference,
 } from "./ThemeProvider";
 export { lightColors, darkColors, type ColorScheme } from "./colors";
@@ -15,3 +16,8 @@ export {
   FAB_ICON_SIZE,
   TAB_BAR_HEIGHT,
 } from "./tabBar.styles";
+export {
+  createNewPostStyles,
+  EXIT_ICON_SIZE,
+  ROW_ICON_SIZE as NEW_POST_ROW_ICON_SIZE,
+} from "./newPost.styles";

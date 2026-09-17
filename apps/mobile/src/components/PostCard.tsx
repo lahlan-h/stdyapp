@@ -38,8 +38,9 @@ const PostCard = ({ post }: PostCardProps) => {
         avatarUrl={post.author.avatarUrl}
         createdAt={post.createdAt}
       />
-      <PostCardBody title={post.title} caption={post.caption} />
-      <PostCardStats durationMinutes={post.durationMinutes} goalsHit={post.goalsHit} />
+      <PostCardBody caption={post.caption} />
+      {/* Only posts made about a session have stats to show. */}
+      {post.session && <PostCardStats session={post.session} />}
       {post.imageUrl && (
         <Image
           style={homeStyles.postCardImage}
