@@ -73,6 +73,9 @@ model User {
   subscription  Subscription?
   notifications Notification[]
 
+  focusRatings   FocusRating[]
+  focusBaselines FocusBaseline[]
+
   @@map("users")
 }
 
@@ -129,12 +132,51 @@ model Session {
 
   startedAt     DateTime  @default(now())
   endedAt       DateTime?
+  /// The gamification score: minutes studied minus interruption penalties.
+  /// Deliberately LEFT ALONE by the focus-estimate feature — focusScore below
+  /// is a different number answering a different question.
   focusPoints   Int       @default(0)
+
+  /// The calibrated 0-100 focus ESTIMATE, computed when the session ends.
+  ///
+  /// Nullable rather than @default(0): a session that was never measured and a
+  /// session the user spent entirely distracted must not collapse to the same
+  /// value. Null means "no estimate"; 0 means "measured, and it was bad".
+  ///
+  /// Always an estimate — never presented as a medical or clinical measurement.
+  focusScore           Int?
+
+  /// Wall-clock minutes scaled by the estimate: 60 minutes at a score of 50 is
+  /// 30. Stored rather than derived on read so the weekly leaderboard can SUM a
+  /// column instead of replaying every session's samples.
+  focusWeightedMinutes Float?
+
+  /// 0-1: how much of the session the user actually saw through. One of the
+  /// inputs to the estimate, kept so a score can be explained after the fact.
+  completionFactor     Float?
+
+  /// Whether heart-rate data was available. Without it the scorer redistributes
+  /// weight over the remaining signals, so this records WHICH scoring path ran
+  /// and stops a watch-assisted score being compared with one that is not.
+  hadWatch             Boolean @default(false)
 
   interruptions SessionInterruption[]
   posts         Post[]
+  focusSamples  FocusSample[]
+  focusRating   FocusRating?
 
   @@map("sessions")
+}
+
+/// What pulled the user away. An enum rather than free text for the same reason
+/// as GroupRole: the set is small, closed, and queried on.
+enum InterruptionType {
+  /// The user left the app.
+  APP_EXIT
+  /// The device was picked up or moved past the stillness threshold.
+  DEVICE_MOTION
+  /// The user logged a break themselves.
+  MANUAL
 }
 
 model SessionInterruption {
@@ -144,6 +186,13 @@ model SessionInterruption {
   startedAt   DateTime @default(now())
   durationSec Int
   penaltyApplied Boolean @default(false)
+
+  /// Nullable, and deliberately so. Every row written before the focus feature
+  /// existed has no type, and a client that does not classify its interruptions
+  /// is still valid. This is the focus spec's "DistractionEvent" — folded in
+  /// here rather than given its own table, because a distraction event and an
+  /// interruption are the same thing recorded twice.
+  type        InterruptionType?
 
   @@map("session_interruptions")
 }
@@ -705,6 +754,106 @@ model Notification {
   @@index([userId, isRead])
 
   @@map("notifications")
+}
+
+/// One row per sampling interval of a study session — the raw signal history
+/// the estimate is computed from.
+///
+/// The only table here expected to grow quickly: a 2-hour session at one sample
+/// per 30s is 240 rows. Hence the compound index, and the cascade delete —
+/// samples are meaningless without their session.
+model FocusSample {
+  id             String   @id @default(uuid())
+  sessionId      String
+  session        Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  timestamp      DateTime @default(now())
+
+  /// Heart rate in BPM. Nullable — only present when a watch was paired, which
+  /// is the stretch-goal path, not the common one.
+  hr             Int?
+
+  /// Variance of accelerometer magnitude over the interval. Higher means the
+  /// device moved more, which reads as less focus.
+  motionVariance Float
+
+  /// Whether the app was foregrounded for this interval.
+  inApp          Boolean
+
+  /// The per-sample 0-1 score, stored rather than recomputed at read time so a
+  /// past session can still be explained after the user's baseline has moved
+  /// on. Rescoring against today's baseline would rewrite history.
+  computedFocus  Float
+
+  /// Every read of this table is "samples for one session, in time order".
+  @@index([sessionId, timestamp])
+  @@map("focus_samples")
+}
+
+/// The user's own 1-5 verdict on a session — the ground truth the estimate is
+/// validated and calibrated against. Without it there is no way to know whether
+/// the score means anything.
+model FocusRating {
+  id         String   @id @default(uuid())
+
+  /// @unique, not a plain index: one rating per session. A resubmission updates
+  /// this row instead of stacking duplicates that would each pull calibration a
+  /// different way.
+  sessionId  String   @unique
+  session    Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  /// Redundant with session.userId, and kept anyway: "every rating by this user"
+  /// is THE calibration query, and this makes it one indexed read with no join
+  /// back through sessions.
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+
+  /// 1-5, enforced in focus.validation.js. Prisma has no check constraint, so
+  /// the API layer is the only guard.
+  selfRating Int
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@map("focus_ratings")
+}
+
+/// The signals the estimate is built from. HEART_RATE is the stretch goal.
+enum FocusSignal {
+  MOTION
+  PRESENCE
+  HEART_RATE
+}
+
+/// A user's personal normal for one signal — the denominator of the z-score.
+///
+/// Its own table rather than columns on User. The baseline is per-signal, so on
+/// User it would be three columns per signal and would need a migration to the
+/// auth model every time a signal is added.
+model FocusBaseline {
+  id           String      @id @default(uuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signal       FocusSignal
+
+  /// Running mean and variance for this user on this signal, updated
+  /// incrementally as sessions complete (Welford) rather than by re-reading
+  /// every sample the user has ever produced.
+  mean         Float
+  variance     Float
+
+  /// How many readings the numbers above are built from. Drives isCalibrated.
+  sampleCount  Int         @default(0)
+
+  /// False until sampleCount clears the calibration threshold. While false the
+  /// scorer ignores these numbers and uses population defaults — a baseline
+  /// built from three samples is worse than no baseline at all.
+  isCalibrated Boolean     @default(false)
+
+  updatedAt    DateTime    @updatedAt
+
+  /// One baseline per user per signal.
+  @@unique([userId, signal])
+  @@map("focus_baselines")
 }
 
 // TODO: remaining entities from the ERD - discover, analytics, moderation
