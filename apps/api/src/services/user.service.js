@@ -366,3 +366,72 @@ export const deleteUser = async (id) => {
   // user stays readable from GET /api/users/:id for the whole TTL.
   await bumpVersions(versionKeys);
 };
+
+/**
+ * The local user behind a Stripe customer id.
+ *
+ * Returns null rather than throwing, unlike getUserById above, because the one
+ * caller is the Stripe webhook and a miss there is not an error: a customer
+ * created by another integration, or one whose user row was deleted, is an
+ * event we legitimately cannot act on. The handler logs it and answers 200,
+ * since a 404 would make Stripe retry for three days something that will never
+ * succeed. See stripeWebhook.controller.js.
+ *
+ * Served by the @unique on users.stripeCustomerId, which exists for this lookup.
+ *
+ * @param {string} stripeCustomerId
+ * @returns {Promise<string | null>} the user id, or null if no user has it
+ */
+export const findUserIdByStripeCustomer = async (stripeCustomerId) => {
+  const user = await prisma.user.findUnique({
+    where: { stripeCustomerId },
+    select: { id: true },
+  });
+
+  return user?.id ?? null;
+};
+
+/**
+ * The Stripe customer this user is billed as, or null if they have never
+ * started a checkout.
+ *
+ * Deliberately NOT added to USER_PUBLIC_SELECT: no client has a use for it, and
+ * the select allowlist is fail-closed, so leaving it out is all that is needed
+ * to keep it off every user response. This narrow read is the only way out.
+ *
+ * @param {string} userId
+ * @returns {Promise<string | null>}
+ * @throws {HttpError} 404 when no such user exists
+ */
+export const getStripeCustomerId = async (userId) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { stripeCustomerId: true },
+  });
+
+  if (!user) throw new HttpError(404, USER_NOT_FOUND);
+
+  return user.stripeCustomerId;
+};
+
+/**
+ * Records the Stripe customer created for this user.
+ *
+ * NO CACHE BUMP, unlike updateUser above, and that is deliberate rather than an
+ * omission: stripeCustomerId is absent from USER_PUBLIC_SELECT, so no cached
+ * response contains it and there is nothing to go stale. Adding a fanout here
+ * would invalidate every cached profile for a column nobody can read.
+ *
+ * Can throw P2002 on the @unique if two checkouts race and both create a
+ * customer. The caller handles that by re-reading — see subscription.service.js.
+ *
+ * @param {string} userId
+ * @param {string} stripeCustomerId
+ * @returns {Promise<void>}
+ */
+export const setStripeCustomerId = async (userId, stripeCustomerId) => {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { stripeCustomerId },
+  });
+};
