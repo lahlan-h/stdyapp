@@ -1,6 +1,8 @@
 import type { ColorScheme } from "./colors";
 import { StyleSheet } from "react-native";
 
+import { TAB_BAR_HEIGHT } from "./tabBar.styles";
+
 /** Size of the leading icon on a settings row, and of the box reserved for it. */
 const ROW_ICON_SIZE = 20;
 
@@ -23,7 +25,8 @@ export const createSettingsStyles = (colors: ColorScheme) => {
     scrollContent: {
       paddingHorizontal: 16,
       paddingTop: 8,
-      paddingBottom: 40,
+      // 40 of breathing room, plus the floating tab bar the footer has to clear.
+      paddingBottom: 40 + TAB_BAR_HEIGHT,
       gap: 22,
     },
     screenTitle: {

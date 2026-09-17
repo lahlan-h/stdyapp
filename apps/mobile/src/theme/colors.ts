@@ -30,6 +30,15 @@ export interface ColorScheme {
   backgrounds: {
     input: string;
     editInput: string;
+    /**
+     * Base fill behind the tab bar's blur, so it must carry alpha.
+     *
+     * The blur alone is not enough: Android's implementation is far weaker than
+     * iOS's, and on a busy feed the bar reads as a smear of the cards behind it
+     * with no edge of its own. This sits under the blur and gives the bar a
+     * floor in both cases.
+     */
+    tabBar: string;
   };
   statusBarStyle: "light-content" | "dark-content";
 }
@@ -58,6 +67,7 @@ export const lightColors: ColorScheme = {
   backgrounds: {
     input: "#ffffff",
     editInput: "#ffffff",
+    tabBar: "rgba(255,255,255,0.72)",
   },
   statusBarStyle: "dark-content" as const,
 };
@@ -86,6 +96,7 @@ export const darkColors: ColorScheme = {
   backgrounds: {
     input: "#1e293b",
     editInput: "#0f172a",
+    tabBar: "rgba(15,23,42,0.72)",
   },
   statusBarStyle: "light-content" as const,
 };
