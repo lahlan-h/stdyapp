@@ -15,6 +15,7 @@ export {
   useCreatePost,
   MAX_PHOTO_BYTES,
   MAX_CAPTION_LENGTH,
+  MAX_TITLE_LENGTH,
   type NewPost,
   type NewPostPhoto,
   type CreatedPost,

@@ -309,7 +309,15 @@ model Post {
   routineId String?
   routine   StudyRoutine? @relation(fields: [routineId], references: [id], onDelete: SetNull)
 
-  caption   String
+  // The headline, and the only text a post must have. Length is capped in
+  // post.validation.js rather than here, the same way every other title in this
+  // schema is - TEXT in Postgres, bounded at the edge.
+  title     String
+
+  // Optional: a title alone is a complete post. Was NOT NULL until title
+  // existed, when it was carrying the headline; see the add_post_title
+  // migration, which moved that text across and cleared this column.
+  caption   String?
   photoUrl  String
   createdAt DateTime     @default(now())
 

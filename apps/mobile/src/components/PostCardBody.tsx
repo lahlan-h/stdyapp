@@ -3,21 +3,25 @@ import { View, Text } from "react-native";
 import { useHomeStyles } from "@theme";
 
 interface PostCardBodyProps {
-  caption: string;
+  title: string;
+  caption?: string;
 }
 
 /**
- * The post's text.
+ * The post's text: a headline, and supporting text when there is any.
  *
- * One field, not two: the old backend carried a separate title and caption, but
- * a Post has only a caption, so the bold line renders that.
+ * The caption is the optional half. A post is complete with a title and a
+ * photo, so the second Text is dropped entirely rather than rendered empty -
+ * an empty Text still takes the container's gap and leaves a ragged space
+ * under the title.
  */
-const PostCardBody = ({ caption }: PostCardBodyProps) => {
+const PostCardBody = ({ title, caption }: PostCardBodyProps) => {
   const homeStyles = useHomeStyles();
 
   return (
     <View style={homeStyles.postCardBody}>
-      <Text style={homeStyles.bold}>{caption}</Text>
+      <Text style={homeStyles.bold}>{title}</Text>
+      {caption ? <Text style={homeStyles.soft}>{caption}</Text> : null}
     </View>
   );
 };

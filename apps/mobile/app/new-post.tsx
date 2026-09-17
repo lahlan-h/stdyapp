@@ -26,6 +26,7 @@ import {
   useCreatePost,
   MAX_PHOTO_BYTES,
   MAX_CAPTION_LENGTH,
+  MAX_TITLE_LENGTH,
   type NewPostPhoto,
 } from "@data";
 
@@ -35,10 +36,9 @@ const ACCEPTED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 /**
  * Compose a post.
  *
- * Presented as a modal from the tab bar's centre button. The photo is required
- * because Post.photoUrl is not nullable - there is no text-only post to fall
- * back to - and the single text field is sent as the post's caption, which is
- * the only text column the API has.
+ * Presented as a modal from the tab bar's centre button. A photo and a title
+ * are required - Post.photoUrl is not nullable, so there is no text-only post
+ * to fall back to - and the caption is the optional half.
  */
 const NewPost = () => {
   const { colors } = useTheme();
@@ -46,10 +46,11 @@ const NewPost = () => {
   const insets = useSafeAreaInsets();
   const { createPost, isSubmitting, error, reset } = useCreatePost();
 
+  const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
   const [photo, setPhoto] = useState<NewPostPhoto | null>(null);
 
-  const canSubmit = Boolean(photo) && caption.trim().length > 0 && !isSubmitting;
+  const canSubmit = Boolean(photo) && title.trim().length > 0 && !isSubmitting;
 
   const pickPhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -94,7 +95,7 @@ const NewPost = () => {
   const submit = async () => {
     if (!photo) return;
 
-    const created = await createPost({ caption, photo });
+    const created = await createPost({ title, caption, photo });
     // A null result means the hook has set `error`, which is already on screen.
     if (created) router.back();
   };
@@ -134,16 +135,16 @@ const NewPost = () => {
           <View>
             <TextInput
               style={newPostStyles.titleInput}
-              value={caption}
-              onChangeText={setCaption}
+              value={title}
+              onChangeText={setTitle}
               placeholder="New post"
               placeholderTextColor={colors.textMuted}
               multiline
-              maxLength={MAX_CAPTION_LENGTH}
-              accessibilityLabel="What you want to say about this session"
+              maxLength={MAX_TITLE_LENGTH}
+              accessibilityLabel="Post title"
             />
             <Text style={newPostStyles.counter}>
-              {caption.length} / {MAX_CAPTION_LENGTH}
+              {title.length} / {MAX_TITLE_LENGTH}
             </Text>
           </View>
 
@@ -178,6 +179,31 @@ const NewPost = () => {
                 </>
               )}
             </Pressable>
+          </View>
+
+          <View style={newPostStyles.section}>
+            <View style={newPostStyles.fieldHeader}>
+              <View style={newPostStyles.fieldLabelRow}>
+                <Text style={newPostStyles.fieldLabel}>Caption</Text>
+                <View style={newPostStyles.badge}>
+                  <Text style={newPostStyles.badgeText}>OPTIONAL</Text>
+                </View>
+              </View>
+              <Text style={newPostStyles.counter}>
+                {caption.length} / {MAX_CAPTION_LENGTH}
+              </Text>
+            </View>
+
+            <TextInput
+              style={newPostStyles.captionInput}
+              value={caption}
+              onChangeText={setCaption}
+              placeholder="How did the session go?"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              maxLength={MAX_CAPTION_LENGTH}
+              accessibilityLabel="Caption"
+            />
           </View>
 
           {/*
@@ -268,7 +294,7 @@ const NewPost = () => {
               colors={colors.gradients.primary}
               start={{ x: 0.5, y: 0 }}
               end={{ x: 0.5, y: 1 }}
-              style={newPostStyles.submit}
+              style={newPostStyles.submitFill}
             >
               {isSubmitting ? (
                 <ActivityIndicator color="#ffffff" />

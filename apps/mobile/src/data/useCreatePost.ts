@@ -7,6 +7,7 @@ import { markFeedStale } from "./feedSignal";
 /** What the API accepts, mirrored here so the screen can reject early. */
 export const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 export const MAX_CAPTION_LENGTH = 2000;
+export const MAX_TITLE_LENGTH = 100;
 
 export interface NewPostPhoto {
   uri: string;
@@ -16,7 +17,9 @@ export interface NewPostPhoto {
 }
 
 export interface NewPost {
-  caption: string;
+  title: string;
+  /** Omitted entirely when the user typed nothing - see createPost. */
+  caption?: string;
   photo: NewPostPhoto;
 }
 
@@ -24,7 +27,8 @@ export interface NewPost {
 export interface CreatedPost {
   id: string;
   userId: string;
-  caption: string;
+  title: string;
+  caption: string | null;
   photoUrl: string;
   createdAt: string;
 }
@@ -79,7 +83,13 @@ export const useCreatePost = (): CreatePostState => {
         type: post.photo.mimeType,
       } as unknown as Blob);
 
-      formData.append("caption", post.caption.trim());
+      formData.append("title", post.title.trim());
+
+      // Appended only when there is something to send. An empty string is a
+      // 400 from the strictObject schema, not "no caption" - the field has to
+      // be absent, the same trap the links below document.
+      const caption = post.caption?.trim();
+      if (caption) formData.append("caption", caption);
 
       // sessionId and routineId are deliberately not sent. The schema is a
       // strictObject, so an empty string is a 400 rather than "no link", and

@@ -58,6 +58,36 @@ export const createNewPostStyles = (colors: ColorScheme) => {
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
+    fieldHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+      paddingHorizontal: 4,
+    },
+    fieldLabelRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    fieldLabel: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 16,
+      color: colors.text,
+    },
+    captionInput: {
+      minHeight: 96,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.backgrounds.input,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 16,
+      color: colors.text,
+      textAlignVertical: "top",
+    },
     counter: {
       fontFamily: "PlusJakartaSans_400Regular",
       fontSize: 12,
@@ -220,12 +250,21 @@ export const createNewPostStyles = (colors: ColorScheme) => {
       borderTopWidth: 1,
       borderTopColor: colors.border,
     },
+    // Sizing and clipping only. Centring deliberately does NOT live here: this
+    // style is on the Pressable, and alignItems:center on it made the gradient
+    // child - the only element that paints anything - collapse to the width of
+    // the word "Post" instead of filling the footer.
     submit: {
       height: 54,
       borderRadius: 14,
+      overflow: "hidden",
+    },
+    // The gradient. flex:1 fills the Pressable it sits in, so the button spans
+    // the footer edge to edge.
+    submitFill: {
+      flex: 1,
       alignItems: "center",
       justifyContent: "center",
-      overflow: "hidden",
     },
     submitDisabled: {
       opacity: 0.45,

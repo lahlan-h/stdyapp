@@ -15,7 +15,8 @@ const PAGE_SIZE = 10;
  */
 interface RawFeedRow {
   id: string;
-  caption: string;
+  title: string;
+  caption: string | null;
   photoUrl: string | null;
   createdAt: string;
   user: {
@@ -73,7 +74,8 @@ const toFeedPost = (row: RawFeedRow): FeedPost => {
 
   return {
     id: row.id,
-    caption: row.caption,
+    title: row.title,
+    caption: row.caption ?? undefined,
     imageUrl: row.photoUrl ?? undefined,
     likeCount: row._count.likes,
     commentCount: row._count.comments,

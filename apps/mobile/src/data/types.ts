@@ -37,8 +37,10 @@ export interface FeedSession {
 
 export interface FeedPost {
   id: string;
-  /** The post's text. The API has no separate title column. */
-  caption: string;
+  /** The headline, and the only text a post must have. */
+  title: string;
+  /** Optional supporting text below the title. */
+  caption?: string;
   imageUrl?: string;
   likeCount: number;
   commentCount: number;

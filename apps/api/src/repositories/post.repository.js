@@ -1,8 +1,15 @@
 import { prisma } from "@stdyapp/core";
 
-export const createPost = ({ userId, sessionId, routineId, caption, photoUrl }) => {
+export const createPost = ({
+  userId,
+  sessionId,
+  routineId,
+  title,
+  caption,
+  photoUrl,
+}) => {
   return prisma.post.create({
-    data: { userId, sessionId, routineId, caption, photoUrl },
+    data: { userId, sessionId, routineId, title, caption, photoUrl },
   });
 };
 

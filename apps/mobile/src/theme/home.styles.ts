@@ -69,7 +69,11 @@ export const createHomeStyles = (colors: ColorScheme) => {
       paddingTop: 12,
       paddingBottom: 2,
       gap: 3,
-      alignItems: "baseline",
+      // NOT "baseline". Yoga only implements baseline alignment on row
+      // containers; in a column it degrades and lays the children out at their
+      // content width instead of stretching, which mismeasures where the title
+      // and caption wrap.
+      alignItems: "stretch",
     },
     statsContainer: {
       paddingHorizontal: 12,
