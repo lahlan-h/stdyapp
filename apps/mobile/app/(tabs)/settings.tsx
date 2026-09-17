@@ -3,7 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 
-import { useTheme, useSettingsStyles } from "@theme";
+import { useTheme, useStyles } from "@theme";
 import { useNotificationPreferences } from "@data";
 
 import SettingsSection from "@components/SettingsSection";
@@ -18,7 +18,7 @@ const APP_VERSION = Constants.expoConfig?.version ?? "unknown";
 
 const Settings = () => {
   const { colors } = useTheme();
-  const settingsStyles = useSettingsStyles();
+  const settingsStyles = useStyles("settings");
   const { preferences, setPreference } = useNotificationPreferences();
 
   /**
@@ -29,19 +29,13 @@ const Settings = () => {
   const switchTrack = { false: colors.border, true: colors.primary };
 
   return (
-    <LinearGradient
-      colors={colors.gradients.background}
-      style={settingsStyles.container}
-    >
+    <LinearGradient colors={colors.gradients.background} style={settingsStyles.container}>
       <StatusBar
         barStyle={colors.statusBarStyle}
         translucent
         backgroundColor="transparent"
       />
-      <SafeAreaView
-        style={settingsStyles.safeArea}
-        edges={["top", "left", "right"]}
-      >
+      <SafeAreaView style={settingsStyles.safeArea} edges={["top", "left", "right"]}>
         <ScrollView
           contentContainerStyle={settingsStyles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -123,12 +117,7 @@ const Settings = () => {
               description="Who can see your sessions"
             />
             <SettingsRow isPlaceholder icon="log-out" label="Sign out" />
-            <SettingsRow
-              isPlaceholder
-              isDestructive
-              icon="trash-2"
-              label="Delete account"
-            />
+            <SettingsRow isPlaceholder isDestructive icon="trash-2" label="Delete account" />
           </SettingsSection>
 
           <SettingsSection title="About">

@@ -1,7 +1,7 @@
 import { View, Text } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 
-import { useTheme, useHomeStyles } from "@theme";
+import { useTheme, useStyles } from "@theme";
 
 interface PostCardFooterProps {
   likeCount: number;
@@ -14,7 +14,7 @@ interface PostCardFooterProps {
  */
 const PostCardFooter = ({ likeCount }: PostCardFooterProps) => {
   const { colors } = useTheme();
-  const homeStyles = useHomeStyles();
+  const homeStyles = useStyles("home");
 
   return (
     <View style={homeStyles.postCardFooter}>

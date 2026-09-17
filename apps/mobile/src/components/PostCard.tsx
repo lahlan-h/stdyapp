@@ -1,7 +1,7 @@
 import { Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
-import { useTheme, useHomeStyles } from "@theme";
+import { useTheme, useStyles } from "@theme";
 import type { FeedPost } from "@data";
 
 import PostCardHeader from "./PostCardHeader";
@@ -24,7 +24,7 @@ interface PostCardProps {
  */
 const PostCard = ({ post }: PostCardProps) => {
   const { colors } = useTheme();
-  const homeStyles = useHomeStyles();
+  const homeStyles = useStyles("home");
 
   return (
     <LinearGradient

@@ -2,7 +2,7 @@ import { View, Text, Pressable } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 import type { ComponentProps, ReactNode } from "react";
 
-import { useTheme, useSettingsStyles, ROW_ICON_SIZE } from "@theme";
+import { useTheme, useStyles, ROW_ICON_SIZE } from "@theme";
 
 /**
  * Typed against Feather's own name union, so a typo in `icon` is a compile
@@ -39,7 +39,7 @@ const SettingsRow = ({
   isFirst = false,
 }: SettingsRowProps) => {
   const { colors } = useTheme();
-  const settingsStyles = useSettingsStyles();
+  const settingsStyles = useStyles("settings");
 
   const iconColor = isDestructive ? colors.danger : colors.textMuted;
 
@@ -57,16 +57,11 @@ const SettingsRow = ({
 
       <View style={settingsStyles.rowText}>
         <Text
-          style={[
-            settingsStyles.rowLabel,
-            isDestructive && settingsStyles.rowLabelDanger,
-          ]}
+          style={[settingsStyles.rowLabel, isDestructive && settingsStyles.rowLabelDanger]}
         >
           {label}
         </Text>
-        {description && (
-          <Text style={settingsStyles.rowDescription}>{description}</Text>
-        )}
+        {description && <Text style={settingsStyles.rowDescription}>{description}</Text>}
       </View>
 
       {isPlaceholder ? (
