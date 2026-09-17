@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "turbo run dev",
+    "tunnel": "ngrok start --config ngrok.yml stdyapp-api-ngrok",
     "build": "turbo run build",
     "db:generate": "npm run db:generate -w @stdyapp/core",
     "db:migrate": "npm run db:migrate -w @stdyapp/core",

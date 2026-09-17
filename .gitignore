@@ -7,6 +7,10 @@ node_modules
 .env.*
 !.env.example
 
+# ngrok tunnel config. Holds an authtoken and the tunnel secret, so it is
+# treated exactly like .env - ngrok.example.yml is the committed template.
+ngrok.yml
+
 # Build output and tool caches
 dist/
 build/

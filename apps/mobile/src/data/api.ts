@@ -19,6 +19,26 @@ export const API_BASE_URL = (
 ).replace(/\/+$/, "");
 
 /**
+ * Headers the ngrok tunnel needs, and nothing else needs.
+ *
+ * ngrok-skip-browser-warning defeats the free tier's interstitial: without it,
+ * a request whose User-Agent looks browser-ish is answered with an HTML warning
+ * page carrying a 200, so response.json() throws and the failure reads as a
+ * parse bug rather than a tunnel setting.
+ *
+ * x-tunnel-key is the shared secret the tunnel's traffic policy checks. Sent
+ * only when it is configured, so localhost and LAN setups are unaffected.
+ *
+ * Both are harmless when not tunnelling - the API ignores unknown headers.
+ */
+const TUNNEL_KEY = process.env.EXPO_PUBLIC_TUNNEL_KEY;
+
+const tunnelHeaders = (): Record<string, string> => ({
+  "ngrok-skip-browser-warning": "true",
+  ...(TUNNEL_KEY ? { "x-tunnel-key": TUNNEL_KEY } : {}),
+});
+
+/**
  * An API failure with the status attached.
  *
  * The status is what callers branch on - 401 to re-mint a token, 413/415/429 to
@@ -97,7 +117,7 @@ export const request = async <T>(
   path: string,
   { method = "GET", body, formData, token }: RequestOptions = {},
 ): Promise<T> => {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = tunnelHeaders();
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
@@ -108,8 +128,16 @@ export const request = async <T>(
       headers,
       body: formData ?? (body === undefined ? undefined : JSON.stringify(body)),
     });
-  } catch {
-    throw new ApiError(0, UNREACHABLE);
+  } catch (err) {
+    // Keep what actually went wrong. This used to swallow the error whole and
+    // report "cannot reach the server" for everything, which is true of a dead
+    // API and equally true of an unreadable upload file - and the two need
+    // completely different fixes.
+    const cause = err instanceof Error ? err.message : String(err);
+    if (__DEV__) {
+      console.error(`[api] ${method} ${path} failed before a response:`, err);
+    }
+    throw new ApiError(0, `${UNREACHABLE} (${cause})`);
   }
 
   if (!response.ok) throw await toApiError(response);

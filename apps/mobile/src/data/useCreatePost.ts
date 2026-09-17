@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { File } from "expo-file-system";
 
 import { ApiError, request } from "./api";
 import { withAuth } from "./auth";
@@ -34,19 +35,22 @@ export interface CreatedPost {
 }
 
 /**
- * The extension the API's magic-byte sniff will agree with.
+ * The photo as a form part this runtime will actually accept.
  *
- * multer only reads the declared type to decide whether to accept the part;
- * what actually gets stored is derived from the bytes. A name that disagrees
- * with the bytes is harmless, but a missing one makes some servers drop the
- * filename entirely, so one is always sent.
+ * Expo installs a WinterCG fetch over React Native's, and its FormData encoder
+ * takes only a string, a real Blob, or something exposing bytes(). React
+ * Native's classic `{ uri, name, type }` part - which is what every older
+ * upload example shows - is rejected outright with "Unsupported FormDataPart
+ * implementation", thrown before the request is ever sent. That failure looks
+ * exactly like the server being unreachable, which is what made it confusing:
+ * reads worked and only the upload died.
+ *
+ * expo-file-system's File satisfies that contract, and carries the two things
+ * the part headers are built from: `name` becomes the filename, and `type`
+ * becomes the Content-Type that multer's allowlist checks before the API
+ * re-derives the real format from the bytes.
  */
-const fileNameFor = (photo: NewPostPhoto): string => {
-  if (photo.fileName) return photo.fileName;
-
-  const ext = photo.mimeType.split("/")[1] ?? "jpg";
-  return `photo.${ext}`;
-};
+const toFilePart = (photo: NewPostPhoto): File => new File(photo.uri);
 
 export interface CreatePostState {
   createPost: (post: NewPost) => Promise<CreatedPost | null>;
@@ -75,13 +79,10 @@ export const useCreatePost = (): CreatePostState => {
     try {
       const formData = new FormData();
 
-      // React Native's FormData takes this shape for a file rather than a Blob.
-      // The cast is unavoidable: the DOM's FormData types have no notion of it.
-      formData.append("photo", {
-        uri: post.photo.uri,
-        name: fileNameFor(post.photo),
-        type: post.photo.mimeType,
-      } as unknown as Blob);
+      // Cast because expo-file-system's File implements Blob structurally
+      // rather than extending it, so TypeScript's DOM lib does not see them as
+      // the same type. The encoder checks the shape, not the prototype.
+      formData.append("photo", toFilePart(post.photo) as unknown as Blob);
 
       formData.append("title", post.title.trim());
 
