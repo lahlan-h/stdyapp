@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "build": "echo \"Error: no build step for api\" && exit 0",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "test": "node --test \"test/**/*.test.js\""
   },
   "dependencies": {
     "@stdyapp/core": "*",
