@@ -39,8 +39,9 @@ const PostCard = ({ post }: PostCardProps) => {
         createdAt={post.createdAt}
       />
       <PostCardBody title={post.title} caption={post.caption} />
-      {/* Only posts made about a session have stats to show. */}
-      {post.session && <PostCardStats session={post.session} />}
+      {/* Always rendered. PostCardStats holds the row's place with a dash when
+          a post has no linked session, rather than the row coming and going. */}
+      <PostCardStats session={post.session} />
       {post.imageUrl && (
         <Image
           style={homeStyles.postCardImage}
@@ -48,7 +49,10 @@ const PostCard = ({ post }: PostCardProps) => {
           resizeMode="cover"
         />
       )}
-      <PostCardFooter likeCount={post.likeCount} />
+      <PostCardFooter
+        likeCount={post.likeCount}
+        commentCount={post.commentCount}
+      />
     </LinearGradient>
   );
 };

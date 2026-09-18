@@ -107,10 +107,20 @@ export const createHomeStyles = (colors: ColorScheme) => {
       paddingHorizontal: 32,
       gap: 6,
     },
+    // The gap here separates the ACTION GROUPS. It is wider than the 8 inside
+    // a group on purpose: at a uniform 8 the like count and the next icon sit
+    // as close together as the icon and its own count, and the row reads as
+    // five loose items rather than three actions.
     postCardFooter: {
       paddingHorizontal: 12,
       paddingTop: 8,
       paddingBottom: 15,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 22,
+    },
+    // One icon and its count, bound together.
+    postCardAction: {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
