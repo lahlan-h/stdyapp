@@ -27,6 +27,12 @@ export default function RootLayout() {
           rather than relying on a back arrow.
         */}
         <Stack.Screen name="new-post" options={{ presentation: "modal" }} />
+        {/*
+          A push, not a modal: reading a post and its thread is somewhere you
+          go and come back from, where composing is finish-or-abandon. It still
+          ships its own exit, because the root Stack hides every header.
+        */}
+        <Stack.Screen name="post/[id]" />
       </Stack>
     </ThemeProvider>
   );

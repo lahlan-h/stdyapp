@@ -1,5 +1,6 @@
 import { View, Text, Pressable } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { router } from "expo-router";
 import type { ComponentProps } from "react";
 
 import { useTheme, useHomeStyles } from "@theme";
@@ -14,6 +15,8 @@ type FontAwesomeIconName = ComponentProps<typeof FontAwesome>["name"];
 const ICON_SIZE = 22;
 
 interface PostCardFooterProps {
+  /** Needed only to open the post - the counts come pre-joined. */
+  postId: string;
   likeCount: number;
   commentCount: number;
   /** Whether the VIEWER has liked this post - the heart's fill and colour. */
@@ -33,6 +36,7 @@ interface PostCardFooterProps {
  * one row. Matching the neighbour beats matching the app-wide count.
  */
 const PostCardFooter = ({
+  postId,
   likeCount,
   commentCount,
   isLiked,
@@ -82,7 +86,19 @@ const PostCardFooter = ({
         />
         <Text style={homeStyles.soft}>{likeCount}</Text>
       </Pressable>
-      {action("comment-o", commentCount)}
+      {/* The second way into the post, alongside tapping the card body. */}
+      <Pressable
+        onPress={() => router.push(`/post/${postId}`)}
+        accessibilityRole="button"
+        accessibilityLabel="Comments"
+        style={({ pressed }) => [
+          homeStyles.postCardAction,
+          pressed && { opacity: 0.6 },
+        ]}
+      >
+        <FontAwesome name="comment-o" size={ICON_SIZE} color={colors.text} />
+        <Text style={homeStyles.soft}>{commentCount}</Text>
+      </Pressable>
       {/*
         A placeholder. Nothing calls the report API from the app yet, so this is
         a plain View rather than a Pressable - the rule SettingsRow follows, so

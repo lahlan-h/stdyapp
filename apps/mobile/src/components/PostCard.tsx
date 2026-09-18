@@ -1,5 +1,6 @@
-import { Image } from "react-native";
+import { Image, Pressable } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 
 import { useTheme, useHomeStyles } from "@theme";
 import type { FeedPost } from "@data";
@@ -39,25 +40,37 @@ const PostCard = ({ post, onToggleLike }: PostCardProps) => {
       start={{ x: 0.5, y: 0 }}
       end={{ x: 0.5, y: 1 }}
     >
-      <PostCardHeader
-        displayName={post.author.displayName}
-        avatarUrl={post.author.avatarUrl}
-        createdAt={post.createdAt}
-      />
-      <PostCardBody title={post.title} caption={post.caption} />
-      {/* Always rendered. PostCardStats holds the row's place with a dash when
-          a post has no linked session, rather than the row coming and going. */}
-      <PostCardStats session={post.session} />
-      {post.imageUrl && (
-        <Image
-          style={homeStyles.postCardImage}
-          source={{ uri: post.imageUrl }}
-          resizeMode="cover"
+      {/*
+        Everything above the footer opens the post. The footer is deliberately
+        OUTSIDE this Pressable rather than the whole gradient being wrapped:
+        wrapping the gradient would swallow the like and report taps, which have
+        to stay their own actions.
+      */}
+      <Pressable
+        onPress={() => router.push(`/post/${post.id}`)}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${post.title}`}
+        style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+      >
+        <PostCardHeader
+          displayName={post.author.displayName}
+          avatarUrl={post.author.avatarUrl}
+          createdAt={post.createdAt}
         />
-      )}
-      {/* The card body stays unpressable on purpose: there is no post detail
-          screen yet, so a tappable card would be a button that goes nowhere. */}
+        <PostCardBody title={post.title} caption={post.caption} />
+        {/* Always rendered. PostCardStats holds the row's place with a dash when
+            a post has no linked session, rather than the row coming and going. */}
+        <PostCardStats session={post.session} />
+        {post.imageUrl && (
+          <Image
+            style={homeStyles.postCardImage}
+            source={{ uri: post.imageUrl }}
+            resizeMode="cover"
+          />
+        )}
+      </Pressable>
       <PostCardFooter
+        postId={post.id}
         likeCount={post.likeCount}
         commentCount={post.commentCount}
         isLiked={post.isLiked}

@@ -5,6 +5,7 @@ export {
   useSettingsStyles,
   useTabBarStyles,
   useNewPostStyles,
+  usePostDetailStyles,
   type ThemePreference,
 } from "./ThemeProvider";
 export { lightColors, darkColors, type ColorScheme } from "./colors";
@@ -21,3 +22,8 @@ export {
   EXIT_ICON_SIZE,
   ROW_ICON_SIZE as NEW_POST_ROW_ICON_SIZE,
 } from "./newPost.styles";
+export {
+  createPostDetailStyles,
+  EXIT_ICON_SIZE as POST_DETAIL_EXIT_ICON_SIZE,
+  ACTION_ICON_SIZE,
+} from "./postDetail.styles";

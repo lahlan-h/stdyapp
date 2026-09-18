@@ -1,44 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
 import { request } from "./api";
 import { withAuth } from "./auth";
-import type { FeedPost, FeedSession } from "./types";
+import { toFeedPost, type RawFeedRow } from "./feedMapping";
+import * as postStore from "./postStore";
+import type { FeedPost } from "./types";
 
 /** How many posts to fetch per page. The API caps `limit` at 100. */
 const PAGE_SIZE = 10;
-
-/**
- * One row as GET /api/posts/all returns it.
- *
- * Declared structurally rather than generated from Prisma so replacing the
- * backend does not ripple outward. `_count` and `photoUrl` stop here.
- */
-interface RawFeedRow {
-  id: string;
-  title: string;
-  caption: string | null;
-  photoUrl: string | null;
-  createdAt: string;
-  user: {
-    id: string;
-    username: string;
-    avatarUrl: string | null;
-    firstName: string | null;
-    lastName: string | null;
-  };
-  session: {
-    startedAt: string;
-    endedAt: string | null;
-    focusPoints: number;
-  } | null;
-  _count: { likes: number; comments: number };
-  /**
-   * The viewer's own like, already flattened to a boolean by the API - see
-   * listAllPosts, which maps the filtered `likes` relation away rather than
-   * putting a join shape on the wire.
-   */
-  isLiked: boolean;
-}
 
 interface FeedResponse {
   data: RawFeedRow[];
@@ -52,60 +21,12 @@ interface FeedResponse {
 }
 
 /**
- * Floored at zero the way the API does it, because a clock adjustment can put
- * endedAt before startedAt and a negative duration renders as nonsense.
- */
-const toSession = (row: RawFeedRow): FeedSession | undefined => {
-  if (!row.session) return undefined;
-
-  const { startedAt, endedAt, focusPoints } = row.session;
-
-  return {
-    durationMinutes: endedAt
-      ? Math.max(
-          0,
-          Math.round(
-            (new Date(endedAt).getTime() - new Date(startedAt).getTime()) /
-              60000,
-          ),
-        )
-      : null,
-    focusPoints,
-  };
-};
-
-const toFeedPost = (row: RawFeedRow): FeedPost => {
-  const { firstName, lastName, username } = row.user;
-  const name = [firstName, lastName].filter(Boolean).join(" ");
-
-  return {
-    id: row.id,
-    title: row.title,
-    caption: row.caption ?? undefined,
-    imageUrl: row.photoUrl ?? undefined,
-    likeCount: row._count.likes,
-    isLiked: row.isLiked,
-    commentCount: row._count.comments,
-    createdAt: new Date(row.createdAt).getTime(),
-    author: {
-      id: row.user.id,
-      username,
-      // Both names are nullable in the database even though signup demands
-      // them, so an older row can have neither. The username always exists.
-      displayName: name || username,
-      avatarUrl: row.user.avatarUrl ?? undefined,
-    },
-    session: toSession(row),
-  };
-};
-
-/**
- * Applies one post's like state to the feed already on screen.
+ * Applies one post's like state to every screen showing it.
  *
- * The optimistic half of a like lives here rather than in useLikePost because
- * this hook OWNS the posts array - a second copy of it over there would be two
- * sources of truth for the same heart, and they would disagree the moment a
- * page is appended or the feed is refreshed underneath a tap.
+ * The optimistic half of a like lives in postStore rather than in useLikePost
+ * because the store OWNS the posts - a second copy of them over there would be
+ * two sources of truth for the same heart, and they would disagree the moment
+ * a page is appended or the feed is refreshed underneath a tap.
  */
 export type SetLiked = (postId: string, isLiked: boolean) => void;
 
@@ -119,7 +40,7 @@ export interface FeedState {
   error?: string;
   /** Re-reads from page one. Call after creating a post. */
   refresh: () => void;
-  /** Flips one post's heart and count locally - see SetLiked. */
+  /** Flips one post's heart and count - see SetLiked. */
   setLiked: SetLiked;
 }
 
@@ -129,9 +50,14 @@ export interface FeedState {
  * Pages are appended rather than refetched, so scrolling does not re-request
  * what is already on screen. Each row arrives with its author and linked
  * session attached, which is why there is no per-card query.
+ *
+ * The posts themselves live in postStore, not here: the detail screen reads the
+ * same array, so a like tapped there updates the card behind it without either
+ * screen refetching, and without the feed losing its place.
  */
 export const usePosts = (): FeedState => {
-  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const posts = useSyncExternalStore(postStore.subscribe, postStore.getSnapshot);
+
   const [page, setPage] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -148,10 +74,9 @@ export const usePosts = (): FeedState => {
         ),
       );
 
-      const mapped = response.data.map(toFeedPost);
-      // Replacing on page one is what makes refresh() work without a second
+      // Page one replaces, later pages append - so refresh() needs no second
       // code path, and it drops rows deleted since the last read.
-      setPosts((current) => (target === 1 ? mapped : [...current, ...mapped]));
+      postStore.setPage(response.data.map(toFeedPost), target);
       setHasNextPage(response.pagination.hasNextPage);
       setPage(target);
       setError(undefined);
@@ -178,21 +103,6 @@ export const usePosts = (): FeedState => {
     }, [fetchPage, isFetching, hasNextPage, page]),
     error,
     refresh: useCallback(() => fetchPage(1), [fetchPage]),
-    // The count moves WITH the flag, never separately: a caller that set one
-    // and forgot the other would leave a filled heart above an unchanged
-    // number. Writing both here is what keeps them impossible to desync.
-    //
-    // A no-op when the post already holds that value, which is what makes it
-    // safe to call twice - a rollback onto an unchanged row, or two taps
-    // resolving in the same tick, must not walk the count off by one.
-    setLiked: useCallback((postId: string, isLiked: boolean) => {
-      setPosts((current) =>
-        current.map((post) =>
-          post.id === postId && post.isLiked !== isLiked
-            ? { ...post, isLiked, likeCount: post.likeCount + (isLiked ? 1 : -1) }
-            : post,
-        ),
-      );
-    }, []),
+    setLiked: postStore.setLiked,
   };
 };
