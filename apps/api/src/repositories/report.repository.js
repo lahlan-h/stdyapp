@@ -43,6 +43,10 @@ const REPORT_TARGET_INCLUDE = {
     select: {
       id: true,
       userId: true,
+      // Both, not just the caption: the headline moved into title when that
+      // column was added, and the caption is now optional - a caption-only
+      // payload would show a moderator nothing at all on most posts.
+      title: true,
       caption: true,
       photoUrl: true,
       createdAt: true,

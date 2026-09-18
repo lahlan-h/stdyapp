@@ -202,12 +202,20 @@ export const invalidateDetachedPosts = async (posts) => {
  * the write is wrapped so a failed insert takes the orphan with it.
  *
  * @param {{ userId: string, sessionId?: string, routineId?: string,
- *           caption: string, photo: Buffer }} input - photo is the parsed file
- *           part, size-capped and guaranteed non-empty by uploadImage()
+ *           title: string, caption?: string, photo: Buffer }} input - photo is
+ *           the parsed file part, size-capped and guaranteed non-empty by
+ *           uploadImage()
  * @returns {Promise<object>} the created post
  * @throws 403 when a link is not the caller's, 415 for non-image bytes, 502 R2 down
  */
-export const createPost = async ({ userId, sessionId, routineId, caption, photo }) => {
+export const createPost = async ({
+  userId,
+  sessionId,
+  routineId,
+  title,
+  caption,
+  photo,
+}) => {
   // FIRST, before a byte reaches R2. Both checks hit the database, so they are
   // not free - but they are far cheaper than an upload, and doing them first
   // means a 403 leaves nothing behind to reclaim.
@@ -234,7 +242,10 @@ export const createPost = async ({ userId, sessionId, routineId, caption, photo 
       // "no link", not "field omitted".
       sessionId: sessionId ?? null,
       routineId: routineId ?? null,
-      caption,
+      title,
+      // Same reasoning: the column is nullable and an omitted caption means
+      // "no caption", not "field missing".
+      caption: caption ?? null,
       photoUrl,
     });
   } catch (err) {
@@ -344,7 +355,7 @@ export const deleteMyPosts = async (userId) => {
 };
 
 /**
- * Editable: caption and the two links. The author, createdAt and PHOTO are
+ * Editable: title, caption and the two links. The author, createdAt and PHOTO are
  * history and stay unwritable — the fields are destructured out explicitly
  * rather than passing req.body through, the same defence updateRoutine uses, so
  * extra keys in the body cannot reach the database.
@@ -362,7 +373,7 @@ export const deleteMyPosts = async (userId) => {
 export const updatePost = async (
   postId,
   requesterId,
-  { caption, sessionId, routineId },
+  { title, caption, sessionId, routineId },
 ) => {
   await getOwnedPostOrThrow(postId, requesterId);
 
@@ -372,6 +383,7 @@ export const updatePost = async (
   await Promise.all(checks);
 
   const post = await postRepo.updatePost(postId, {
+    title,
     caption,
     sessionId,
     routineId,
