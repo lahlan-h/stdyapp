@@ -47,9 +47,25 @@ export const findPostsByUser = (userId) => {
  * listMembers. It is what keeps passwordHash and email out of a public feed, so
  * it must stay a select rather than becoming `user: true`.
  *
+ * The likes clause answers a question _count cannot: that is a total over
+ * everyone, so a heart rendered from it has no way to know its own colour. This
+ * one is filtered to the VIEWER, and by the unique (userId, postId) it matches
+ * at most one row - so its length is the whole answer, which the service
+ * flattens to a boolean before anything reaches the wire.
+ *
+ * It takes the same discipline the user clause above documents: a select of
+ * `id` alone, never `likes: true`, which would put every liker's id on every
+ * row of a public feed.
+ *
+ * viewerId is its own parameter rather than a key on the pagination object, so
+ * the pair reads the same way at all three layers - listAll passes
+ * (query, req.user.id), listAllPosts passes ({ skip, take }, viewerId).
+ *
+ * @param {{ skip: number, take: number }} page
+ * @param {string} viewerId - the caller's own id; guaranteed by requireAuth
  * @returns {Promise<[object[], number]>} the page, and the total row count
  */
-export const findAllPosts = ({ skip, take }) => {
+export const findAllPosts = ({ skip, take }, viewerId) => {
   return prisma.$transaction([
     prisma.post.findMany({
       include: {
@@ -70,6 +86,7 @@ export const findAllPosts = ({ skip, take }) => {
         session: {
           select: { startedAt: true, endedAt: true, focusPoints: true },
         },
+        likes: { where: { userId: viewerId }, select: { id: true } },
         _count: { select: { likes: true, comments: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "asc" }],

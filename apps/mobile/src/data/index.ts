@@ -10,6 +10,7 @@
  */
 export type { FeedAuthor, FeedPost, FeedSession } from "./types";
 export { usePosts, type FeedState } from "./usePosts";
+export { useLikePost, type LikePostState } from "./useLikePost";
 export { consumeFeedStale } from "./feedSignal";
 export {
   useCreatePost,

@@ -1,4 +1,4 @@
-import { View, Text } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import type { ComponentProps } from "react";
 
@@ -16,6 +16,9 @@ const ICON_SIZE = 22;
 interface PostCardFooterProps {
   likeCount: number;
   commentCount: number;
+  /** Whether the VIEWER has liked this post - the heart's fill and colour. */
+  isLiked: boolean;
+  onToggleLike: () => void;
 }
 
 /**
@@ -29,7 +32,12 @@ interface PostCardFooterProps {
  * sitting next to this outline heart reads as two different icon languages in
  * one row. Matching the neighbour beats matching the app-wide count.
  */
-const PostCardFooter = ({ likeCount, commentCount }: PostCardFooterProps) => {
+const PostCardFooter = ({
+  likeCount,
+  commentCount,
+  isLiked,
+  onToggleLike,
+}: PostCardFooterProps) => {
   const { colors } = useTheme();
   const homeStyles = useHomeStyles();
 
@@ -44,7 +52,36 @@ const PostCardFooter = ({ likeCount, commentCount }: PostCardFooterProps) => {
 
   return (
     <View style={homeStyles.postCardFooter}>
-      {action("heart-o", likeCount)}
+      {/*
+        The one action here that does something, so the one that is a Pressable
+        rather than a View - see the report placeholder below for the other half
+        of that rule.
+
+        postCardAction sits ON the Pressable rather than inside it, so the count
+        is part of the press target: the heart is 22px of glyph, and a row that
+        only accepts a hit on the icon itself is a row people miss.
+
+        accessibilityState.selected rather than a label that changes between
+        "Like" and "Unlike": a screen reader then announces the heart's CURRENT
+        state, which is the thing the colour is conveying to everyone else.
+      */}
+      <Pressable
+        onPress={onToggleLike}
+        accessibilityRole="button"
+        accessibilityLabel="Like"
+        accessibilityState={{ selected: isLiked }}
+        style={({ pressed }) => [
+          homeStyles.postCardAction,
+          pressed && { opacity: 0.6 },
+        ]}
+      >
+        <FontAwesome
+          name={isLiked ? "heart" : "heart-o"}
+          size={ICON_SIZE}
+          color={isLiked ? colors.danger : colors.text}
+        />
+        <Text style={homeStyles.soft}>{likeCount}</Text>
+      </Pressable>
       {action("comment-o", commentCount)}
       {/*
         A placeholder. Nothing calls the report API from the app yet, so this is

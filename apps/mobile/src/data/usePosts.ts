@@ -32,6 +32,12 @@ interface RawFeedRow {
     focusPoints: number;
   } | null;
   _count: { likes: number; comments: number };
+  /**
+   * The viewer's own like, already flattened to a boolean by the API - see
+   * listAllPosts, which maps the filtered `likes` relation away rather than
+   * putting a join shape on the wire.
+   */
+  isLiked: boolean;
 }
 
 interface FeedResponse {
@@ -78,6 +84,7 @@ const toFeedPost = (row: RawFeedRow): FeedPost => {
     caption: row.caption ?? undefined,
     imageUrl: row.photoUrl ?? undefined,
     likeCount: row._count.likes,
+    isLiked: row.isLiked,
     commentCount: row._count.comments,
     createdAt: new Date(row.createdAt).getTime(),
     author: {
@@ -92,6 +99,16 @@ const toFeedPost = (row: RawFeedRow): FeedPost => {
   };
 };
 
+/**
+ * Applies one post's like state to the feed already on screen.
+ *
+ * The optimistic half of a like lives here rather than in useLikePost because
+ * this hook OWNS the posts array - a second copy of it over there would be two
+ * sources of truth for the same heart, and they would disagree the moment a
+ * page is appended or the feed is refreshed underneath a tap.
+ */
+export type SetLiked = (postId: string, isLiked: boolean) => void;
+
 export interface FeedState {
   posts: FeedPost[];
   /** True only for the first page, so the list shows a skeleton rather than an empty state. */
@@ -102,6 +119,8 @@ export interface FeedState {
   error?: string;
   /** Re-reads from page one. Call after creating a post. */
   refresh: () => void;
+  /** Flips one post's heart and count locally - see SetLiked. */
+  setLiked: SetLiked;
 }
 
 /**
@@ -159,5 +178,21 @@ export const usePosts = (): FeedState => {
     }, [fetchPage, isFetching, hasNextPage, page]),
     error,
     refresh: useCallback(() => fetchPage(1), [fetchPage]),
+    // The count moves WITH the flag, never separately: a caller that set one
+    // and forgot the other would leave a filled heart above an unchanged
+    // number. Writing both here is what keeps them impossible to desync.
+    //
+    // A no-op when the post already holds that value, which is what makes it
+    // safe to call twice - a rollback onto an unchanged row, or two taps
+    // resolving in the same tick, must not walk the count off by one.
+    setLiked: useCallback((postId: string, isLiked: boolean) => {
+      setPosts((current) =>
+        current.map((post) =>
+          post.id === postId && post.isLiked !== isLiked
+            ? { ...post, isLiked, likeCount: post.likeCount + (isLiked ? 1 : -1) }
+            : post,
+        ),
+      );
+    }, []),
   };
 };

@@ -279,12 +279,30 @@ export const getPost = async (postId, requesterId) => {
  *
  * Returns the { items, total, page, limit } shape listUsers returns, so the
  * controller can build the pagination envelope the same way.
+ *
+ * VIEWER-SPECIFIC, which is new, and only safe because this is the one post
+ * read deliberately left UNCACHED - cache() sits on GET /:id, GET / and
+ * GET /user/:userId only. So no cache key needs a viewer dimension and no
+ * invalidation changes. If /all is ever cached, its key MUST carry req.user.id
+ * the way postKey already does, or one caller's heart state would be replayed
+ * to everyone else for the whole TTL.
  */
-export const listAllPosts = async ({ page, limit }) => {
-  const [items, total] = await postRepo.findAllPosts({
-    skip: (page - 1) * limit,
-    take: limit,
-  });
+export const listAllPosts = async ({ page, limit }, viewerId) => {
+  const [rows, total] = await postRepo.findAllPosts(
+    { skip: (page - 1) * limit, take: limit },
+    viewerId,
+  );
+
+  // Flattened HERE rather than shipped as it comes back. The relation is
+  // filtered to the viewer and the unique (userId, postId) caps it at one row,
+  // so its length is the whole answer - but leaving the array on the payload
+  // would put an internal join shape on the wire and invite a client to read it
+  // as "the likers", which it is not. `likes` is destructured off so it cannot
+  // survive the spread.
+  const items = rows.map(({ likes, ...post }) => ({
+    ...post,
+    isLiked: likes.length > 0,
+  }));
 
   return { items, total, page, limit };
 };

@@ -43,6 +43,14 @@ export interface FeedPost {
   caption?: string;
   imageUrl?: string;
   likeCount: number;
+  /**
+   * Whether the CURRENT viewer has liked it - what decides the heart's colour.
+   *
+   * Separate from likeCount because the two answer different questions and only
+   * one of them is per-viewer: the count is a total over everyone, so a heart
+   * drawn from it alone could never know whether to be filled.
+   */
+  isLiked: boolean;
   commentCount: number;
   /** Epoch milliseconds. */
   createdAt: number;

@@ -11,6 +11,12 @@ import PostCardFooter from "./PostCardFooter";
 
 interface PostCardProps {
   post: FeedPost;
+  /**
+   * Fired by the heart. The card neither knows nor cares whether that is a like
+   * or an unlike - useLikePost reads the post's current state and flips it, so
+   * the two directions cannot drift apart into two props.
+   */
+  onToggleLike: () => void;
 }
 
 /**
@@ -22,7 +28,7 @@ interface PostCardProps {
  * separately as its author resolved. The author now arrives joined with the post
  * - see usePosts in src/data.
  */
-const PostCard = ({ post }: PostCardProps) => {
+const PostCard = ({ post, onToggleLike }: PostCardProps) => {
   const { colors } = useTheme();
   const homeStyles = useHomeStyles();
 
@@ -49,9 +55,13 @@ const PostCard = ({ post }: PostCardProps) => {
           resizeMode="cover"
         />
       )}
+      {/* The card body stays unpressable on purpose: there is no post detail
+          screen yet, so a tappable card would be a button that goes nowhere. */}
       <PostCardFooter
         likeCount={post.likeCount}
         commentCount={post.commentCount}
+        isLiked={post.isLiked}
+        onToggleLike={onToggleLike}
       />
     </LinearGradient>
   );
