@@ -4,7 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 
-import { useTheme, useHomeStyles } from "@theme";
+import { useTheme, useHomeStyles, useTabBarClearance } from "@theme";
 import { usePosts, useLikePost, consumeFeedStale, type FeedPost } from "@data";
 
 import PostCard from "@components/PostCard";
@@ -15,6 +15,10 @@ import ReportDialog from "@components/ReportDialog";
 const Index = () => {
   const { colors } = useTheme();
   const homeStyles = useHomeStyles();
+  // What the floating tab bar covers, inset included. Without it the last
+  // card's like, comment and report buttons sit behind the bar, drawn but
+  // untappable, with nothing on screen explaining why.
+  const tabBarClearance = useTabBarClearance();
   const { posts, isLoading, canLoadMore, loadMore, error, refresh, setLiked } =
     usePosts();
   // usePosts owns the array, so the optimistic update is handed back to it
@@ -70,7 +74,10 @@ const Index = () => {
               />
             )}
             style={homeStyles.postCardList}
-            contentContainerStyle={homeStyles.postCardListContent}
+            contentContainerStyle={[
+              homeStyles.postCardListContent,
+              { paddingBottom: tabBarClearance },
+            ]}
             // A rolled-back like says so above the feed rather than in an
             // alert: the heart has already snapped back, so this only explains
             // a change the user can already see undone.

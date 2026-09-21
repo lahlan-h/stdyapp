@@ -11,7 +11,12 @@ export {
 } from "./ThemeProvider";
 export { lightColors, darkColors, type ColorScheme } from "./colors";
 export { createHomeStyles } from "./home.styles";
-export { createSettingsStyles, ROW_ICON_SIZE } from "./settings.styles";
+export {
+  createSettingsStyles,
+  ROW_ICON_SIZE,
+  SETTINGS_FOOTER_ROOM,
+} from "./settings.styles";
+export { useTabBarClearance } from "./useTabBarClearance";
 export {
   createTabBarStyles,
   TAB_ICON_SIZE,

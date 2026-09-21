@@ -20,11 +20,21 @@ const FAB_OVERHANG = 22;
 const BAR_HEIGHT = 56;
 
 /**
- * What a screen has to leave clear at the bottom.
+ * How tall the bar DRAWS ITSELF - not what a screen has to leave clear.
  *
  * The bar is absolutely positioned so the feed shows through behind the
  * circle's overhang, which means it no longer takes layout space and content
  * would otherwise scroll underneath it and stop there.
+ *
+ * BUT THIS IS NOT THE WHOLE CLEARANCE, and reading it as such is a mistake this
+ * has already caused once. The container adds `paddingBottom: insets.bottom`
+ * beneath everything measured here, so the space the bar really occupies is
+ * this plus the safe-area inset - and a screen that padded its scroller by this
+ * number alone left the last row's controls sitting under the bar, visible and
+ * untappable.
+ *
+ * A scrolling screen wants useTabBarClearance(), which adds the inset. This
+ * constant is for the bar's own layout, and for that it is exactly right.
  */
 const TAB_BAR_HEIGHT = FAB_OVERHANG + BAR_HEIGHT;
 

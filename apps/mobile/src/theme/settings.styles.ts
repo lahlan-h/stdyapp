@@ -1,10 +1,17 @@
 import type { ColorScheme } from "./colors";
 import { StyleSheet } from "react-native";
 
-import { TAB_BAR_HEIGHT } from "./tabBar.styles";
-
 /** Size of the leading icon on a settings row, and of the box reserved for it. */
 const ROW_ICON_SIZE = 20;
+
+/**
+ * Breathing room below the last settings row, ON TOP of the tab bar clearance.
+ *
+ * Settings ends in a footnote rather than a control, so it wants air under it
+ * that the feed does not. Kept separate from the clearance so the two cannot be
+ * confused: this is taste, the clearance is a hard requirement.
+ */
+const SETTINGS_FOOTER_ROOM = 40;
 
 /**
  * Width of the box the leading icon sits in.
@@ -25,8 +32,9 @@ export const createSettingsStyles = (colors: ColorScheme) => {
     scrollContent: {
       paddingHorizontal: 16,
       paddingTop: 8,
-      // 40 of breathing room, plus the floating tab bar the footer has to clear.
-      paddingBottom: 40 + TAB_BAR_HEIGHT,
+      // No paddingBottom: the footer has to clear the floating tab bar, and
+      // that distance depends on a runtime safe-area inset. The screen supplies
+      // it as useTabBarClearance() plus SETTINGS_FOOTER_ROOM.
       gap: 22,
     },
     screenTitle: {
@@ -170,4 +178,4 @@ export const createSettingsStyles = (colors: ColorScheme) => {
 };
 
 /** Re-exported so components can size their icons to match the stylesheet. */
-export { ROW_ICON_SIZE };
+export { ROW_ICON_SIZE, SETTINGS_FOOTER_ROOM };

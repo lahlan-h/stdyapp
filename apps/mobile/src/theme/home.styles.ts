@@ -1,8 +1,6 @@
 import type { ColorScheme } from "./colors";
 import { StyleSheet } from "react-native";
 
-import { TAB_BAR_HEIGHT } from "./tabBar.styles";
-
 /** Diameter of the author avatar on a post card. */
 const AVATAR_SIZE = 65;
 
@@ -20,9 +18,11 @@ export const createHomeStyles = (colors: ColorScheme) => {
     postCardListContent: {
       paddingHorizontal: 4,
       paddingTop: 8,
-      // The tab bar floats over the feed rather than sitting below it, so the
-      // last card has to be scrollable clear of it by hand.
-      paddingBottom: TAB_BAR_HEIGHT,
+      // No paddingBottom. The tab bar floats over the feed rather than sitting
+      // below it, so the last card has to be scrollable clear of it by hand -
+      // and how much that is depends on the safe-area inset, which no
+      // stylesheet can know because these are built once at module load. The
+      // screen supplies it from useTabBarClearance().
       gap: 10,
     },
     postCardBackground: {
