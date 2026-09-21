@@ -325,6 +325,17 @@ export const listAllPosts = async ({ page, limit }, viewerId) => {
       // they had already taken back.
       reportId: isReported ? report.id : null,
       reportReason: isReported ? report.reason : null,
+      // The third of a family: isLiked, isReported and isMine are all facts
+      // about the VIEWER rather than about the post, worked out here so no
+      // client has to work them out twice and disagree.
+      //
+      // Unlike its two siblings it discloses nothing. userId is a Post scalar
+      // and user.id is already joined onto every row of this feed, so a client
+      // could derive this itself the moment it knew its own id - which, today,
+      // it does not. It exists so the app can WITHHOLD an action, never to
+      // grant one: fileReport rejects a self-report on its own authority, and
+      // that check is what actually enforces the rule.
+      isMine: post.userId === viewerId,
     };
   });
 

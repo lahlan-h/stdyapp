@@ -44,6 +44,14 @@ export interface RawFeedRow {
   reportId: string | null;
   /** One of REPORT_REASONS while it is live, null once it is not. */
   reportReason: string | null;
+  /**
+   * Whether the viewer wrote this post, worked out by the API.
+   *
+   * Sent rather than derived from `user.id` because this app has no idea who
+   * the viewer is - auth.ts keeps the access token and discards the user the
+   * dev-token response hands it.
+   */
+  isMine: boolean;
 }
 
 /**
@@ -106,6 +114,7 @@ export const toFeedPost = (row: RawFeedRow): FeedPost => {
     // whose set is closed at the API's edge, so a row written before a reason
     // was renamed would arrive as a string this app has no label for.
     reportReason: toReportReason(row.reportReason),
+    isMine: row.isMine,
     commentCount: row._count.comments,
     createdAt: new Date(row.createdAt).getTime(),
     author: {

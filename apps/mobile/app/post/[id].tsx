@@ -321,23 +321,29 @@ const PostDetail = () => {
               {/* The only action in this row with no count beside it, and
                   deliberately so: a report count on a post would tell its author
                   they had been reported. The fill of this glyph is visible to
-                  the reporter alone. */}
-              <Pressable
-                onPress={() => setReportOpen(true)}
-                accessibilityRole="button"
-                accessibilityLabel="Report"
-                accessibilityState={{ selected: post.isReported }}
-                style={({ pressed }) => [
-                  styles.action,
-                  pressed && { opacity: 0.6 },
-                ]}
-              >
-                <FontAwesome
-                  name={post.isReported ? "flag" : "flag-o"}
-                  size={ACTION_ICON_SIZE}
-                  color={post.isReported ? colors.danger : colors.text}
-                />
-              </Pressable>
+                  the reporter alone.
+
+                  Absent entirely on your own post, because the API refuses a
+                  self-report - gone rather than dimmed, since a dimmed control
+                  says "not now" and this one is "not ever". */}
+              {post.isMine ? null : (
+                <Pressable
+                  onPress={() => setReportOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Report"
+                  accessibilityState={{ selected: post.isReported }}
+                  style={({ pressed }) => [
+                    styles.action,
+                    pressed && { opacity: 0.6 },
+                  ]}
+                >
+                  <FontAwesome
+                    name={post.isReported ? "flag" : "flag-o"}
+                    size={ACTION_ICON_SIZE}
+                    color={post.isReported ? colors.danger : colors.text}
+                  />
+                </Pressable>
+              )}
             </View>
           </LinearGradient>
 

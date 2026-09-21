@@ -85,6 +85,20 @@ export interface FeedPost {
    * the stored reason is one this build has no label for.
    */
   reportReason?: ReportReason;
+  /**
+   * Whether the VIEWER wrote this post.
+   *
+   * Here to WITHHOLD an action rather than to grant one. The API refuses a
+   * self-report on its own authority - fileReport answers 400 "You cannot
+   * report your own post" - and this only stops the app offering a flag that
+   * could never succeed. Trusting it for anything that matters would be
+   * trusting a client to decide what a client may do.
+   *
+   * Sent by the API rather than compared against `author.id` here, because the
+   * app does not know who the viewer is: auth.ts keeps the access token and
+   * throws away the user the dev-token response arrives with.
+   */
+  isMine: boolean;
   commentCount: number;
   /** Epoch milliseconds. */
   createdAt: number;

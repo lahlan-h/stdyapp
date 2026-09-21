@@ -84,6 +84,7 @@ const PostCard = ({ post, onToggleLike, onReport }: PostCardProps) => {
         onToggleLike={onToggleLike}
         isReported={post.isReported}
         onReport={onReport}
+        isMine={post.isMine}
       />
     </LinearGradient>
   );
