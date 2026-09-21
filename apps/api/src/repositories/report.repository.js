@@ -69,6 +69,7 @@ export const createReport = ({
   targetUserId,
   targetPostId,
   reason,
+  details,
 }) => {
   return prisma.report.create({
     data: {
@@ -76,6 +77,11 @@ export const createReport = ({
       targetUserId: targetUserId ?? null,
       targetPostId: targetPostId ?? null,
       reason,
+      // ?? null for the same reason the two targets take it, and it matters
+      // more here: reopenReport below writes this column too, so a `undefined`
+      // slipping through would leave a reopened report wearing the text of the
+      // one the reporter withdrew.
+      details: details ?? null,
     },
     include: REPORT_TARGET_INCLUDE,
   });

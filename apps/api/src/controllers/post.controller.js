@@ -56,11 +56,18 @@ export const getOne = async (req, res, next) => {
  *     handler in this file does. asyncHandler exists for the users/auth
  *     controllers, which throw and have no catch of their own; a handler that
  *     already catches gains nothing from it.
+ *
+ * The viewer is passed as well as the page, and that is what lets each row
+ * carry isLiked - a per-caller answer _count.likes cannot give, since it is a
+ * total over everyone. req.user.id is safe to read unguarded here: the router
+ * applies requireAuth to every route in this file, so an unauthenticated
+ * request never reaches this handler.
  */
 export const listAll = async (req, res, next) => {
   try {
     const { items, total, page, limit } = await postService.listAllPosts(
       req.validated.query,
+      req.user.id,
     );
 
     res.status(200).json({

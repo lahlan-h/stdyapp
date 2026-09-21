@@ -3,7 +3,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 
-import { useTheme, useSettingsStyles } from "@theme";
+import {
+  useTheme,
+  useSettingsStyles,
+  useTabBarClearance,
+  SETTINGS_FOOTER_ROOM,
+} from "@theme";
 import { useNotificationPreferences } from "@data";
 
 import SettingsSection from "@components/SettingsSection";
@@ -19,6 +24,7 @@ const APP_VERSION = Constants.expoConfig?.version ?? "unknown";
 const Settings = () => {
   const { colors } = useTheme();
   const settingsStyles = useSettingsStyles();
+  const tabBarClearance = useTabBarClearance();
   const { preferences, setPreference } = useNotificationPreferences();
 
   /**
@@ -43,7 +49,10 @@ const Settings = () => {
         edges={["top", "left", "right"]}
       >
         <ScrollView
-          contentContainerStyle={settingsStyles.scrollContent}
+          contentContainerStyle={[
+            settingsStyles.scrollContent,
+            { paddingBottom: tabBarClearance + SETTINGS_FOOTER_ROOM },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           <Text style={settingsStyles.screenTitle}>Settings</Text>
