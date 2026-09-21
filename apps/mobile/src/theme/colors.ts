@@ -26,6 +26,30 @@ export interface ColorScheme {
    */
   dangerTint: string;
   dangerEdge: string;
+  /**
+   * `success` at low alpha, the green twin of the pair above.
+   *
+   * Derived from `success` rather than picked separately, for exactly the reason
+   * dangerTint gives: the report dialog's confirmation badge has to be the same
+   * green as everything else in the app that means "done", and a second green
+   * chosen by eye would drift from it the first time either moved.
+   */
+  successTint: string;
+  successEdge: string;
+  /**
+   * The wash a modal lays over the screen behind it.
+   *
+   * THE SAME VALUE IN BOTH THEMES, like gradients.primary, and for a sharper
+   * reason than that one: a scrim's whole job is to push what is behind it out
+   * of the foreground, and in the light theme there is no lighter colour to do
+   * that with. Black is not "the dark theme's scrim" here - it is the only
+   * direction a scrim can go.
+   *
+   * A token anyway rather than an inline rgba, because the rule at the top of
+   * this file has no exceptions: the day the two themes want different values,
+   * that is one edit here instead of one in every modal that ever shipped.
+   */
+  scrim: string;
   shadow: string;
   gradients: {
     background: [string, string];
@@ -65,6 +89,9 @@ export const lightColors: ColorScheme = {
   danger: "#ef4444",
   dangerTint: "rgba(239,68,68,0.12)",
   dangerEdge: "rgba(239,68,68,0.28)",
+  successTint: "rgba(16,185,129,0.12)",
+  successEdge: "rgba(16,185,129,0.28)",
+  scrim: "rgba(0,0,0,0.55)",
   shadow: "#000000",
   gradients: {
     background: ["#f8fafc", "#e2e8f0"],
@@ -96,6 +123,11 @@ export const darkColors: ColorScheme = {
   danger: "#f87171",
   dangerTint: "rgba(248,113,113,0.16)",
   dangerEdge: "rgba(248,113,113,0.34)",
+  // The same +0.04 / +0.06 lift over light the danger pair takes: a tint that
+  // held its light-theme alpha would all but vanish against the dark surface.
+  successTint: "rgba(52,211,153,0.16)",
+  successEdge: "rgba(52,211,153,0.34)",
+  scrim: "rgba(0,0,0,0.55)",
   shadow: "#000000",
   gradients: {
     background: ["#0f172a", "#1e293b"],

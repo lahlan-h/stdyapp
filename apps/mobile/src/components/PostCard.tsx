@@ -18,6 +18,13 @@ interface PostCardProps {
    * the two directions cannot drift apart into two props.
    */
   onToggleLike: () => void;
+  /**
+   * Fired by the flag. Opens the report dialog, which the SCREEN owns rather
+   * than the card: a dialog rendered in here would be unmounted by FlatList the
+   * moment its row scrolled out of the window, taking an open, mid-submit
+   * report with it.
+   */
+  onReport: () => void;
 }
 
 /**
@@ -29,7 +36,7 @@ interface PostCardProps {
  * separately as its author resolved. The author now arrives joined with the post
  * - see usePosts in src/data.
  */
-const PostCard = ({ post, onToggleLike }: PostCardProps) => {
+const PostCard = ({ post, onToggleLike, onReport }: PostCardProps) => {
   const { colors } = useTheme();
   const homeStyles = useHomeStyles();
 
@@ -75,6 +82,8 @@ const PostCard = ({ post, onToggleLike }: PostCardProps) => {
         commentCount={post.commentCount}
         isLiked={post.isLiked}
         onToggleLike={onToggleLike}
+        isReported={post.isReported}
+        onReport={onReport}
       />
     </LinearGradient>
   );

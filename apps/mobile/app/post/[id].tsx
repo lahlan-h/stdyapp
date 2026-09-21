@@ -36,6 +36,8 @@ import {
 } from "@data";
 import { formatRelativeTime, formatDuration } from "@stdyapp/shared";
 
+import ReportDialog from "@components/ReportDialog";
+
 /** Stands in for a number that is not known yet, rather than inventing one. */
 const PLACEHOLDER = "—";
 
@@ -161,6 +163,10 @@ const PostDetail = () => {
 
   const [draft, setDraft] = useState("");
   const [newestFirst, setNewestFirst] = useState(false);
+  // Open or shut only. Unlike the feed, this screen already knows which post it
+  // is showing, so there is no id to carry - and `post` comes from the same
+  // store, so the dialog sees a filed report the moment it lands.
+  const [reportOpen, setReportOpen] = useState(false);
   const scroller = useRef<ScrollView>(null);
   const threadY = useRef(0);
   const composer = useRef<View>(null);
@@ -312,17 +318,26 @@ const PostDetail = () => {
                 <Text style={styles.actionCount}>{post.commentCount}</Text>
               </Pressable>
 
-              {/* A placeholder. Nothing calls the report API from the app yet,
-                  so this stays a plain View rather than a Pressable - the rule
-                  SettingsRow follows, so a screen reader does not announce a
-                  button that does nothing. */}
-              <View style={styles.action}>
+              {/* The only action in this row with no count beside it, and
+                  deliberately so: a report count on a post would tell its author
+                  they had been reported. The fill of this glyph is visible to
+                  the reporter alone. */}
+              <Pressable
+                onPress={() => setReportOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Report"
+                accessibilityState={{ selected: post.isReported }}
+                style={({ pressed }) => [
+                  styles.action,
+                  pressed && { opacity: 0.6 },
+                ]}
+              >
                 <FontAwesome
-                  name="flag-o"
+                  name={post.isReported ? "flag" : "flag-o"}
                   size={ACTION_ICON_SIZE}
-                  color={colors.text}
+                  color={post.isReported ? colors.danger : colors.text}
                 />
-              </View>
+              </Pressable>
             </View>
           </LinearGradient>
 
@@ -431,6 +446,11 @@ const PostDetail = () => {
             </LinearGradient>
           </Pressable>
         </Animated.View>
+
+        <ReportDialog
+          post={reportOpen ? post : null}
+          onClose={() => setReportOpen(false)}
+        />
       </SafeAreaView>
     </LinearGradient>
   );

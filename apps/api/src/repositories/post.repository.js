@@ -87,6 +87,29 @@ export const findAllPosts = ({ skip, take }, viewerId) => {
           select: { startedAt: true, endedAt: true, focusPoints: true },
         },
         likes: { where: { userId: viewerId }, select: { id: true } },
+        // The same discipline the likes clause above documents, for the same
+        // question in a different register: "have I reported this". Filtered to
+        // the VIEWER, capped at one row by @@unique([reporterId, targetPostId])
+        // — the constraint whose own comment names this read — and a select of
+        // the two columns the answer needs, never `reports: true`, which would
+        // put every reporter's id on every row of a public feed.
+        //
+        // `status` comes too because a WITHDRAWN row still exists: the unique
+        // keeps it in place so the reporter can file again, so presence alone is
+        // not the answer. `reason` comes so the app can tell the reporter what
+        // they filed without a second round trip - it is their own sentence
+        // being read back to them, which is the one direction this table opens.
+        //
+        // `details` deliberately does NOT come. It is the only free text here,
+        // it is unbounded, and putting it on every row of a paged feed would
+        // spend bandwidth on something no feed surface renders.
+        //
+        // This is the ONLY read of Post.reports, and the only one there may be.
+        // Nothing here counts, and nothing here may ever be unfiltered.
+        reports: {
+          where: { reporterId: viewerId },
+          select: { id: true, status: true, reason: true },
+        },
         _count: { select: { likes: true, comments: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "asc" }],

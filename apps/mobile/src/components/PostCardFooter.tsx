@@ -1,15 +1,8 @@
 import { View, Text, Pressable } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { router } from "expo-router";
-import type { ComponentProps } from "react";
 
 import { useTheme, useHomeStyles } from "@theme";
-
-/**
- * Typed against FontAwesome's own name union, so a typo in a glyph name is a
- * compile error rather than a blank space on the card at runtime.
- */
-type FontAwesomeIconName = ComponentProps<typeof FontAwesome>["name"];
 
 /** Matches the outline weight the heart has always used. */
 const ICON_SIZE = 22;
@@ -22,6 +15,15 @@ interface PostCardFooterProps {
   /** Whether the VIEWER has liked this post - the heart's fill and colour. */
   isLiked: boolean;
   onToggleLike: () => void;
+  /**
+   * Whether the VIEWER has reported this post - the flag's fill and colour.
+   *
+   * Note what has no counterpart here: there is no reportCount beside it the
+   * way likeCount sits beside isLiked, and there is not going to be one. A
+   * report count would tell a post's author they had been reported.
+   */
+  isReported: boolean;
+  onReport: () => void;
 }
 
 /**
@@ -41,26 +43,15 @@ const PostCardFooter = ({
   commentCount,
   isLiked,
   onToggleLike,
+  isReported,
+  onReport,
 }: PostCardFooterProps) => {
   const { colors } = useTheme();
   const homeStyles = useHomeStyles();
 
-  const action = (icon: FontAwesomeIconName, count?: number) => (
-    <View style={homeStyles.postCardAction}>
-      <FontAwesome name={icon} size={ICON_SIZE} color={colors.text} />
-      {count === undefined ? null : (
-        <Text style={homeStyles.soft}>{count}</Text>
-      )}
-    </View>
-  );
-
   return (
     <View style={homeStyles.postCardFooter}>
       {/*
-        The one action here that does something, so the one that is a Pressable
-        rather than a View - see the report placeholder below for the other half
-        of that rule.
-
         postCardAction sits ON the Pressable rather than inside it, so the count
         is part of the press target: the heart is 22px of glyph, and a row that
         only accepts a hit on the icon itself is a row people miss.
@@ -100,13 +91,32 @@ const PostCardFooter = ({
         <Text style={homeStyles.soft}>{commentCount}</Text>
       </Pressable>
       {/*
-        A placeholder. Nothing calls the report API from the app yet, so this is
-        a plain View rather than a Pressable - the rule SettingsRow follows, so
-        a screen reader does not announce a button that does nothing. Drawn at
-        full strength because a dimmed icon would read as a disabled action
-        rather than an unbuilt one. Give it an onPress when the flow lands.
+        The odd one out in this row, and deliberately so: it is the only action
+        here with no count beside it. A report count on a post would tell its
+        author they had been reported, so the fill of this glyph - visible to
+        the reporter alone - is the whole of what the feature shows.
+
+        Otherwise it follows the heart exactly: outline to solid, colors.text to
+        colors.danger, and accessibilityState.selected rather than a label that
+        flips between "Report" and "Reported", so a screen reader announces the
+        state the colour is conveying to everyone else.
       */}
-      {action("flag-o")}
+      <Pressable
+        onPress={onReport}
+        accessibilityRole="button"
+        accessibilityLabel="Report"
+        accessibilityState={{ selected: isReported }}
+        style={({ pressed }) => [
+          homeStyles.postCardAction,
+          pressed && { opacity: 0.6 },
+        ]}
+      >
+        <FontAwesome
+          name={isReported ? "flag" : "flag-o"}
+          size={ICON_SIZE}
+          color={isReported ? colors.danger : colors.text}
+        />
+      </Pressable>
     </View>
   );
 };

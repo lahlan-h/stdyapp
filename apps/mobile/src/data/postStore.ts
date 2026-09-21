@@ -75,6 +75,40 @@ export const setLiked = (postId: string, isLiked: boolean): void => {
 };
 
 /**
+ * Applies one post's report state, and the id needed to undo it.
+ *
+ * Structurally simpler than setLiked directly above, and the missing half is the
+ * interesting part: there is no count to move WITH the flag, because a report
+ * count on a post is a fact this product deliberately does not have. See
+ * FeedPost.isReported, and the Report model in the schema.
+ *
+ * reportId travels with the flag rather than separately for the reason the like
+ * count does: a filled flag with no id behind it is a report the viewer can see
+ * but cannot withdraw, and nothing on screen would explain why.
+ *
+ * BOTH fields are compared before committing, not just the flag. Comparing only
+ * isReported would drop a refreshed id on a post that was already reported - the
+ * repeat-file case, where the server answers 200 with the same row - and
+ * returning the SAME array when nothing changed is what keeps
+ * useSyncExternalStore from re-rendering, and from looping.
+ */
+export const setReported = (
+  postId: string,
+  isReported: boolean,
+  reportId?: string,
+): void => {
+  const index = posts.findIndex((post) => post.id === postId);
+  if (index === -1) return;
+
+  const post = posts[index];
+  if (post.isReported === isReported && post.reportId === reportId) return;
+
+  const next = [...posts];
+  next[index] = { ...post, isReported, reportId };
+  commit(next);
+};
+
+/**
  * Set rather than incremented: the detail screen knows the thread's real
  * length after a write, and an increment would drift from it the moment two
  * comments land between reads.

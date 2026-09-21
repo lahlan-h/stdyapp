@@ -8,6 +8,8 @@
  * component.
  */
 
+import type { ReportReason } from "./reportReasons";
+
 export interface FeedAuthor {
   id: string;
   username: string;
@@ -51,6 +53,38 @@ export interface FeedPost {
    * drawn from it alone could never know whether to be filled.
    */
   isLiked: boolean;
+  /**
+   * Whether the CURRENT viewer has reported it - what fills the flag in.
+   *
+   * Per-viewer for isLiked's reason, and travelling ALONE for one that is not
+   * symmetrical with it: there is no reportCount beside this, there is no route
+   * that could supply one, and the Report model in the schema says such a count
+   * must never be added. A count would tell a post's author they had been
+   * reported, and it would say so again every time it moved. So the flag's fill
+   * is the whole of what this feature shows, and it only ever shows it to the
+   * person who filed it.
+   */
+  isReported: boolean;
+  /**
+   * The viewer's own report row, carried so it can be withdrawn.
+   *
+   * Withdrawing is keyed by REPORT id, not post id - there is no
+   * /api/reports/post/:postId route the way unliking has
+   * /api/likes/post/:postId - so a card with nothing but the post in hand could
+   * not undo what it just did. Undefined whenever isReported is false, including
+   * for a report that was withdrawn: that row still exists, but its id is not
+   * something to withdraw a second time.
+   */
+  reportId?: string;
+  /**
+   * Which of REPORT_REASONS the viewer filed, so the dialog can read it back.
+   *
+   * Their own words returned to them, which is the one direction this table
+   * opens - there is no way to learn what anybody ELSE reported, and there is
+   * not going to be one. Undefined whenever isReported is false, and also when
+   * the stored reason is one this build has no label for.
+   */
+  reportReason?: ReportReason;
   commentCount: number;
   /** Epoch milliseconds. */
   createdAt: number;

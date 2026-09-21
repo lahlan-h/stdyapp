@@ -286,6 +286,13 @@ export const getPost = async (postId, requesterId) => {
  * invalidation changes. If /all is ever cached, its key MUST carry req.user.id
  * the way postKey already does, or one caller's heart state would be replayed
  * to everyone else for the whole TTL.
+ *
+ * THAT WARNING NOW GUARDS TWO FACTS, AND THE SECOND IS MUCH WORSE TO LEAK. A
+ * replayed heart is a cosmetic wrong answer. A replayed `isReported` would tell
+ * one user that another had reported a post - the single fact this entity exists
+ * to withhold, and the one the Report model's doc block calls a retaliation
+ * vector. Caching this route without a viewer dimension is therefore not a
+ * performance trade-off to weigh; it is a privacy bug.
  */
 export const listAllPosts = async ({ page, limit }, viewerId) => {
   const [rows, total] = await postRepo.findAllPosts(
@@ -293,16 +300,33 @@ export const listAllPosts = async ({ page, limit }, viewerId) => {
     viewerId,
   );
 
-  // Flattened HERE rather than shipped as it comes back. The relation is
-  // filtered to the viewer and the unique (userId, postId) caps it at one row,
-  // so its length is the whole answer - but leaving the array on the payload
-  // would put an internal join shape on the wire and invite a client to read it
-  // as "the likers", which it is not. `likes` is destructured off so it cannot
-  // survive the spread.
-  const items = rows.map(({ likes, ...post }) => ({
-    ...post,
-    isLiked: likes.length > 0,
-  }));
+  // Flattened HERE rather than shipped as it comes back. Each relation is
+  // filtered to the viewer and capped at one row by its unique, so its length is
+  // the whole answer - but leaving the array on the payload would put an
+  // internal join shape on the wire and invite a client to read it as "the
+  // likers" or, far worse, "the reporters", which it is not. Both are
+  // destructured off so neither can survive the spread.
+  const items = rows.map(({ likes, reports, ...post }) => {
+    const report = reports[0];
+    // Presence is NOT the answer. A withdrawn report is still a row - the unique
+    // keeps it there so the reporter can file again - and getPostReportStatus in
+    // report.service.js draws the same line, so the two must agree or a feed
+    // flag and the status route would disagree about the same post.
+    const isReported = Boolean(report) && report.status !== "WITHDRAWN";
+
+    return {
+      ...post,
+      isLiked: likes.length > 0,
+      isReported,
+      // Both only while the report is live. Handing back the id of a WITHDRAWN
+      // row would let a client PATCH it to WITHDRAWN a second time - a write
+      // that changes nothing, spends the rate limit and reads as success - and
+      // its reason would have the app tell a reporter they had filed something
+      // they had already taken back.
+      reportId: isReported ? report.id : null,
+      reportReason: isReported ? report.reason : null,
+    };
+  });
 
   return { items, total, page, limit };
 };

@@ -15,6 +15,13 @@ export { usePost } from "./usePost";
 // hook to take it from. Same function usePosts hands back - there is one array.
 export { setLiked as setPostLiked } from "./postStore";
 export { useLikePost, type LikePostState } from "./useLikePost";
+export { useReportPost, type ReportPostState } from "./useReportPost";
+export {
+  REPORT_REASONS,
+  DETAILED_REASON,
+  MAX_REPORT_DETAILS,
+  type ReportReason,
+} from "./reportReasons";
 export {
   useComments,
   MAX_COMMENT_LENGTH,

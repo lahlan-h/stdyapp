@@ -20,17 +20,18 @@ import * as reportService from "../services/report.service.js";
 
 export const create = async (req, res, next) => {
   try {
-    // The three fields are destructured explicitly, and createReportSchema is a
+    // The four fields are destructured explicitly, and createReportSchema is a
     // strictObject besides, so a reporterId or a status smuggled into the body is
     // rejected outright rather than silently ignored — the reporter is always the
     // token holder, and a report always starts PENDING.
-    const { targetUserId, targetPostId, reason } = req.validated.body;
+    const { targetUserId, targetPostId, reason, details } = req.validated.body;
 
     const { report, created } = await reportService.fileReport({
       reporterId: req.user.id,
       targetUserId,
       targetPostId,
       reason,
+      details,
     });
 
     // 201 the first time, 200 for a repeat or a reopen. Filing is idempotent (see

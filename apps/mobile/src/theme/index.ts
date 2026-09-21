@@ -6,6 +6,7 @@ export {
   useTabBarStyles,
   useNewPostStyles,
   usePostDetailStyles,
+  useReportDialogStyles,
   type ThemePreference,
 } from "./ThemeProvider";
 export { lightColors, darkColors, type ColorScheme } from "./colors";
@@ -27,3 +28,13 @@ export {
   EXIT_ICON_SIZE as POST_DETAIL_EXIT_ICON_SIZE,
   ACTION_ICON_SIZE,
 } from "./postDetail.styles";
+// Named REPORT_* at source rather than aliased here. This barrel already
+// renames two constants that collided, and a third pair of local names for one
+// value is a cost paid on every read of every file that imports them.
+export {
+  createReportDialogStyles,
+  REPORT_CLOSE_ICON_SIZE,
+  REPORT_CHECK_ICON_SIZE,
+  REPORT_STATE_ICON_SIZE,
+  REPORT_STATE_FLAG_SIZE,
+} from "./reportDialog.styles";

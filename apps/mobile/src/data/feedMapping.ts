@@ -1,3 +1,4 @@
+import { REPORT_REASONS, type ReportReason } from "./reportReasons";
 import type { FeedPost, FeedSession } from "./types";
 
 /**
@@ -31,7 +32,33 @@ export interface RawFeedRow {
    * putting a join shape on the wire.
    */
   isLiked: boolean;
+  /**
+   * The viewer's own report, flattened by the API the same way `isLiked` is -
+   * see listAllPosts, which reads Post.reports filtered to the caller and maps
+   * the relation away rather than putting a join shape on the wire.
+   *
+   * Note there is no report COUNT beside it, and there is not going to be one.
+   */
+  isReported: boolean;
+  /** The report's own id while it is live, null once it is not. */
+  reportId: string | null;
+  /** One of REPORT_REASONS while it is live, null once it is not. */
+  reportReason: string | null;
 }
+
+/**
+ * Narrows the report's reason to the set this app has labels for.
+ *
+ * An unknown string becomes undefined rather than being passed through. The
+ * column is a plain TEXT whose vocabulary is closed at the API's edge precisely
+ * so it can grow without a migration - which means a build of this app can
+ * outlive its own copy of the list, and the failure would otherwise be a
+ * confirmation screen reading "Filed as .".
+ */
+const toReportReason = (value: string | null): ReportReason | undefined => {
+  if (!value) return undefined;
+  return REPORT_REASONS.find((reason) => reason === value);
+};
 
 /**
  * Floored at zero the way the API does it, because a clock adjustment can put
@@ -73,6 +100,12 @@ export const toFeedPost = (row: RawFeedRow): FeedPost => {
     imageUrl: row.photoUrl ?? undefined,
     likeCount: row._count.likes,
     isLiked: row.isLiked,
+    isReported: row.isReported,
+    reportId: row.reportId ?? undefined,
+    // Narrowed on the way in rather than trusted: the column is a plain TEXT
+    // whose set is closed at the API's edge, so a row written before a reason
+    // was renamed would arrive as a string this app has no label for.
+    reportReason: toReportReason(row.reportReason),
     commentCount: row._count.comments,
     createdAt: new Date(row.createdAt).getTime(),
     author: {

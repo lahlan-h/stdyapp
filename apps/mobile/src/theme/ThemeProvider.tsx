@@ -15,6 +15,7 @@ import { createHomeStyles } from "./home.styles";
 import { createSettingsStyles } from "./settings.styles";
 import { createNewPostStyles } from "./newPost.styles";
 import { createPostDetailStyles } from "./postDetail.styles";
+import { createReportDialogStyles } from "./reportDialog.styles";
 import { createTabBarStyles } from "./tabBar.styles";
 
 const STORAGE_KEY = "themePreference";
@@ -68,6 +69,11 @@ const POST_DETAIL_STYLES = {
   dark: createPostDetailStyles(darkColors),
 } as const;
 
+const REPORT_DIALOG_STYLES = {
+  light: createReportDialogStyles(lightColors),
+  dark: createReportDialogStyles(darkColors),
+} as const;
+
 const TAB_BAR_STYLES = {
   light: createTabBarStyles(lightColors),
   dark: createTabBarStyles(darkColors),
@@ -85,6 +91,7 @@ interface ThemeContextType {
   tabBarStyles: (typeof TAB_BAR_STYLES)["light"];
   newPostStyles: (typeof NEW_POST_STYLES)["light"];
   postDetailStyles: (typeof POST_DETAIL_STYLES)["light"];
+  reportDialogStyles: (typeof REPORT_DIALOG_STYLES)["light"];
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -168,6 +175,9 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       postDetailStyles: isDarkMode
         ? POST_DETAIL_STYLES.dark
         : POST_DETAIL_STYLES.light,
+      reportDialogStyles: isDarkMode
+        ? REPORT_DIALOG_STYLES.dark
+        : REPORT_DIALOG_STYLES.light,
     }),
     [isDarkMode, preference, setThemePreference, toggleDarkMode],
   );
@@ -195,3 +205,6 @@ export const useNewPostStyles = () => useTheme().newPostStyles;
 
 /** The post-detail stylesheet for the active theme. Never rebuilds. */
 export const usePostDetailStyles = () => useTheme().postDetailStyles;
+
+/** The report-dialog stylesheet for the active theme. Never rebuilds. */
+export const useReportDialogStyles = () => useTheme().reportDialogStyles;
