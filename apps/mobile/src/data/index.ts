@@ -9,6 +9,8 @@
  * `_count` or `photoUrl` means.
  */
 export type { FeedAuthor, FeedPost, FeedSession } from "./types";
+export { useIsSignedIn } from "./auth";
+export { useLogin, type LoginState } from "./useLogin";
 export { usePosts, type FeedState, type SetLiked } from "./usePosts";
 export { usePost } from "./usePost";
 // The store's own setter, for a screen that shows ONE post and so has no feed
