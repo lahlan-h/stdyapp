@@ -1,100 +1,292 @@
+import { useSyncExternalStore } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { ApiError, request } from "./api";
 
-const STORAGE_KEY = "accessToken";
+/**
+ * Who is signed in, and the only place that holds their tokens.
+ *
+ * Replaces the dev-token-only body this file used to have. The exported
+ * withAuth keeps its old signature, so no hook that calls it had to change.
+ *
+ * Two kinds of session:
+ *
+ *  - "password": from POST /api/auth/login. Holds a refresh token, which is how
+ *    an expired access token gets renewed and what sign-out revokes.
+ *  - "dev": from POST /api/auth/dev-token. Access token only - the API issues
+ *    no refresh token for it - so renewing it means minting again, and signing
+ *    out has nothing on the server to revoke. Only offered when __DEV__.
+ *
+ * The whole session is one JSON value under one key, so a half-written sign-in
+ * can never leave an access token next to someone else's refresh token.
+ */
+const STORAGE_KEY = "session";
 
-interface DevTokenResponse {
-  data: {
-    user: { id: string; username: string };
-    accessToken: string;
-    tokenType: string;
-  };
+/** What this file used to store. Removed on first launch, never read. */
+const LEGACY_STORAGE_KEY = "accessToken";
+
+type Session =
+  | {
+      kind: "password";
+      userId: string;
+      accessToken: string;
+      refreshToken: string;
+    }
+  | { kind: "dev"; userId: string; accessToken: string };
+
+export type AuthState =
+  | { status: "loading" }
+  | { status: "signedOut" }
+  | { status: "signedIn"; userId: string; kind: Session["kind"] };
+
+interface TokenPayload {
+  accessToken: string;
+  refreshToken: string;
+  tokenType: string;
+  refreshTokenExpiresAt: string;
 }
 
-/**
- * The app's only source of an access token, and deliberately the only one.
- *
- * There is no sign-in yet. This mints a token from POST /api/auth/dev-token,
- * which the API mounts ONLY when NODE_ENV=development and which takes no
- * credentials at all - every caller shares one `dev_local` account. That is
- * fine for building against a local API and is not auth: it cannot work
- * against a deployed server, and it must not be the reason a login screen
- * never gets written.
- *
- * It lives behind one function so that when real auth lands, the login and
- * refresh flow replaces the body of this file and no screen changes.
- */
-let inFlight: Promise<string> | null = null;
+interface LoginResponse {
+  data: TokenPayload & { user: { id: string } };
+}
 
-const mintToken = async (): Promise<string> => {
-  const response = await request<DevTokenResponse>("/api/auth/dev-token", {
+interface RefreshResponse {
+  data: TokenPayload;
+}
+
+interface DevTokenResponse {
+  data: { user: { id: string }; accessToken: string; tokenType: string };
+}
+
+// --- Store ------------------------------------------------------------------
+
+let session: Session | null = null;
+let state: AuthState = { status: "loading" };
+const listeners = new Set<() => void>();
+
+/**
+ * Bumped on every sign-in and sign-out.
+ *
+ * A refresh that is still in flight when the user signs out must not write its
+ * new tokens back afterwards - that would sign them straight back in. Each
+ * refresh remembers the generation it started in and drops its result if the
+ * generation has moved on.
+ */
+let generation = 0;
+
+/** Replaced, never mutated, for useSyncExternalStore's identity check. */
+const commit = (next: Session | null): void => {
+  session = next;
+  state = next
+    ? { status: "signedIn", userId: next.userId, kind: next.kind }
+    : { status: "signedOut" };
+  listeners.forEach((listener) => listener());
+};
+
+const persist = (next: Session | null): void => {
+  const write = next
+    ? AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    : AsyncStorage.removeItem(STORAGE_KEY);
+  // Fire and forget: the in-memory session is already right for this launch.
+  write.catch(() => {});
+};
+
+const subscribe = (listener: () => void): (() => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
+
+const getSnapshot = (): AuthState => state;
+
+/** The current auth state. Re-renders when the user signs in or out. */
+export const useAuth = (): AuthState => useSyncExternalStore(subscribe, getSnapshot);
+
+/**
+ * A stored value is trusted only if every field it needs is a string. Anything
+ * else - a corrupt write, a shape from an older build - reads as signed out.
+ */
+const parseSession = (raw: string): Session | null => {
+  const value = JSON.parse(raw) as Partial<Record<string, unknown>>;
+  const isString = (key: string) => typeof value?.[key] === "string";
+
+  if (!isString("userId") || !isString("accessToken")) return null;
+  if (value.kind === "password" && isString("refreshToken")) return value as unknown as Session;
+  if (value.kind === "dev" && __DEV__) return value as unknown as Session;
+  return null;
+};
+
+let restoring: Promise<void> | null = null;
+
+/** Reads the saved session once per launch. Safe to call more than once. */
+export const restoreSession = (): Promise<void> => {
+  if (!restoring) {
+    restoring = (async () => {
+      let restored: Session | null = null;
+      try {
+        const raw = await AsyncStorage.getItem(STORAGE_KEY);
+        if (raw) restored = parseSession(raw);
+        AsyncStorage.removeItem(LEGACY_STORAGE_KEY).catch(() => {});
+      } catch {
+        /* unreadable storage means no saved session */
+      }
+      commit(restored);
+    })();
+  }
+  return restoring;
+};
+
+// --- Sign in / out ----------------------------------------------------------
+
+const startSession = (next: Session): void => {
+  generation += 1;
+  commit(next);
+  persist(next);
+};
+
+/** POST /api/auth/login. Throws ApiError - 401 on bad credentials. */
+export const signIn = async (identifier: string, password: string): Promise<void> => {
+  const { data } = await request<LoginResponse>("/api/auth/login", {
     method: "POST",
+    body: { identifier: identifier.trim(), password },
   });
 
-  const token = response.data.accessToken;
-  // Fire and forget: a token we cannot cache still works for this session.
-  AsyncStorage.setItem(STORAGE_KEY, token).catch(() => {});
+  startSession({
+    kind: "password",
+    userId: data.user.id,
+    accessToken: data.accessToken,
+    refreshToken: data.refreshToken,
+  });
+};
 
-  return token;
+/** The shared dev_local account. The API only mounts this route in development. */
+export const signInAsDev = async (): Promise<void> => {
+  const { data } = await request<DevTokenResponse>("/api/auth/dev-token", {
+    method: "POST",
+  });
+  startSession({ kind: "dev", userId: data.user.id, accessToken: data.accessToken });
 };
 
 /**
- * Callers share one mint rather than racing.
+ * Ends the session on this device.
  *
- * The screen can easily ask for a token twice in a tick - the feed loading
- * while a post is submitted - and two mints would leave whichever wrote last
- * in storage while the other caller holds a token nobody remembers.
+ * Local state is cleared FIRST and unconditionally. The server call only
+ * revokes the refresh token, and it is best-effort: signing out has to work
+ * with no network, and POST /api/auth/logout answers 204 whether or not the
+ * token existed, so there is no failure worth showing the user.
  */
-const mintOnce = (): Promise<string> => {
-  if (!inFlight) {
-    inFlight = mintToken().finally(() => {
-      inFlight = null;
+export const signOut = async (): Promise<void> => {
+  const ending = session;
+
+  generation += 1;
+  commit(null);
+  persist(null);
+
+  if (ending?.kind === "password") {
+    await request<void>("/api/auth/logout", {
+      method: "POST",
+      body: { refreshToken: ending.refreshToken },
+    }).catch(() => {});
+  }
+};
+
+/**
+ * Says what went wrong with a sign-in, so the screen never has to know what an
+ * ApiError is. 401 is the API's single login failure and names no field.
+ */
+export const describeSignInError = (err: unknown, kind: "password" | "dev"): string => {
+  if (!(err instanceof ApiError)) return "Could not sign in. Try again.";
+  if (kind === "password" && err.status === 401) {
+    return "That email, username or password is not right.";
+  }
+  if (kind === "dev" && err.status === 404) {
+    return "The dev account is only available when the API runs in development.";
+  }
+  if (err.status === 429) return "Too many attempts. Wait a moment and try again.";
+  return err.message;
+};
+
+// --- Authenticated calls ----------------------------------------------------
+
+let refreshing: Promise<string> | null = null;
+
+/**
+ * Gets a new access token, or signs the user out if that is not possible.
+ *
+ * Shared between callers for the same reason the old mintOnce was: refresh
+ * tokens ROTATE on the API, so two parallel refreshes would each present the
+ * same token and the second would be refused as already used.
+ *
+ * `rejected` is the token the server just refused. If the session already holds
+ * a different one, another caller renewed it in the meantime - use that rather
+ * than spending a second refresh.
+ */
+const renew = (rejected: string): Promise<string> => {
+  if (session && session.accessToken !== rejected) {
+    return Promise.resolve(session.accessToken);
+  }
+  if (!refreshing) {
+    refreshing = (async () => {
+      const current = session;
+      const startedIn = generation;
+      if (!current) throw new ApiError(401, "You are signed out.");
+
+      try {
+        let next: Session;
+        if (current.kind === "password") {
+          const { data } = await request<RefreshResponse>("/api/auth/refresh", {
+            method: "POST",
+            body: { refreshToken: current.refreshToken },
+          });
+          next = { ...current, accessToken: data.accessToken, refreshToken: data.refreshToken };
+        } else {
+          const { data } = await request<DevTokenResponse>("/api/auth/dev-token", {
+            method: "POST",
+          });
+          next = { ...current, accessToken: data.accessToken };
+        }
+
+        // Signed out (or in as someone else) while this was in flight.
+        if (generation !== startedIn) throw new ApiError(401, "You are signed out.");
+
+        commit(next);
+        persist(next);
+        return next.accessToken;
+      } catch (err) {
+        // A refused refresh token means the session is over - expired, revoked
+        // by logout-all, or reused. Anything else (no network) keeps it.
+        if (err instanceof ApiError && err.status === 401 && generation === startedIn) {
+          generation += 1;
+          commit(null);
+          persist(null);
+        }
+        throw err;
+      }
+    })().finally(() => {
+      refreshing = null;
     });
   }
-  return inFlight;
+  return refreshing;
 };
 
-/** A cached token if there is one, otherwise a freshly minted one. */
+/** The current access token. Throws a 401 ApiError when signed out. */
 export const getAccessToken = async (): Promise<string> => {
-  try {
-    const stored = await AsyncStorage.getItem(STORAGE_KEY);
-    if (stored) return stored;
-  } catch {
-    /* storage unavailable - mint a fresh one rather than failing the call */
-  }
-
-  return mintOnce();
-};
-
-/** Drops the cached token so the next call mints a new one. */
-export const clearAccessToken = async (): Promise<void> => {
-  try {
-    await AsyncStorage.removeItem(STORAGE_KEY);
-  } catch {
-    /* nothing to do: the next 401 will mint again anyway */
-  }
+  await restoreSession();
+  if (!session) throw new ApiError(401, "You are signed out.");
+  return session.accessToken;
 };
 
 /**
- * Runs an authenticated call, re-minting once if the token has expired.
+ * Runs an authenticated call, renewing the token once if it has expired.
  *
- * Access tokens last 15 minutes, so a cached one is expired more often than
- * not - the app sits idle far longer than that between posts. Retrying on 401
- * is what stops the first action after a break from failing for a reason the
- * user cannot act on. Retried exactly once: a second 401 is a real failure.
+ * Unchanged contract: retried exactly once, and a second 401 is a real failure.
  */
-export const withAuth = async <T>(
-  call: (token: string) => Promise<T>,
-): Promise<T> => {
+export const withAuth = async <T>(call: (token: string) => Promise<T>): Promise<T> => {
   const token = await getAccessToken();
 
   try {
     return await call(token);
   } catch (err) {
     if (!(err instanceof ApiError) || err.status !== 401) throw err;
-
-    await clearAccessToken();
-    return call(await mintOnce());
+    return call(await renew(token));
   }
 };

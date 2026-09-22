@@ -45,3 +45,23 @@ export {
   type NotificationPreferences,
   type NotificationPreferencesState,
 } from "./useNotificationPreferences";
+export {
+  useAuth,
+  restoreSession,
+  signIn,
+  signInAsDev,
+  signOut,
+  describeSignInError,
+  type AuthState,
+} from "./auth";
+export {
+  useProfile,
+  MAX_NAME_LENGTH,
+  MAX_BIO_LENGTH,
+  MIN_USERNAME_LENGTH,
+  MAX_USERNAME_LENGTH,
+  USERNAME_PATTERN,
+  type Profile,
+  type ProfileEdit,
+  type ProfileState,
+} from "./useProfile";

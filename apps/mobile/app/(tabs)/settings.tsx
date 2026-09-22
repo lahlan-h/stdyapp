@@ -1,15 +1,18 @@
-import { ScrollView, StatusBar, Switch, Text, View } from "react-native";
+import { Alert, ScrollView, StatusBar, Switch, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Feather from "@expo/vector-icons/Feather";
 import Constants from "expo-constants";
+import { router } from "expo-router";
 
 import {
   useTheme,
   useSettingsStyles,
   useTabBarClearance,
   SETTINGS_FOOTER_ROOM,
+  ROW_ICON_SIZE,
 } from "@theme";
-import { useNotificationPreferences } from "@data";
+import { useNotificationPreferences, signOut } from "@data";
 
 import SettingsSection from "@components/SettingsSection";
 import SettingsRow from "@components/SettingsRow";
@@ -33,6 +36,18 @@ const Settings = () => {
    * white against both track colours already.
    */
   const switchTrack = { false: colors.border, true: colors.primary };
+
+  /**
+   * Confirmed first: it is one tap from the bottom of a scroll, and undoing it
+   * means typing a password. No navigation after - the root layout's guard
+   * swaps the tabs for the sign-in screen when the session clears.
+   */
+  const confirmSignOut = () => {
+    Alert.alert("Sign out?", "You will need to sign in again to use stdy.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Sign out", style: "destructive", onPress: () => void signOut() },
+    ]);
+  };
 
   return (
     <LinearGradient
@@ -111,19 +126,18 @@ const Settings = () => {
           </SettingsSection>
 
           {/*
-            Every row here is inert. There is no auth in the app yet - nothing
-            identifies the current user, so there is no account to edit, sign out
-            of, or delete. Laid out now so the screen is complete, and marked
-            isPlaceholder so neither the user nor the next dev mistakes a row for
-            a working control. Wire these up when auth lands.
+            Edit profile and Sign out are live. Privacy and Delete account are
+            still placeholders: the API stores isPrivate but nothing enforces it
+            yet, and account deletion needs its own confirm-with-password flow.
           */}
           <SettingsSection title="Account">
             <SettingsRow
-              isPlaceholder
               isFirst
               icon="user"
               label="Edit profile"
-              description="Name, username and avatar"
+              description="Name, username and bio"
+              onPress={() => router.push("/edit-profile")}
+              right={<Feather name="chevron-right" size={ROW_ICON_SIZE} color={colors.textMuted} />}
             />
             <SettingsRow
               isPlaceholder
@@ -131,7 +145,7 @@ const Settings = () => {
               label="Privacy"
               description="Who can see your sessions"
             />
-            <SettingsRow isPlaceholder icon="log-out" label="Sign out" />
+            <SettingsRow icon="log-out" label="Sign out" onPress={confirmSignOut} />
             <SettingsRow
               isPlaceholder
               isDestructive
