@@ -235,6 +235,8 @@ const refresh = async (): Promise<string> => {
     // app did on every 401 before real login existed.
     if (!current.refreshToken) {
       const accessToken = await mintDevToken();
+      // Signed out while minting: see the same check below.
+      if (session !== current) throw new ApiError(401, "Not signed in");
       setSession({ accessToken, remember: false });
       return accessToken;
     }
@@ -243,6 +245,18 @@ const refresh = async (): Promise<string> => {
       method: "POST",
       body: { refreshToken: current.refreshToken },
     });
+
+    // Signed out (or signed in again) while the refresh was in flight. Setting
+    // this pair would undo the sign-out - and re-save a remembered token - so
+    // drop it, and revoke the new refresh token: logout() revoked only the one
+    // it saw, which this rotation had already replaced.
+    if (session !== current) {
+      request<void>("/api/auth/logout", {
+        method: "POST",
+        body: { refreshToken: response.data.refreshToken },
+      }).catch(() => {});
+      throw new ApiError(401, "Not signed in");
+    }
 
     // The OLD refresh token is dead the moment it is used, so a remembered
     // session must save this one - setSession does, because remember carries.
@@ -263,7 +277,13 @@ const refresh = async (): Promise<string> => {
     //
     // 404 as well: that is the dev route answering from an API no longer in
     // development, and no retry will bring the session back.
-    if (err instanceof ApiError && (err.status === 401 || err.status === 404)) {
+    //
+    // And only for THIS session: a late answer must not clear a newer one.
+    if (
+      session === current &&
+      err instanceof ApiError &&
+      (err.status === 401 || err.status === 404)
+    ) {
       setSession(null);
     }
     throw err;
@@ -309,12 +329,18 @@ export const withAuth = async <T>(
  * The server half then revokes the refresh token, so a copy of it is worthless
  * too. That call is best-effort: POST /api/auth/logout is public and always
  * answers 204, and a network failure must not leave someone stuck signed in.
+ *
+ * The remembered token is cleared again here, and AWAITED, though setSession
+ * already cleared it. setSession's clear is fire-and-forget, so without this a
+ * save still queued from a recent rotation could land after it and leave Remember
+ * me in force. Awaited before the network call, so being offline cannot delay it.
  */
 export const logout = async (): Promise<void> => {
   const refreshToken = session?.refreshToken;
 
   setSession(null);
   resetPosts();
+  await clearRefreshToken();
 
   if (!refreshToken) return;
   try {

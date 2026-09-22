@@ -1,4 +1,12 @@
-import { Alert, ScrollView, StatusBar, Switch, Text, View } from "react-native";
+import {
+  Alert,
+  Platform,
+  ScrollView,
+  StatusBar,
+  Switch,
+  Text,
+  View,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Feather from "@expo/vector-icons/Feather";
@@ -44,6 +52,13 @@ const Settings = () => {
    * session, so the next launch starts at login too.
    */
   const confirmSignOut = () => {
+    // react-native-web's Alert.alert is a no-op, so web asks the browser.
+    if (Platform.OS === "web") {
+      if (window.confirm("Sign out? You will need to sign in again to use stdy.")) {
+        void logout();
+      }
+      return;
+    }
     Alert.alert("Sign out?", "You will need to sign in again to use stdy.", [
       { text: "Cancel", style: "cancel" },
       { text: "Sign out", style: "destructive", onPress: () => void logout() },
