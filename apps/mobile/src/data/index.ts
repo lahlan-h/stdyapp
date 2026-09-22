@@ -9,6 +9,24 @@
  * `_count` or `photoUrl` means.
  */
 export type { FeedAuthor, FeedPost, FeedSession } from "./types";
+export { useIsSignedIn, useSessionRestored, logout } from "./auth";
+export { useLogin, type LoginState } from "./useLogin";
+export { useRegister, type RegisterState } from "./useRegister";
+export { useGoogleSignIn, type GoogleSignInState } from "./useGoogleSignIn";
+export type { RegisterInput } from "./auth";
+export {
+  REGISTRATION_CHECK_GROUPS,
+  REGISTRATION_CHECK_COUNT,
+  MAX_USERNAME_LENGTH,
+  MAX_NAME_LENGTH,
+  MAX_PASSWORD_LENGTH,
+  evaluateRegistration,
+  countPassed,
+  isValidUsername,
+  withinPasswordLimit,
+  type RegistrationCheckKey,
+  type RegistrationResults,
+} from "./registrationChecks";
 export { usePosts, type FeedState, type SetLiked } from "./usePosts";
 export { usePost } from "./usePost";
 // The store's own setter, for a screen that shows ONE post and so has no feed
@@ -45,13 +63,12 @@ export {
   type NotificationPreferences,
   type NotificationPreferencesState,
 } from "./useNotificationPreferences";
-export { signOut, onSignOut, REFRESH_TOKEN_STORAGE_KEY } from "./auth";
+// MAX_NAME_LENGTH and MAX_USERNAME_LENGTH, which edit-profile also uses, come
+// from registrationChecks above - one definition for sign-up and edit alike.
 export {
   useProfile,
-  MAX_NAME_LENGTH,
   MAX_BIO_LENGTH,
   MIN_USERNAME_LENGTH,
-  MAX_USERNAME_LENGTH,
   USERNAME_PATTERN,
   type Profile,
   type ProfileEdit,

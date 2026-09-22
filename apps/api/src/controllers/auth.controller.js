@@ -54,6 +54,20 @@ export const login = async (req, res) => {
 };
 
 /**
+ * POST /api/auth/google - signs in with a Google ID token, creating or linking
+ * the account as needed. 200 with a token pair, the same shape as login; 401
+ * when the token does not verify; 503 when Google sign-in is not configured.
+ */
+export const googleSignIn = async (req, res) => {
+  const { user, tokens } = await authService.loginWithGoogle(
+    req.validated.body.idToken,
+    req.get("user-agent"),
+  );
+
+  res.status(200).json({ data: { user, ...toTokenPayload(tokens) } });
+};
+
+/**
  * POST /api/auth/refresh - swaps a refresh token for a fresh pair.
  *
  * Public: the refresh token IS the credential here, so requiring an access

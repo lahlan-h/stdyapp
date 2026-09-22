@@ -3,6 +3,7 @@ import { Router } from "express";
 import {
   register,
   login,
+  googleSignIn,
   refresh,
   logout,
   logoutAll,
@@ -14,6 +15,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import {
   registerSchema,
   loginSchema,
+  googleAuthSchema,
   refreshTokenSchema,
 } from "../validation/auth.validation.js";
 
@@ -38,6 +40,13 @@ router.post(
 );
 
 router.post("/login", validate({ body: loginSchema }), asyncHandler(login));
+
+// Public for the same reason as login: the Google ID token IS the credential.
+router.post(
+  "/google",
+  validate({ body: googleAuthSchema }),
+  asyncHandler(googleSignIn),
+);
 
 router.post(
   "/refresh",

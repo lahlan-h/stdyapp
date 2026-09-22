@@ -4,11 +4,13 @@ import { ApiError, request } from "./api";
 import { withAuth } from "./auth";
 import { markFeedStale } from "./feedSignal";
 
-/** Mirrors the API's user.validation.js, so the screen can stop a 400 early. */
-export const MAX_NAME_LENGTH = 50;
+/**
+ * Mirrors the API's user.validation.js, so the screen can stop a 400 early.
+ * The name and username caps are shared with sign-up, so they live in
+ * registrationChecks.ts rather than here.
+ */
 export const MAX_BIO_LENGTH = 500;
 export const MIN_USERNAME_LENGTH = 3;
-export const MAX_USERNAME_LENGTH = 30;
 export const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 
 /**

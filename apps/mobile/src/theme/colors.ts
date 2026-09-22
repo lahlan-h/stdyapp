@@ -50,6 +50,34 @@ export interface ColorScheme {
    * that is one edit here instead of one in every modal that ever shipped.
    */
   scrim: string;
+  /**
+   * What the login screen's logo banner paints behind itself.
+   *
+   * The logo (packages/shared/assets/stdy.png) sets its wordmark in #add8e6 on
+   * transparency: 1.42:1 against the light theme's bg, so bare in light mode
+   * the word "stdy" simply is not there. Rather than recolour the logo, the
+   * banner lays down the dark ground it was drawn for - the dark theme's bg,
+   * not a new colour.
+   *
+   * TRANSPARENT in dark, not that same navy: the screen behind is already that
+   * ground, and a panel would not blend - the background gradient has moved on
+   * by the banner's lower edge, so any flat fill leaves a visible step exactly
+   * where the join should disappear.
+   */
+  brandBanner: string;
+  /**
+   * Google's sign-in button, in Google's colours rather than ours.
+   *
+   * Their branding rules fix the fill, edge and label per theme, and a "Continue
+   * with Google" restyled in the app's blue is exactly what those rules exist to
+   * prevent. The button's shape is still the app's control, so it sits in the
+   * same family as the submit button below it.
+   */
+  google: {
+    fill: string;
+    edge: string;
+    text: string;
+  };
   shadow: string;
   gradients: {
     background: [string, string];
@@ -92,6 +120,12 @@ export const lightColors: ColorScheme = {
   successTint: "rgba(16,185,129,0.12)",
   successEdge: "rgba(16,185,129,0.28)",
   scrim: "rgba(0,0,0,0.55)",
+  brandBanner: "#0f172a",
+  google: {
+    fill: "#ffffff",
+    edge: "#747775",
+    text: "#1f1f1f",
+  },
   shadow: "#000000",
   gradients: {
     background: ["#f8fafc", "#e2e8f0"],
@@ -128,6 +162,12 @@ export const darkColors: ColorScheme = {
   successTint: "rgba(52,211,153,0.16)",
   successEdge: "rgba(52,211,153,0.34)",
   scrim: "rgba(0,0,0,0.55)",
+  brandBanner: "transparent",
+  google: {
+    fill: "#131314",
+    edge: "#8e918f",
+    text: "#e3e3e3",
+  },
   shadow: "#000000",
   gradients: {
     background: ["#0f172a", "#1e293b"],

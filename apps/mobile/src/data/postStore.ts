@@ -46,6 +46,15 @@ export const setPage = (page: FeedPost[], pageNumber: number): void => {
   commit(pageNumber === 1 ? page : [...posts, ...page]);
 };
 
+/**
+ * Empties the store on sign-out. Every post carries the viewer's own state -
+ * isLiked, isOwner, hasReported - so the next account to sign in must not see
+ * the previous one's, even for the frame before its own page one arrives.
+ */
+export const resetPosts = (): void => {
+  if (posts.length > 0) commit([]);
+};
+
 export const getPost = (postId: string): FeedPost | undefined =>
   posts.find((post) => post.id === postId);
 

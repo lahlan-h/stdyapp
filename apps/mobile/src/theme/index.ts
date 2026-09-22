@@ -7,6 +7,8 @@ export {
   useNewPostStyles,
   usePostDetailStyles,
   useReportDialogStyles,
+  useLoginStyles,
+  useRegisterStyles,
   useEditProfileStyles,
   type ThemePreference,
 } from "./ThemeProvider";
@@ -44,4 +46,14 @@ export {
   REPORT_STATE_ICON_SIZE,
   REPORT_STATE_FLAG_SIZE,
 } from "./reportDialog.styles";
+export {
+  createLoginStyles,
+  LOGIN_ICON_SIZE,
+  LOGIN_CHECK_ICON_SIZE,
+  LOGIN_GOOGLE_MARK_SIZE,
+} from "./login.styles";
+export {
+  createRegisterStyles,
+  REGISTER_CHECK_ICON_SIZE,
+} from "./register.styles";
 export { createEditProfileStyles, EDIT_PROFILE_BACK_ICON_SIZE } from "./editProfile.styles";
