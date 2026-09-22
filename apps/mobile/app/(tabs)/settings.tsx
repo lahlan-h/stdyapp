@@ -15,7 +15,7 @@ import { router } from "expo-router";
 
 import {
   useTheme,
-  useSettingsStyles,
+  useStyles,
   useTabBarClearance,
   SETTINGS_FOOTER_ROOM,
   ROW_ICON_SIZE,
@@ -34,7 +34,7 @@ const APP_VERSION = Constants.expoConfig?.version ?? "unknown";
 
 const Settings = () => {
   const { colors } = useTheme();
-  const settingsStyles = useSettingsStyles();
+  const settingsStyles = useStyles("settings");
   const tabBarClearance = useTabBarClearance();
   const { preferences, setPreference } = useNotificationPreferences();
 
@@ -66,19 +66,13 @@ const Settings = () => {
   };
 
   return (
-    <LinearGradient
-      colors={colors.gradients.background}
-      style={settingsStyles.container}
-    >
+    <LinearGradient colors={colors.gradients.background} style={settingsStyles.container}>
       <StatusBar
         barStyle={colors.statusBarStyle}
         translucent
         backgroundColor="transparent"
       />
-      <SafeAreaView
-        style={settingsStyles.safeArea}
-        edges={["top", "left", "right"]}
-      >
+      <SafeAreaView style={settingsStyles.safeArea} edges={["top", "left", "right"]}>
         <ScrollView
           contentContainerStyle={[
             settingsStyles.scrollContent,

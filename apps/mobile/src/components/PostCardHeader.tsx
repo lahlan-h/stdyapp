@@ -1,6 +1,6 @@
 import { View, Text, Image } from "react-native";
 
-import { useHomeStyles } from "@theme";
+import { useStyles } from "@theme";
 import { formatRelativeTime } from "@stdyapp/shared";
 
 interface PostCardHeaderProps {
@@ -14,7 +14,7 @@ const defaultAvatar = (seed: string) =>
   `https://api.dicebear.com/9.x/initials/png?seed=${encodeURIComponent(seed)}`;
 
 const PostCardHeader = ({ displayName, avatarUrl, createdAt }: PostCardHeaderProps) => {
-  const homeStyles = useHomeStyles();
+  const homeStyles = useStyles("home");
 
   return (
     <View style={homeStyles.postCardHeaderContainer}>

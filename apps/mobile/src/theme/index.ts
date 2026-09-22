@@ -1,5 +1,6 @@
 export {
   useTheme,
+  useStyles,
   ThemeProvider,
   useHomeStyles,
   useSettingsStyles,
@@ -11,7 +12,7 @@ export {
   useRegisterStyles,
   useEditProfileStyles,
   type ThemePreference,
-} from "./ThemeProvider";
+} from "./useTheme";
 export { lightColors, darkColors, type ColorScheme } from "./colors";
 export { createHomeStyles } from "./home.styles";
 export {

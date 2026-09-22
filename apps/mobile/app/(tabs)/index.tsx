@@ -4,17 +4,17 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 
-import { useTheme, useHomeStyles, useTabBarClearance } from "@theme";
+import { useTheme, useStyles, useTabBarClearance } from "@theme";
 import { usePosts, useLikePost, consumeFeedStale, type FeedPost } from "@data";
 
 import PostCard from "@components/PostCard";
-import FeedSkeleton from "@components/FeedSkeleton";
+import LoadingSpinner from "@components/LoadingSpinner";
 import EmptyFeed from "@components/EmptyFeed";
 import ReportDialog from "@components/ReportDialog";
 
 const Index = () => {
   const { colors } = useTheme();
-  const homeStyles = useHomeStyles();
+  const homeStyles = useStyles("home");
   // What the floating tab bar covers, inset included. Without it the last
   // card's like, comment and report buttons sit behind the bar, drawn but
   // untappable, with nothing on screen explaining why.
@@ -54,7 +54,7 @@ const Index = () => {
       />
       <SafeAreaView style={homeStyles.safeArea} edges={["top", "left", "right"]}>
         {isLoading ? (
-          <FeedSkeleton />
+          <LoadingSpinner />
         ) : error && posts.length === 0 ? (
           // Only when there is nothing to show. An error while more pages load
           // must not blank a feed the user is already reading.

@@ -2,7 +2,7 @@ import { Image, Pressable } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 
-import { useTheme, useHomeStyles } from "@theme";
+import { useTheme, useStyles } from "@theme";
 import type { FeedPost } from "@data";
 
 import PostCardHeader from "./PostCardHeader";
@@ -38,7 +38,7 @@ interface PostCardProps {
  */
 const PostCard = ({ post, onToggleLike, onReport }: PostCardProps) => {
   const { colors } = useTheme();
-  const homeStyles = useHomeStyles();
+  const homeStyles = useStyles("home");
 
   return (
     <LinearGradient

@@ -2,7 +2,7 @@ import { View, Text, Pressable } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { router } from "expo-router";
 
-import { useTheme, useHomeStyles } from "@theme";
+import { useTheme, useStyles } from "@theme";
 
 /** Matches the outline weight the heart has always used. */
 const ICON_SIZE = 22;
@@ -57,7 +57,7 @@ const PostCardFooter = ({
   isMine,
 }: PostCardFooterProps) => {
   const { colors } = useTheme();
-  const homeStyles = useHomeStyles();
+  const homeStyles = useStyles("home");
 
   return (
     <View style={homeStyles.postCardFooter}>

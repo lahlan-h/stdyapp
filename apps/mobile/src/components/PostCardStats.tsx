@@ -1,6 +1,6 @@
 import { View, Text } from "react-native";
 
-import { useHomeStyles } from "@theme";
+import { useStyles } from "@theme";
 import { formatDuration } from "@stdyapp/shared";
 import type { FeedSession } from "@data";
 
@@ -33,7 +33,7 @@ const PLACEHOLDER = "—";
  * here would be fiction.
  */
 const PostCardStats = ({ session }: PostCardStatsProps) => {
-  const homeStyles = useHomeStyles();
+  const homeStyles = useStyles("home");
 
   const time = !session
     ? PLACEHOLDER

@@ -11,7 +11,11 @@ import {
 import { useColorScheme } from "react-native";
 
 import { darkColors, lightColors, type ColorScheme } from "./colors";
+
+// -Devs! Add additional stylesheet imports here!
 import { createHomeStyles } from "./home.styles";
+import { createStudyStyles } from "./study.styles";
+import { createProfileStyles } from "./profile.styles";
 import { createSettingsStyles } from "./settings.styles";
 import { createNewPostStyles } from "./newPost.styles";
 import { createPostDetailStyles } from "./postDetail.styles";
@@ -45,56 +49,59 @@ const isThemePreference = (value: unknown): value is ThemePreference =>
   value === "light" || value === "dark" || value === "system";
 
 /**
+ * Translates an old `darkMode` value. Only a real boolean was ever a choice the
+ * user made - anything else is junk, and junk means "no preference", not "light".
+ */
+const parseLegacyPreference = (raw: string): ThemePreference | null => {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed === "boolean") return parsed ? "dark" : "light";
+  } catch {
+    /* unparseable - junk like any other */
+  }
+  return null;
+};
+
+// -Devs! Add the stylesheet here!
+const styleMap = {
+  home: createHomeStyles,
+  study: createStudyStyles,
+  profile: createProfileStyles,
+  settings: createSettingsStyles,
+  newPost: createNewPostStyles,
+  postDetail: createPostDetailStyles,
+  reportDialog: createReportDialogStyles,
+  tabBar: createTabBarStyles,
+  login: createLoginStyles,
+  register: createRegisterStyles,
+  editProfile: createEditProfileStyles,
+} as const;
+
+type StyleName = keyof typeof styleMap;
+
+type BuiltStyles = {
+  [K in StyleName]: ReturnType<(typeof styleMap)[K]>;
+};
+
+// The cast is safe because we map over styleMap itself, so the output keys
+// match the input keys by construction - Object.fromEntries just can't prove
+// that to the type checker.
+const buildStyles = (colors: ColorScheme): BuiltStyles =>
+  Object.fromEntries(
+    Object.entries(styleMap).map(([name, create]) => [name, create(colors)]),
+  ) as BuiltStyles;
+
+/**
  * Every stylesheet, built ONCE at module load.
  *
  * createHomeStyles used to be called in the render body of every component that
  * needed it, so each card in the feed rebuilt an entire StyleSheet on every
- * render. There are only two palettes, so there only ever need to be two of each
- * stylesheet - the hooks below pick one rather than building one.
+ * render. There are only two palettes, so there only ever need to be two sets -
+ * useStyles picks one rather than building one.
  */
-const HOME_STYLES = {
-  light: createHomeStyles(lightColors),
-  dark: createHomeStyles(darkColors),
-} as const;
-
-const SETTINGS_STYLES = {
-  light: createSettingsStyles(lightColors),
-  dark: createSettingsStyles(darkColors),
-} as const;
-
-const NEW_POST_STYLES = {
-  light: createNewPostStyles(lightColors),
-  dark: createNewPostStyles(darkColors),
-} as const;
-
-const POST_DETAIL_STYLES = {
-  light: createPostDetailStyles(lightColors),
-  dark: createPostDetailStyles(darkColors),
-} as const;
-
-const REPORT_DIALOG_STYLES = {
-  light: createReportDialogStyles(lightColors),
-  dark: createReportDialogStyles(darkColors),
-} as const;
-
-const TAB_BAR_STYLES = {
-  light: createTabBarStyles(lightColors),
-  dark: createTabBarStyles(darkColors),
-} as const;
-
-const LOGIN_STYLES = {
-  light: createLoginStyles(lightColors),
-  dark: createLoginStyles(darkColors),
-} as const;
-
-const REGISTER_STYLES = {
-  light: createRegisterStyles(lightColors),
-  dark: createRegisterStyles(darkColors),
-} as const;
-
-const EDIT_PROFILE_STYLES = {
-  light: createEditProfileStyles(lightColors),
-  dark: createEditProfileStyles(darkColors),
+const STYLES = {
+  light: buildStyles(lightColors),
+  dark: buildStyles(darkColors),
 } as const;
 
 interface ThemeContextType {
@@ -104,15 +111,7 @@ interface ThemeContextType {
   setThemePreference: (preference: ThemePreference) => void;
   toggleDarkMode: () => void;
   colors: ColorScheme;
-  homeStyles: (typeof HOME_STYLES)["light"];
-  settingsStyles: (typeof SETTINGS_STYLES)["light"];
-  tabBarStyles: (typeof TAB_BAR_STYLES)["light"];
-  newPostStyles: (typeof NEW_POST_STYLES)["light"];
-  postDetailStyles: (typeof POST_DETAIL_STYLES)["light"];
-  reportDialogStyles: (typeof REPORT_DIALOG_STYLES)["light"];
-  loginStyles: (typeof LOGIN_STYLES)["light"];
-  registerStyles: (typeof REGISTER_STYLES)["light"];
-  editProfileStyles: (typeof EDIT_PROFILE_STYLES)["light"];
+  styles: BuiltStyles;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -130,8 +129,8 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     let cancelled = false;
 
     const load = async () => {
-      // Guarded throughout: a corrupt or hand-edited value must not take the app
-      // down on launch. An unreadable preference simply means "no preference".
+      // A corrupt or hand-edited value must not take the app down on launch.
+      // Anything unreadable simply means "no preference" - follow the OS.
       try {
         const stored = await AsyncStorage.getItem(STORAGE_KEY);
         if (cancelled) return;
@@ -143,15 +142,16 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         const legacy = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
         if (cancelled || legacy === null) return;
 
-        const migrated: ThemePreference =
-          JSON.parse(legacy) === true ? "dark" : "light";
-        setPreference(migrated);
-        // Write forward before clearing, so an interruption between the two
-        // leaves the old key readable rather than losing the choice entirely.
-        await AsyncStorage.setItem(STORAGE_KEY, migrated);
+        const migrated = parseLegacyPreference(legacy);
+        if (migrated !== null) {
+          setPreference(migrated);
+          // Write forward before clearing, so an interruption between the two
+          // leaves the old key readable rather than losing the choice entirely.
+          await AsyncStorage.setItem(STORAGE_KEY, migrated);
+        }
         await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
       } catch {
-        /* storage unavailable or unparseable - fall back to the system scheme */
+        /* storage unavailable - fall back to the system scheme */
       }
     };
 
@@ -164,6 +164,8 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const isDarkMode =
     preference === "system" ? systemScheme === "dark" : preference === "dark";
 
+  // Saves alongside the state update rather than inside a setState updater:
+  // updaters must be pure, and React may call them more than once.
   const setThemePreference = useCallback((next: ThemePreference) => {
     setPreference(next);
     AsyncStorage.setItem(STORAGE_KEY, next).catch(() => {
@@ -172,9 +174,9 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   /**
-   * Kept for callers that only want to flip the visible theme. Note this always
-   * lands on an explicit light/dark and so leaves "system" behind - use
-   * setThemePreference where returning to the OS setting matters.
+   * Kept for callers that only want to flip the visible theme, like a Switch.
+   * Note this always lands on an explicit light/dark and so leaves "system"
+   * behind - use setThemePreference where returning to the OS setting matters.
    */
   const toggleDarkMode = useCallback(() => {
     setThemePreference(isDarkMode ? "light" : "dark");
@@ -189,19 +191,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       setThemePreference,
       toggleDarkMode,
       colors: isDarkMode ? darkColors : lightColors,
-      homeStyles: isDarkMode ? HOME_STYLES.dark : HOME_STYLES.light,
-      settingsStyles: isDarkMode ? SETTINGS_STYLES.dark : SETTINGS_STYLES.light,
-      tabBarStyles: isDarkMode ? TAB_BAR_STYLES.dark : TAB_BAR_STYLES.light,
-      newPostStyles: isDarkMode ? NEW_POST_STYLES.dark : NEW_POST_STYLES.light,
-      postDetailStyles: isDarkMode
-        ? POST_DETAIL_STYLES.dark
-        : POST_DETAIL_STYLES.light,
-      reportDialogStyles: isDarkMode
-        ? REPORT_DIALOG_STYLES.dark
-        : REPORT_DIALOG_STYLES.light,
-      loginStyles: isDarkMode ? LOGIN_STYLES.dark : LOGIN_STYLES.light,
-      registerStyles: isDarkMode ? REGISTER_STYLES.dark : REGISTER_STYLES.light,
-      editProfileStyles: isDarkMode ? EDIT_PROFILE_STYLES.dark : EDIT_PROFILE_STYLES.light,
+      styles: isDarkMode ? STYLES.dark : STYLES.light,
     }),
     [isDarkMode, preference, setThemePreference, toggleDarkMode],
   );
@@ -215,32 +205,43 @@ export const useTheme = () => {
   return context;
 };
 
+/**
+ * A stylesheet for the active theme, by name - e.g. useStyles("home").
+ * Never rebuilds: it picks one of the two sets in STYLES.
+ */
+export const useStyles = <K extends StyleName>(name: K): BuiltStyles[K] => {
+  return useTheme().styles[name];
+};
+
+// Per-screen shorthands for useStyles, kept so the screens written against
+// them keep working. Each is exactly useStyles(<name>).
+
 /** The home stylesheet for the active theme. Never rebuilds. */
-export const useHomeStyles = () => useTheme().homeStyles;
+export const useHomeStyles = () => useStyles("home");
 
 /** The settings stylesheet for the active theme. Never rebuilds. */
-export const useSettingsStyles = () => useTheme().settingsStyles;
+export const useSettingsStyles = () => useStyles("settings");
 
 /** The tab bar stylesheet for the active theme. Never rebuilds. */
-export const useTabBarStyles = () => useTheme().tabBarStyles;
+export const useTabBarStyles = () => useStyles("tabBar");
 
 /** The new-post stylesheet for the active theme. Never rebuilds. */
-export const useNewPostStyles = () => useTheme().newPostStyles;
+export const useNewPostStyles = () => useStyles("newPost");
 
 /** The post-detail stylesheet for the active theme. Never rebuilds. */
-export const usePostDetailStyles = () => useTheme().postDetailStyles;
+export const usePostDetailStyles = () => useStyles("postDetail");
 
 /** The report-dialog stylesheet for the active theme. Never rebuilds. */
-export const useReportDialogStyles = () => useTheme().reportDialogStyles;
+export const useReportDialogStyles = () => useStyles("reportDialog");
 
 /** The login stylesheet for the active theme. Never rebuilds. */
-export const useLoginStyles = () => useTheme().loginStyles;
+export const useLoginStyles = () => useStyles("login");
 
 /**
  * The sign-up screen's own stylesheet for the active theme. Never rebuilds.
  * Used alongside useLoginStyles, which supplies everything the two share.
  */
-export const useRegisterStyles = () => useTheme().registerStyles;
+export const useRegisterStyles = () => useStyles("register");
 
 /** The edit-profile stylesheet for the active theme. Never rebuilds. */
-export const useEditProfileStyles = () => useTheme().editProfileStyles;
+export const useEditProfileStyles = () => useStyles("editProfile");
