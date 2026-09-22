@@ -18,6 +18,11 @@ export const createHomeStyles = (colors: ColorScheme) => {
     postCardListContent: {
       paddingHorizontal: 4,
       paddingTop: 8,
+      // No paddingBottom. The tab bar floats over the feed rather than sitting
+      // below it, so the last card has to be scrollable clear of it by hand -
+      // and how much that is depends on the safe-area inset, which no
+      // stylesheet can know because these are built once at module load. The
+      // screen supplies it from useTabBarClearance().
       gap: 10,
     },
     postCardBackground: {
@@ -64,7 +69,11 @@ export const createHomeStyles = (colors: ColorScheme) => {
       paddingTop: 12,
       paddingBottom: 2,
       gap: 3,
-      alignItems: "baseline",
+      // NOT "baseline". Yoga only implements baseline alignment on row
+      // containers; in a column it degrades and lays the children out at their
+      // content width instead of stretching, which mismeasures where the title
+      // and caption wrap.
+      alignItems: "stretch",
     },
     statsContainer: {
       paddingHorizontal: 12,
@@ -98,10 +107,20 @@ export const createHomeStyles = (colors: ColorScheme) => {
       paddingHorizontal: 32,
       gap: 6,
     },
+    // The gap here separates the ACTION GROUPS. It is wider than the 8 inside
+    // a group on purpose: at a uniform 8 the like count and the next icon sit
+    // as close together as the icon and its own count, and the row reads as
+    // five loose items rather than three actions.
     postCardFooter: {
       paddingHorizontal: 12,
       paddingTop: 8,
       paddingBottom: 15,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 22,
+    },
+    // One icon and its count, bound together.
+    postCardAction: {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,

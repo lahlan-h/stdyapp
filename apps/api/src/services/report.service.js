@@ -242,7 +242,10 @@ const findExistingReport = (reporterId, targetUserId, targetPostId) =>
  * throw away the record this entity exists to keep.
  *
  * The reason is overwritten on reopen rather than preserved: the reporter is
- * filing again, now, and it is the new complaint that matters.
+ * filing again, now, and it is the new complaint that matters. `details` follows
+ * it for the same reason, and NULLs when the new complaint carries none —
+ * leaving the old text behind would attach an explanation the reporter has just
+ * withdrawn to an accusation they have just re-filed.
  *
  * `created` lets the controller answer 201 or 200 without the caller having to
  * care which of the three paths ran.
@@ -254,6 +257,7 @@ export const fileReport = async ({
   targetUserId,
   targetPostId,
   reason,
+  details,
 }) => {
   assertExactlyOneTarget(targetUserId, targetPostId);
 
@@ -278,6 +282,10 @@ export const fileReport = async ({
     await reportRepo.updateReport(existing.id, reporterId, {
       status: STATUS_PENDING,
       reason,
+      // Explicitly null rather than left out: Prisma reads `undefined` as
+      // "leave this column alone", which on this path would keep the withdrawn
+      // report's text alive under the new reason.
+      details: details ?? null,
     });
     const reopened = await reportRepo.findReportById(existing.id);
     await invalidateReport(reporterId);
@@ -290,6 +298,7 @@ export const fileReport = async ({
       targetUserId,
       targetPostId,
       reason,
+      details,
     });
     await invalidateReport(reporterId);
     return { report, created: true };

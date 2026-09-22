@@ -1,8 +1,15 @@
 import { prisma } from "@stdyapp/core";
 
-export const createPost = ({ userId, sessionId, routineId, caption, photoUrl }) => {
+export const createPost = ({
+  userId,
+  sessionId,
+  routineId,
+  title,
+  caption,
+  photoUrl,
+}) => {
   return prisma.post.create({
-    data: { userId, sessionId, routineId, caption, photoUrl },
+    data: { userId, sessionId, routineId, title, caption, photoUrl },
   });
 };
 
@@ -40,13 +47,69 @@ export const findPostsByUser = (userId) => {
  * listMembers. It is what keeps passwordHash and email out of a public feed, so
  * it must stay a select rather than becoming `user: true`.
  *
+ * The likes clause answers a question _count cannot: that is a total over
+ * everyone, so a heart rendered from it has no way to know its own colour. This
+ * one is filtered to the VIEWER, and by the unique (userId, postId) it matches
+ * at most one row - so its length is the whole answer, which the service
+ * flattens to a boolean before anything reaches the wire.
+ *
+ * It takes the same discipline the user clause above documents: a select of
+ * `id` alone, never `likes: true`, which would put every liker's id on every
+ * row of a public feed.
+ *
+ * viewerId is its own parameter rather than a key on the pagination object, so
+ * the pair reads the same way at all three layers - listAll passes
+ * (query, req.user.id), listAllPosts passes ({ skip, take }, viewerId).
+ *
+ * @param {{ skip: number, take: number }} page
+ * @param {string} viewerId - the caller's own id; guaranteed by requireAuth
  * @returns {Promise<[object[], number]>} the page, and the total row count
  */
-export const findAllPosts = ({ skip, take }) => {
+export const findAllPosts = ({ skip, take }, viewerId) => {
   return prisma.$transaction([
     prisma.post.findMany({
       include: {
-        user: { select: { id: true, username: true, avatarUrl: true } },
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatarUrl: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        // Null whenever the post has no session, or the session was deleted -
+        // sessionId is nullable and SetNull. The feed renders the stats only
+        // when this resolves. endedAt is null while a session is still running,
+        // which is not the same as a duration of zero, so it is passed through
+        // rather than flattened here.
+        session: {
+          select: { startedAt: true, endedAt: true, focusPoints: true },
+        },
+        likes: { where: { userId: viewerId }, select: { id: true } },
+        // The same discipline the likes clause above documents, for the same
+        // question in a different register: "have I reported this". Filtered to
+        // the VIEWER, capped at one row by @@unique([reporterId, targetPostId])
+        // — the constraint whose own comment names this read — and a select of
+        // the two columns the answer needs, never `reports: true`, which would
+        // put every reporter's id on every row of a public feed.
+        //
+        // `status` comes too because a WITHDRAWN row still exists: the unique
+        // keeps it in place so the reporter can file again, so presence alone is
+        // not the answer. `reason` comes so the app can tell the reporter what
+        // they filed without a second round trip - it is their own sentence
+        // being read back to them, which is the one direction this table opens.
+        //
+        // `details` deliberately does NOT come. It is the only free text here,
+        // it is unbounded, and putting it on every row of a paged feed would
+        // spend bandwidth on something no feed surface renders.
+        //
+        // This is the ONLY read of Post.reports, and the only one there may be.
+        // Nothing here counts, and nothing here may ever be unfiltered.
+        reports: {
+          where: { reporterId: viewerId },
+          select: { id: true, status: true, reason: true },
+        },
         _count: { select: { likes: true, comments: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "asc" }],
