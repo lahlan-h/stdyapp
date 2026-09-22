@@ -13,6 +13,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Feather from "@expo/vector-icons/Feather";
+import { router } from "expo-router";
 
 import { useTheme, useAccountStyles } from "@theme";
 import { signIn, signInAsDev, describeSignInError } from "@data";
@@ -23,8 +24,7 @@ import { signIn, signInAsDev, describeSignInError } from "@data";
  * No navigation happens here on success: the root layout's guard sees the
  * session change and swaps this screen for the tabs by itself.
  *
- * There is no sign-up form yet. POST /api/auth/register exists, so an account
- * can be made from Postman until one is built.
+ * New accounts are made on sign-up, pushed from the link at the bottom.
  */
 const SignIn = () => {
   const { colors } = useTheme();
@@ -128,6 +128,16 @@ const SignIn = () => {
                   <Text style={styles.submitLabel}>Sign in</Text>
                 )}
               </LinearGradient>
+            </Pressable>
+
+            <Pressable
+              onPress={() => router.push("/sign-up")}
+              disabled={Boolean(busy)}
+              style={({ pressed }) => [styles.secondary, pressed && { opacity: 0.6 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Create an account"
+            >
+              <Text style={styles.secondaryLabel}>Create an account</Text>
             </Pressable>
 
             {/* The shared dev_local account. The API only serves it in

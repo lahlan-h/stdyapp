@@ -51,7 +51,11 @@ export {
   signIn,
   signInAsDev,
   signOut,
+  signUp,
   describeSignInError,
+  MIN_PASSWORD_LENGTH,
+  MAX_PASSWORD_BYTES,
+  type NewAccount,
   type AuthState,
 } from "./auth";
 export {

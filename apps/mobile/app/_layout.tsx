@@ -56,6 +56,8 @@ export default function RootLayout() {
 
         <Stack.Protected guard={!isSignedIn}>
           <Stack.Screen name="sign-in" />
+          {/* A push from sign-in, so back returns there. */}
+          <Stack.Screen name="sign-up" />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

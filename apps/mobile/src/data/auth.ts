@@ -158,6 +158,43 @@ export const signIn = async (identifier: string, password: string): Promise<void
   });
 };
 
+/** Mirrors the API's passwordSchema, so the form can stop a 400 early. */
+export const MIN_PASSWORD_LENGTH = 8;
+export const MAX_PASSWORD_BYTES = 72;
+
+export interface NewAccount {
+  email: string;
+  username: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+}
+
+/**
+ * POST /api/auth/register. The API creates the account AND logs it in,
+ * answering with the same shape as login, so this goes straight to a session.
+ * Throws ApiError - 409 when the email or username is taken, 400 on a bad field.
+ */
+export const signUp = async (account: NewAccount): Promise<void> => {
+  const { data } = await request<LoginResponse>("/api/auth/register", {
+    method: "POST",
+    body: {
+      email: account.email.trim(),
+      username: account.username.trim(),
+      password: account.password,
+      firstName: account.firstName.trim(),
+      lastName: account.lastName.trim(),
+    },
+  });
+
+  startSession({
+    kind: "password",
+    userId: data.user.id,
+    accessToken: data.accessToken,
+    refreshToken: data.refreshToken,
+  });
+};
+
 /** The shared dev_local account. The API only mounts this route in development. */
 export const signInAsDev = async (): Promise<void> => {
   const { data } = await request<DevTokenResponse>("/api/auth/dev-token", {
@@ -193,8 +230,25 @@ export const signOut = async (): Promise<void> => {
  * Says what went wrong with a sign-in, so the screen never has to know what an
  * ApiError is. 401 is the API's single login failure and names no field.
  */
-export const describeSignInError = (err: unknown, kind: "password" | "dev"): string => {
-  if (!(err instanceof ApiError)) return "Could not sign in. Try again.";
+export const describeSignInError = (
+  err: unknown,
+  kind: "password" | "dev" | "register",
+): string => {
+  if (!(err instanceof ApiError)) {
+    return kind === "register"
+      ? "Could not create your account. Try again."
+      : "Could not sign in. Try again.";
+  }
+
+  // The API itself never answers these for auth routes. They come from
+  // whatever sits in front of it - the ngrok tunnel answers 502 when nothing
+  // is listening on the port it forwards to - and the body is an HTML page, so
+  // err.message would only say "Request failed (502)".
+  if (err.status === 502 || err.status === 503 || err.status === 504) {
+    return "The tunnel is up but the API behind it is not answering. Check the API is running on the port ngrok forwards to.";
+  }
+  // Names the field itself: "Email is already in use".
+  if (kind === "register" && err.status === 409) return `${err.message}.`;
   if (kind === "password" && err.status === 401) {
     return "That email, username or password is not right.";
   }
