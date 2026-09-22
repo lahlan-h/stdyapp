@@ -9,6 +9,7 @@ export {
   useReportDialogStyles,
   useLoginStyles,
   useRegisterStyles,
+  useEditProfileStyles,
   type ThemePreference,
 } from "./ThemeProvider";
 export { lightColors, darkColors, type ColorScheme } from "./colors";
@@ -55,3 +56,4 @@ export {
   createRegisterStyles,
   REGISTER_CHECK_ICON_SIZE,
 } from "./register.styles";
+export { createEditProfileStyles, EDIT_PROFILE_BACK_ICON_SIZE } from "./editProfile.styles";

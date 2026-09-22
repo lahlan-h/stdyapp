@@ -58,6 +58,8 @@ export default function RootLayout() {
             ships its own exit, because the root Stack hides every header.
           */}
           <Stack.Screen name="post/[id]" />
+          {/* A push, for post/[id]'s reason: you go there and come back. */}
+          <Stack.Screen name="edit-profile" />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

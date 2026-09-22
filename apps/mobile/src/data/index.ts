@@ -63,3 +63,14 @@ export {
   type NotificationPreferences,
   type NotificationPreferencesState,
 } from "./useNotificationPreferences";
+// MAX_NAME_LENGTH and MAX_USERNAME_LENGTH, which edit-profile also uses, come
+// from registrationChecks above - one definition for sign-up and edit alike.
+export {
+  useProfile,
+  MAX_BIO_LENGTH,
+  MIN_USERNAME_LENGTH,
+  USERNAME_PATTERN,
+  type Profile,
+  type ProfileEdit,
+  type ProfileState,
+} from "./useProfile";
