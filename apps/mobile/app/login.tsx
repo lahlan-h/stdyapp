@@ -49,10 +49,11 @@ type WebPressState = PressableStateCallbackType & { hovered?: boolean };
  *
  * The screen the app opens on whenever nobody is signed in - the root layout's
  * guard sends every route here until the session exists. The email/username
- * and password login works, and Sign up opens the registration screen.
- * Continue with Google, Remember me and Forgot password? are laid out so the
- * screen is complete, and are deliberately static until there is something
- * behind them: the API has no OAuth and no password reset.
+ * and password login works, Remember me keeps the session across launches, and
+ * Sign up opens the registration screen. Continue with Google and Forgot
+ * password? are laid out so the screen is complete, and are deliberately static
+ * until there is something behind them: the API has no OAuth and no password
+ * reset.
  */
 const Login = () => {
   const { colors } = useTheme();
@@ -66,8 +67,9 @@ const Login = () => {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [revealed, setRevealed] = useState(false);
-  // Static: it toggles so the control does not look broken, but nothing reads
-  // it. The session is memory-only whatever this says.
+  // Ticked: the refresh token is kept on the device and the next launch goes
+  // straight to the feed. Unticked: signed in for this launch only. Off by
+  // default, so staying signed in is something the user chose.
   const [remember, setRemember] = useState(false);
 
   const passwordInput = useRef<TextInput>(null);
@@ -89,7 +91,7 @@ const Login = () => {
     Keyboard.dismiss();
     // No navigation on success: signing in flips the session and the root
     // layout's guard moves to the feed. On failure `error` is already set.
-    await login(identifier, password);
+    await login(identifier, password, remember);
   };
 
   const bypass = async () => {

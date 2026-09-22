@@ -9,7 +9,7 @@ import {
   useTabBarClearance,
   SETTINGS_FOOTER_ROOM,
 } from "@theme";
-import { useNotificationPreferences } from "@data";
+import { useNotificationPreferences, logout } from "@data";
 
 import SettingsSection from "@components/SettingsSection";
 import SettingsRow from "@components/SettingsRow";
@@ -111,11 +111,10 @@ const Settings = () => {
           </SettingsSection>
 
           {/*
-            Every row here is inert. There is no auth in the app yet - nothing
-            identifies the current user, so there is no account to edit, sign out
-            of, or delete. Laid out now so the screen is complete, and marked
-            isPlaceholder so neither the user nor the next dev mistakes a row for
-            a working control. Wire these up when auth lands.
+            Sign out works. The rest are inert: there is no profile-editing,
+            privacy or account-deletion flow yet. Laid out now so the screen is
+            complete, and marked isPlaceholder so neither the user nor the next
+            dev mistakes a row for a working control.
           */}
           <SettingsSection title="Account">
             <SettingsRow
@@ -131,7 +130,12 @@ const Settings = () => {
               label="Privacy"
               description="Who can see your sessions"
             />
-            <SettingsRow isPlaceholder icon="log-out" label="Sign out" />
+            {/*
+              No navigation: signing out flips the session and the root
+              layout's guard returns to login. It also forgets a remembered
+              session, so the next launch starts at login too.
+            */}
+            <SettingsRow icon="log-out" label="Sign out" onPress={logout} />
             <SettingsRow
               isPlaceholder
               isDestructive

@@ -5,7 +5,11 @@ import { devLogin, login as signIn } from "./auth";
 
 export interface LoginState {
   /** Resolves true on success. On false, `error` is already set and on screen. */
-  login: (identifier: string, password: string) => Promise<boolean>;
+  login: (
+    identifier: string,
+    password: string,
+    remember: boolean,
+  ) => Promise<boolean>;
   /** Signs in as the shared dev account. Same contract as `login`. */
   devBypass: () => Promise<boolean>;
   isSubmitting: boolean;
@@ -25,22 +29,27 @@ export const useLogin = (): LoginState => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
-  const login = useCallback(async (identifier: string, password: string) => {
-    setIsSubmitting(true);
-    setError(undefined);
+  const login = useCallback(
+    async (identifier: string, password: string, remember: boolean) => {
+      setIsSubmitting(true);
+      setError(undefined);
 
-    try {
-      await signIn(identifier, password);
-      return true;
-    } catch (err) {
-      setError(
-        err instanceof ApiError ? describe(err) : "Could not log in. Try again.",
-      );
-      return false;
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, []);
+      try {
+        await signIn(identifier, password, remember);
+        return true;
+      } catch (err) {
+        setError(
+          err instanceof ApiError
+            ? describe(err)
+            : "Could not log in. Try again.",
+        );
+        return false;
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [],
+  );
 
   // Shares isSubmitting and error with login, so the screen has one busy state
   // and one error box, whichever way in was tried.

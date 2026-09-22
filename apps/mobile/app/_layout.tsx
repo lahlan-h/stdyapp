@@ -7,7 +7,7 @@ import {
 } from "@expo-google-fonts/plus-jakarta-sans";
 
 import { ThemeProvider } from "@theme";
-import { useIsSignedIn } from "@data";
+import { useIsSignedIn, useSessionRestored } from "@data";
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -16,8 +16,12 @@ export default function RootLayout() {
     PlusJakartaSans_700Bold,
   });
   const signedIn = useIsSignedIn();
+  // A remembered session is still being restored. Rendering the guards now
+  // would put login on screen for the moment before the feed replaces it, so
+  // wait - one refresh round trip at most, alongside the fonts.
+  const restored = useSessionRestored();
 
-  if (!fontsLoaded) return null;
+  if (!fontsLoaded || !restored) return null;
 
   return (
     <ThemeProvider>
