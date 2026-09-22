@@ -1,4 +1,5 @@
-import { Stack } from "expo-router";
+import { useEffect } from "react";
+import { Stack, router } from "expo-router";
 import {
   useFonts,
   PlusJakartaSans_400Regular,
@@ -7,6 +8,7 @@ import {
 } from "@expo-google-fonts/plus-jakarta-sans";
 
 import { ThemeProvider } from "@theme";
+import { onSignOut } from "@data";
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -14,6 +16,11 @@ export default function RootLayout() {
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
   });
+
+  // PLACEHOLDER until the auth flow lands: its guard decides where a
+  // signed-out user goes, and replaces this effect. replace, not push, so the
+  // back gesture cannot return to the signed-in tabs.
+  useEffect(() => onSignOut(() => router.replace("/signed-out")), []);
 
   if (!fontsLoaded) return null;
 
@@ -33,6 +40,10 @@ export default function RootLayout() {
           ships its own exit, because the root Stack hides every header.
         */}
         <Stack.Screen name="post/[id]" />
+        {/* A push, for post/[id]'s reason: you go there and come back. */}
+        <Stack.Screen name="edit-profile" />
+        {/* PLACEHOLDER landing for sign-out. No swipe back into the app. */}
+        <Stack.Screen name="signed-out" options={{ gestureEnabled: false }} />
       </Stack>
     </ThemeProvider>
   );

@@ -7,6 +7,7 @@ export {
   useNewPostStyles,
   usePostDetailStyles,
   useReportDialogStyles,
+  useEditProfileStyles,
   type ThemePreference,
 } from "./ThemeProvider";
 export { lightColors, darkColors, type ColorScheme } from "./colors";
@@ -43,3 +44,4 @@ export {
   REPORT_STATE_ICON_SIZE,
   REPORT_STATE_FLAG_SIZE,
 } from "./reportDialog.styles";
+export { createEditProfileStyles, EDIT_PROFILE_BACK_ICON_SIZE } from "./editProfile.styles";

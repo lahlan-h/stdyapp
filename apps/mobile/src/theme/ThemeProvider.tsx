@@ -17,6 +17,7 @@ import { createNewPostStyles } from "./newPost.styles";
 import { createPostDetailStyles } from "./postDetail.styles";
 import { createReportDialogStyles } from "./reportDialog.styles";
 import { createTabBarStyles } from "./tabBar.styles";
+import { createEditProfileStyles } from "./editProfile.styles";
 
 const STORAGE_KEY = "themePreference";
 
@@ -79,6 +80,11 @@ const TAB_BAR_STYLES = {
   dark: createTabBarStyles(darkColors),
 } as const;
 
+const EDIT_PROFILE_STYLES = {
+  light: createEditProfileStyles(lightColors),
+  dark: createEditProfileStyles(darkColors),
+} as const;
+
 interface ThemeContextType {
   isDarkMode: boolean;
   /** The user's choice. "system" means no override - follow the OS. */
@@ -92,6 +98,7 @@ interface ThemeContextType {
   newPostStyles: (typeof NEW_POST_STYLES)["light"];
   postDetailStyles: (typeof POST_DETAIL_STYLES)["light"];
   reportDialogStyles: (typeof REPORT_DIALOG_STYLES)["light"];
+  editProfileStyles: (typeof EDIT_PROFILE_STYLES)["light"];
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -178,6 +185,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       reportDialogStyles: isDarkMode
         ? REPORT_DIALOG_STYLES.dark
         : REPORT_DIALOG_STYLES.light,
+      editProfileStyles: isDarkMode ? EDIT_PROFILE_STYLES.dark : EDIT_PROFILE_STYLES.light,
     }),
     [isDarkMode, preference, setThemePreference, toggleDarkMode],
   );
@@ -208,3 +216,6 @@ export const usePostDetailStyles = () => useTheme().postDetailStyles;
 
 /** The report-dialog stylesheet for the active theme. Never rebuilds. */
 export const useReportDialogStyles = () => useTheme().reportDialogStyles;
+
+/** The edit-profile stylesheet for the active theme. Never rebuilds. */
+export const useEditProfileStyles = () => useTheme().editProfileStyles;

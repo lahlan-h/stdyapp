@@ -98,3 +98,65 @@ export const withAuth = async <T>(
     return call(await mintOnce());
   }
 };
+
+// --- Sign-out ---------------------------------------------------------------
+
+/**
+ * Where the refresh token is expected to live once the login flow stores one.
+ *
+ * Nothing writes it yet: POST /api/auth/dev-token issues no refresh token, and
+ * the login flow that will is being built separately. Named here, beside the
+ * access token's key, so both flows agree on it.
+ */
+export const REFRESH_TOKEN_STORAGE_KEY = "refreshToken";
+
+const signOutListeners = new Set<() => void>();
+
+/**
+ * Runs `listener` after every sign-out. Returns the unsubscribe.
+ *
+ * Sign-out does not navigate, because this layer has no idea what screen a
+ * signed-out user should see. Whatever owns that - the auth flow's root
+ * guard - subscribes here and makes the move.
+ */
+export const onSignOut = (listener: () => void): (() => void) => {
+  signOutListeners.add(listener);
+  return () => signOutListeners.delete(listener);
+};
+
+/**
+ * Ends the session on this device.
+ *
+ * The tokens are removed FIRST and unconditionally, so signing out works with
+ * no network. The server call only revokes the refresh token, and it is
+ * best-effort: POST /api/auth/logout answers 204 whether or not the token
+ * existed, so there is no failure to show the user.
+ *
+ * With only the dev token, there is no refresh token to revoke, so this clears
+ * the access token and nothing else - and withAuth mints a new dev token on
+ * the next request. That is the dev flow working as designed, not sign-out
+ * failing; a real signed-out state arrives with the login flow.
+ */
+export const signOut = async (): Promise<void> => {
+  let refreshToken: string | null = null;
+  try {
+    refreshToken = await AsyncStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+  } catch {
+    /* unreadable storage means nothing to revoke */
+  }
+
+  try {
+    await AsyncStorage.multiRemove([STORAGE_KEY, REFRESH_TOKEN_STORAGE_KEY]);
+  } catch {
+    /* nothing more to do: the tokens are unusable to this session anyway */
+  }
+
+  signOutListeners.forEach((listener) => listener());
+
+  if (refreshToken) {
+    await request<void>("/api/auth/logout", {
+      method: "POST",
+      body: { refreshToken },
+    }).catch(() => {});
+  }
+};
