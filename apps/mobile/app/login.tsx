@@ -24,7 +24,7 @@ import {
   LOGIN_CHECK_ICON_SIZE,
   LOGIN_GOOGLE_MARK_SIZE,
 } from "@theme";
-import { useLogin } from "@data";
+import { useLogin, useGoogleSignIn } from "@data";
 
 /**
  * The real logo, from the shared package rather than a copy in this app.
@@ -49,17 +49,21 @@ type WebPressState = PressableStateCallbackType & { hovered?: boolean };
  *
  * The screen the app opens on whenever nobody is signed in - the root layout's
  * guard sends every route here until the session exists. The email/username
- * and password login works, Remember me keeps the session across launches, and
- * Sign up opens the registration screen. Continue with Google and Forgot
- * password? are laid out so the screen is complete, and are deliberately static
- * until there is something behind them: the API has no OAuth and no password
- * reset.
+ * and password login works, so does Continue with Google, Remember me keeps
+ * either kind of session across launches, and Sign up opens the registration
+ * screen. Only Forgot password? is static - the API has no password reset.
  */
 const Login = () => {
   const { colors } = useTheme();
   const styles = useLoginStyles();
   const insets = useSafeAreaInsets();
   const { login, devBypass, isSubmitting, error, reset } = useLogin();
+  const google = useGoogleSignIn();
+  // One busy state for the three ways in, so nothing can start while another
+  // is in flight - two sign-ins racing would each set a session.
+  const busy = isSubmitting || google.isSubmitting;
+  // One error box. Only one attempt runs at a time, so at most one has failed.
+  const shownError = error ?? google.error;
   // Which way in is in flight, so the spinner lands on the button that was
   // pressed. The hook's isSubmitting is shared between the two on purpose.
   const [bypassing, setBypassing] = useState(false);
@@ -77,13 +81,14 @@ const Login = () => {
   // The app validates by disabling, never with text under a field: one
   // boolean, one dimmed button.
   const canSubmit =
-    identifier.trim().length > 0 && password.length > 0 && !isSubmitting;
+    identifier.trim().length > 0 && password.length > 0 && !busy;
 
   // Any edit clears a shown error - it described the attempt, and the user
   // is now changing it.
   const edit = (set: (value: string) => void) => (value: string) => {
     set(value);
     if (error) reset();
+    if (google.error) google.reset();
   };
 
   const submit = async () => {
@@ -91,13 +96,15 @@ const Login = () => {
     Keyboard.dismiss();
     // No navigation on success: signing in flips the session and the root
     // layout's guard moves to the feed. On failure `error` is already set.
+    google.reset();
     await login(identifier, password, remember);
   };
 
   const bypass = async () => {
-    if (isSubmitting) return;
+    if (busy) return;
     Keyboard.dismiss();
     setBypassing(true);
+    google.reset();
     await devBypass();
     setBypassing(false);
   };
@@ -141,19 +148,31 @@ const Login = () => {
             </Text>
           </View>
 
-          {/* Static - see the component comment. */}
+          {/*
+            Remember me applies here too: ticked, a Google session outlives the
+            launch exactly as a password one does. Needs a client ID for this
+            platform and, on phones, a development build - see useGoogleSignIn.
+          */}
           <Pressable
+            onPress={() => {
+              reset();
+              google.signIn(remember);
+            }}
+            disabled={busy}
             style={({ pressed, hovered }: WebPressState) => [
               styles.google,
-              hovered && styles.lifted,
+              hovered && !busy && styles.lifted,
               pressed && { opacity: 0.8 },
             ]}
             accessibilityRole="button"
             accessibilityLabel="Continue with Google"
-            accessibilityHint="Not available yet"
-            accessibilityState={{ disabled: true }}
+            accessibilityState={{ disabled: busy, busy: google.isSubmitting }}
           >
-            <GoogleMark size={LOGIN_GOOGLE_MARK_SIZE} />
+            {google.isSubmitting ? (
+              <ActivityIndicator color={colors.google.text} />
+            ) : (
+              <GoogleMark size={LOGIN_GOOGLE_MARK_SIZE} />
+            )}
             <Text style={styles.googleLabel}>Continue with Google</Text>
           </Pressable>
 
@@ -285,7 +304,7 @@ const Login = () => {
             </View>
           </View>
 
-          {error ? (
+          {shownError ? (
             <View
               style={styles.error}
               accessibilityRole="alert"
@@ -296,7 +315,7 @@ const Login = () => {
                 size={LOGIN_ICON_SIZE}
                 color={colors.danger}
               />
-              <Text style={styles.errorText}>{error}</Text>
+              <Text style={styles.errorText}>{shownError}</Text>
             </View>
           ) : null}
 
@@ -346,16 +365,16 @@ const Login = () => {
 
               <Pressable
                 onPress={bypass}
-                disabled={isSubmitting}
+                disabled={busy}
                 style={({ pressed, hovered }: WebPressState) => [
                   styles.devButton,
-                  hovered && !isSubmitting && styles.lifted,
+                  hovered && !busy && styles.lifted,
                   pressed && { opacity: 0.8 },
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel="Continue as the dev account"
                 accessibilityHint="Development builds only. Skips login."
-                accessibilityState={{ disabled: isSubmitting, busy: bypassing }}
+                accessibilityState={{ disabled: busy, busy: bypassing }}
               >
                 {bypassing ? (
                   <ActivityIndicator color={colors.text} />

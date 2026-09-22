@@ -27,6 +27,7 @@ import {
 } from "@theme";
 import {
   useRegister,
+  useGoogleSignIn,
   evaluateRegistration,
   countPassed,
   isValidUsername,
@@ -51,8 +52,10 @@ type WebPressState = PressableStateCallbackType & { hovered?: boolean };
  * the API answers with a token pair - so there is no navigation on success:
  * the root layout's guard moves the app to the feed.
  *
- * Everything works except Continue with Google, which is static for the same
- * reason as on login: the API has no OAuth yet.
+ * Continue with Google works here too, and is the same sign-in as on login:
+ * the API creates the account if the Google user is new, with a username
+ * generated from their email, or links the existing one if the email already
+ * has an account.
  *
  * Shares login's stylesheet for everything the two screens have in common and
  * adds only its own pieces from register.styles.ts.
@@ -63,6 +66,10 @@ const Register = () => {
   const own = useRegisterStyles();
   const insets = useSafeAreaInsets();
   const { register, isSubmitting, error, reset } = useRegister();
+  const google = useGoogleSignIn();
+  // Either way in blocks the other while it runs - see login.tsx.
+  const busy = isSubmitting || google.isSubmitting;
+  const shownError = error ?? google.error;
 
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -90,13 +97,14 @@ const Register = () => {
     countPassed(results) === REGISTRATION_CHECK_COUNT &&
     isValidUsername(username) &&
     withinPasswordLimit(password) &&
-    !isSubmitting;
+    !busy;
 
   // Any edit clears a shown error - it described the attempt, and the user is
   // now changing it.
   const edit = (set: (value: string) => void) => (value: string) => {
     set(value);
     if (error) reset();
+    if (google.error) google.reset();
   };
 
   const submit = async () => {
@@ -104,6 +112,7 @@ const Register = () => {
     Keyboard.dismiss();
     // No navigation on success - see the component comment. On failure `error`
     // is already set.
+    google.reset();
     await register({ email, username, password, firstName, lastName });
   };
 
@@ -167,19 +176,30 @@ const Register = () => {
             </Text>
           </View>
 
-          {/* Static - see the component comment. */}
+          {/*
+            Always remembered, like registering with a password - there is no
+            Remember me on this screen. See useGoogleSignIn for setup.
+          */}
           <Pressable
+            onPress={() => {
+              reset();
+              google.signIn(true);
+            }}
+            disabled={busy}
             style={({ pressed, hovered }: WebPressState) => [
               styles.google,
-              hovered && styles.lifted,
+              hovered && !busy && styles.lifted,
               pressed && { opacity: 0.8 },
             ]}
             accessibilityRole="button"
             accessibilityLabel="Continue with Google"
-            accessibilityHint="Not available yet"
-            accessibilityState={{ disabled: true }}
+            accessibilityState={{ disabled: busy, busy: google.isSubmitting }}
           >
-            <GoogleMark size={LOGIN_GOOGLE_MARK_SIZE} />
+            {google.isSubmitting ? (
+              <ActivityIndicator color={colors.google.text} />
+            ) : (
+              <GoogleMark size={LOGIN_GOOGLE_MARK_SIZE} />
+            )}
             <Text style={styles.googleLabel}>Continue with Google</Text>
           </Pressable>
 
@@ -342,7 +362,7 @@ const Register = () => {
 
           <RegistrationChecks results={results} />
 
-          {error ? (
+          {shownError ? (
             <View
               style={styles.error}
               accessibilityRole="alert"
@@ -353,7 +373,7 @@ const Register = () => {
                 size={LOGIN_ICON_SIZE}
                 color={colors.danger}
               />
-              <Text style={styles.errorText}>{error}</Text>
+              <Text style={styles.errorText}>{shownError}</Text>
             </View>
           ) : null}
 

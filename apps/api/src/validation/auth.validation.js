@@ -56,6 +56,25 @@ export const loginSchema = z.strictObject({
   password: z.string().min(1, "password is required").max(MAX_TOKEN_LENGTH),
 });
 
+// Google ID tokens are signed JWTs of roughly 1-1.5KB. 4096 leaves room for a
+// long name or picture URL in the claims while still refusing anything absurd
+// before it reaches the verifier.
+const MAX_GOOGLE_ID_TOKEN_LENGTH = 4096;
+
+/**
+ * POST /api/auth/google
+ *
+ * Just the ID token. Everything else - email, name, Google's subject id - is
+ * read from the token AFTER its signature is verified, never from the body,
+ * because a body field is whatever the caller wants it to be.
+ */
+export const googleAuthSchema = z.strictObject({
+  idToken: z
+    .string()
+    .min(1, "idToken is required")
+    .max(MAX_GOOGLE_ID_TOKEN_LENGTH),
+});
+
 /**
  * POST /api/auth/refresh and POST /api/auth/logout
  *

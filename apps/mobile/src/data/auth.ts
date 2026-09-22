@@ -169,6 +169,32 @@ export const register = async ({
   });
 };
 
+/**
+ * Signs in with a Google ID token - see useGoogleSignIn for where it comes
+ * from. The API verifies it and finds, links or creates the account, then
+ * answers with the same token pair as a password login, so from here on a
+ * Google session is like any other.
+ *
+ * `remember` follows the screen: login passes its Remember me box, registration
+ * always remembers, for the reason register() gives. Throws the ApiError
+ * untouched - wording it is the hook's job.
+ */
+export const googleSignIn = async (
+  idToken: string,
+  remember: boolean,
+): Promise<void> => {
+  const response = await request<TokenResponse>("/api/auth/google", {
+    method: "POST",
+    body: { idToken },
+  });
+
+  setSession({
+    accessToken: response.data.accessToken,
+    refreshToken: response.data.refreshToken,
+    remember,
+  });
+};
+
 /** A fresh access token for the shared dev account. No credentials, no refresh token. */
 const mintDevToken = async (): Promise<string> => {
   const response = await request<DevTokenResponse>("/api/auth/dev-token", {

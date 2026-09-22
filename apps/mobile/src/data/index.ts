@@ -12,6 +12,7 @@ export type { FeedAuthor, FeedPost, FeedSession } from "./types";
 export { useIsSignedIn, useSessionRestored, logout } from "./auth";
 export { useLogin, type LoginState } from "./useLogin";
 export { useRegister, type RegisterState } from "./useRegister";
+export { useGoogleSignIn, type GoogleSignInState } from "./useGoogleSignIn";
 export type { RegisterInput } from "./auth";
 export {
   REGISTRATION_CHECK_GROUPS,

@@ -8,7 +8,8 @@
     "scheme": "stdyapp",
     "icon": "./assets/images/icon.png",
     "ios": {
-      "icon": "./assets/images/icon.png"
+      "icon": "./assets/images/icon.png",
+      "bundleIdentifier": "com.stdyapp.mobile"
     },
     "plugins": [
       "expo-router",
@@ -21,7 +22,11 @@
         }
       ],
       "expo-font",
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      "expo-web-browser"
+    ],
+    "android": {
+      "package": "com.stdyapp.mobile"
+    }
   }
 }

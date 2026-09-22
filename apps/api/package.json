@@ -16,6 +16,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "google-auth-library": "^11.1.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.3.0",
     "stripe": "^22.6.2",

@@ -20,8 +20,20 @@ model User {
   username     String    @unique
   passwordHash String
 
+  /// Google's stable subject id (`sub`) for an account that has signed in with
+  /// Google - set on first Google sign-in, whether that created the account or
+  /// linked an existing one by verified email. See loginWithGoogle in
+  /// apps/api/src/services/auth.service.js.
+  ///
+  /// @unique so one Google account can never map to two users; nullable because
+  /// most accounts never use Google. passwordHash above stays REQUIRED: an
+  /// account created through Google gets a random password nobody knows, the
+  /// same approach devAuth.service.js takes, so password login needs no special
+  /// case for it.
+  googleId     String?   @unique
+
   // The account-level real name. Nullable in the database so this migration
-  // needed no backfill, but REQUIRED at signup — see registerSchema in
+  // needed no backfill, and optional at signup too - see registerSchema in
   // apps/api/src/validation/auth.validation.js.
   firstName    String?
   lastName     String?
