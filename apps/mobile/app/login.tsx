@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 
 import GoogleMark from "@components/GoogleMark";
@@ -47,11 +48,11 @@ type WebPressState = PressableStateCallbackType & { hovered?: boolean };
  * Sign in.
  *
  * The screen the app opens on whenever nobody is signed in - the root layout's
- * guard sends every route here until the session exists. Only the email/
- * username and password login works. Continue with Google, Remember me,
- * Forgot password? and Sign up are laid out so the screen is complete, and are
- * deliberately static until there is something behind them: the API has no
- * OAuth and no password reset, and there is no sign-up screen yet.
+ * guard sends every route here until the session exists. The email/username
+ * and password login works, and Sign up opens the registration screen.
+ * Continue with Google, Remember me and Forgot password? are laid out so the
+ * screen is complete, and are deliberately static until there is something
+ * behind them: the API has no OAuth and no password reset.
  */
 const Login = () => {
   const { colors } = useTheme();
@@ -371,13 +372,11 @@ const Login = () => {
           ) : null}
 
           <View style={styles.signup}>
-            <Text style={styles.rowText}>No account?</Text>
-            {/* Static: registration has an API route but no screen yet. */}
             <Pressable
+              onPress={() => router.push("/register")}
               hitSlop={8}
               accessibilityRole="link"
-              accessibilityHint="Not available yet"
-              accessibilityState={{ disabled: true }}
+              accessibilityLabel="Sign up"
             >
               {({ hovered }: WebPressState) => (
                 <Text
@@ -388,7 +387,7 @@ const Login = () => {
                     hovered && styles.linkHovered,
                   ]}
                 >
-                  Sign up
+                  No account? Sign up!
                 </Text>
               )}
             </Pressable>

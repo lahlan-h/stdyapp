@@ -89,6 +89,53 @@ export const login = async (
   });
 };
 
+export interface RegisterInput {
+  email: string;
+  username: string;
+  password: string;
+  firstName?: string;
+  lastName?: string;
+}
+
+/**
+ * Creates an account and signs straight into it.
+ *
+ * The API answers a registration with the same token pair a login does, so a
+ * new account needs no second round trip: the session is set here and the root
+ * layout's guard moves the app to the feed, exactly as after login.
+ *
+ * Throws the ApiError untouched, like login - wording a 409 is the hook's job.
+ * Names are sent only when there is something in them: the API rejects an
+ * empty name rather than storing one, and leaving the key out is how a client
+ * says "no name yet". The password is never trimmed, for the reason login gives.
+ */
+export const register = async ({
+  email,
+  username,
+  password,
+  firstName,
+  lastName,
+}: RegisterInput): Promise<void> => {
+  const first = firstName?.trim();
+  const last = lastName?.trim();
+
+  const response = await request<TokenResponse>("/api/auth/register", {
+    method: "POST",
+    body: {
+      email: email.trim(),
+      username: username.trim(),
+      password,
+      ...(first ? { firstName: first } : {}),
+      ...(last ? { lastName: last } : {}),
+    },
+  });
+
+  setSession({
+    accessToken: response.data.accessToken,
+    refreshToken: response.data.refreshToken,
+  });
+};
+
 /** A fresh access token for the shared dev account. No credentials, no refresh token. */
 const mintDevToken = async (): Promise<string> => {
   const response = await request<DevTokenResponse>("/api/auth/dev-token", {

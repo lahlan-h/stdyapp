@@ -214,8 +214,9 @@ export const createLoginStyles = (colors: ColorScheme) => {
       textDecorationLine: "underline",
     },
     // Hover, web only. Muted to full text colour and deliberately NOT to
-    // primary: the links are inert placeholders, and colouring them like live
-    // links would promise a destination neither has.
+    // primary, so the live links (Sign up, and Log in on the sign-up screen)
+    // and the inert Forgot password? behave alike - colouring only the live
+    // ones would make the one that goes nowhere look broken.
     linkHovered: {
       color: colors.text,
     },

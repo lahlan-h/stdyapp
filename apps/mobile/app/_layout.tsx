@@ -33,6 +33,11 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Protected guard={!signedIn}>
           <Stack.Screen name="login" />
+          {/*
+            Signed-out only, like login. Registering signs in, which flips the
+            guard and lands on the feed with no navigation of its own.
+          */}
+          <Stack.Screen name="register" />
         </Stack.Protected>
 
         <Stack.Protected guard={signedIn}>

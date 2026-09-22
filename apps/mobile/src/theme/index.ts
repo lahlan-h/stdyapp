@@ -8,6 +8,7 @@ export {
   usePostDetailStyles,
   useReportDialogStyles,
   useLoginStyles,
+  useRegisterStyles,
   type ThemePreference,
 } from "./ThemeProvider";
 export { lightColors, darkColors, type ColorScheme } from "./colors";
@@ -50,3 +51,7 @@ export {
   LOGIN_CHECK_ICON_SIZE,
   LOGIN_GOOGLE_MARK_SIZE,
 } from "./login.styles";
+export {
+  createRegisterStyles,
+  REGISTER_CHECK_ICON_SIZE,
+} from "./register.styles";

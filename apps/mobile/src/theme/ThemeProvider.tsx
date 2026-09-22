@@ -18,6 +18,7 @@ import { createPostDetailStyles } from "./postDetail.styles";
 import { createReportDialogStyles } from "./reportDialog.styles";
 import { createTabBarStyles } from "./tabBar.styles";
 import { createLoginStyles } from "./login.styles";
+import { createRegisterStyles } from "./register.styles";
 
 const STORAGE_KEY = "themePreference";
 
@@ -85,6 +86,11 @@ const LOGIN_STYLES = {
   dark: createLoginStyles(darkColors),
 } as const;
 
+const REGISTER_STYLES = {
+  light: createRegisterStyles(lightColors),
+  dark: createRegisterStyles(darkColors),
+} as const;
+
 interface ThemeContextType {
   isDarkMode: boolean;
   /** The user's choice. "system" means no override - follow the OS. */
@@ -99,6 +105,7 @@ interface ThemeContextType {
   postDetailStyles: (typeof POST_DETAIL_STYLES)["light"];
   reportDialogStyles: (typeof REPORT_DIALOG_STYLES)["light"];
   loginStyles: (typeof LOGIN_STYLES)["light"];
+  registerStyles: (typeof REGISTER_STYLES)["light"];
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -186,6 +193,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         ? REPORT_DIALOG_STYLES.dark
         : REPORT_DIALOG_STYLES.light,
       loginStyles: isDarkMode ? LOGIN_STYLES.dark : LOGIN_STYLES.light,
+      registerStyles: isDarkMode ? REGISTER_STYLES.dark : REGISTER_STYLES.light,
     }),
     [isDarkMode, preference, setThemePreference, toggleDarkMode],
   );
@@ -219,3 +227,9 @@ export const useReportDialogStyles = () => useTheme().reportDialogStyles;
 
 /** The login stylesheet for the active theme. Never rebuilds. */
 export const useLoginStyles = () => useTheme().loginStyles;
+
+/**
+ * The sign-up screen's own stylesheet for the active theme. Never rebuilds.
+ * Used alongside useLoginStyles, which supplies everything the two share.
+ */
+export const useRegisterStyles = () => useTheme().registerStyles;

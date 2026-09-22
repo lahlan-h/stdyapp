@@ -1,9 +1,6 @@
 import { z } from "zod";
 
-import {
-  createUserSchema,
-  nameSchema,
-} from "./user.validation.js";
+import { createUserSchema } from "./user.validation.js";
 
 /**
  * Request schemas for the auth resource.
@@ -26,16 +23,16 @@ const MAX_TOKEN_LENGTH = 512;
 /**
  * POST /api/auth/register
  *
- * createUserSchema with the names made REQUIRED. They are optional there
- * because that schema also backs PATCH /api/users/:id, where everything must be
- * optional - but an account should not be created without a real name.
+ * createUserSchema as it stands, names included as OPTIONAL. The sign-up
+ * screen asks only for email, username and password, with first and last name
+ * offered but not required - the columns are nullable, and a name can be added
+ * later through PATCH /api/users/:id. An empty name is still a 400 (nameSchema
+ * trims, then requires one character), so a client omits the key rather than
+ * sending "".
  *
- * .extend() on a strictObject stays strict, so unknown keys are still a 400.
+ * Still a strictObject, so unknown keys are still a 400.
  */
-export const registerSchema = createUserSchema.extend({
-  firstName: nameSchema,
-  lastName: nameSchema,
-});
+export const registerSchema = createUserSchema;
 
 /**
  * POST /api/auth/login

@@ -11,6 +11,21 @@
 export type { FeedAuthor, FeedPost, FeedSession } from "./types";
 export { useIsSignedIn } from "./auth";
 export { useLogin, type LoginState } from "./useLogin";
+export { useRegister, type RegisterState } from "./useRegister";
+export type { RegisterInput } from "./auth";
+export {
+  REGISTRATION_CHECK_GROUPS,
+  REGISTRATION_CHECK_COUNT,
+  MAX_USERNAME_LENGTH,
+  MAX_NAME_LENGTH,
+  MAX_PASSWORD_LENGTH,
+  evaluateRegistration,
+  countPassed,
+  isValidUsername,
+  withinPasswordLimit,
+  type RegistrationCheckKey,
+  type RegistrationResults,
+} from "./registrationChecks";
 export { usePosts, type FeedState, type SetLiked } from "./usePosts";
 export { usePost } from "./usePost";
 // The store's own setter, for a screen that shows ONE post and so has no feed
