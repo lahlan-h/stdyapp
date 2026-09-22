@@ -8,9 +8,9 @@ import { ApiError, request } from "./api";
  *
  * Real credentials now: POST /api/auth/login exchanges an email-or-username and
  * a password for an access/refresh pair, and POST /api/auth/refresh rotates the
- * pair when the 15-minute access token runs out. This replaced a mint from the
- * dev-only /api/auth/dev-token, which took no credentials and signed every
- * caller in as one shared account.
+ * pair when the 15-minute access token runs out. The dev-only
+ * /api/auth/dev-token, which used to be the app's ONLY way in, survives solely
+ * behind the login screen's dev bypass (see devLogin).
  *
  * MEMORY ONLY, deliberately. Nothing here touches storage, so every fresh
  * launch starts signed out and lands on the login screen - the behaviour that
@@ -24,7 +24,20 @@ import { ApiError, request } from "./api";
 
 interface Session {
   accessToken: string;
-  refreshToken: string;
+  /**
+   * Absent for a dev-bypass session. POST /api/auth/dev-token issues an access
+   * token and nothing else, so there is nothing to rotate - refresh() re-mints
+   * instead.
+   */
+  refreshToken?: string;
+}
+
+interface DevTokenResponse {
+  data: {
+    user: { id: string; username: string };
+    accessToken: string;
+    tokenType: string;
+  };
 }
 
 interface TokenResponse {
@@ -76,6 +89,25 @@ export const login = async (
   });
 };
 
+/** A fresh access token for the shared dev account. No credentials, no refresh token. */
+const mintDevToken = async (): Promise<string> => {
+  const response = await request<DevTokenResponse>("/api/auth/dev-token", {
+    method: "POST",
+  });
+  return response.data.accessToken;
+};
+
+/**
+ * Signs in as the shared `dev_local` account - the login screen's dev bypass.
+ *
+ * A development convenience and nothing more: the API mounts the route only
+ * when NODE_ENV=development (anything else answers 404), and the screen only
+ * renders the button in __DEV__ builds. Every caller shares the one account.
+ */
+export const devLogin = async (): Promise<void> => {
+  setSession({ accessToken: await mintDevToken() });
+};
+
 /**
  * One refresh at a time, shared by every caller that needs it.
  *
@@ -91,6 +123,14 @@ const refresh = async (): Promise<string> => {
   if (!current) throw new ApiError(401, "Not signed in");
 
   try {
+    // A dev session has no refresh token to present, so it re-mints - what the
+    // app did on every 401 before real login existed.
+    if (!current.refreshToken) {
+      const accessToken = await mintDevToken();
+      setSession({ accessToken });
+      return accessToken;
+    }
+
     const response = await request<TokenResponse>("/api/auth/refresh", {
       method: "POST",
       body: { refreshToken: current.refreshToken },
@@ -109,7 +149,12 @@ const refresh = async (): Promise<string> => {
     // Only for a real rejection. A network failure says nothing about the
     // session, and signing someone out because their train went into a tunnel
     // would be worse than letting the call fail.
-    if (err instanceof ApiError && err.status === 401) setSession(null);
+    //
+    // 404 as well: that is the dev route answering from an API no longer in
+    // development, and no retry will bring the session back.
+    if (err instanceof ApiError && (err.status === 401 || err.status === 404)) {
+      setSession(null);
+    }
     throw err;
   }
 };

@@ -57,7 +57,10 @@ const Login = () => {
   const { colors } = useTheme();
   const styles = useLoginStyles();
   const insets = useSafeAreaInsets();
-  const { login, isSubmitting, error, reset } = useLogin();
+  const { login, devBypass, isSubmitting, error, reset } = useLogin();
+  // Which way in is in flight, so the spinner lands on the button that was
+  // pressed. The hook's isSubmitting is shared between the two on purpose.
+  const [bypassing, setBypassing] = useState(false);
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -86,6 +89,14 @@ const Login = () => {
     // No navigation on success: signing in flips the session and the root
     // layout's guard moves to the feed. On failure `error` is already set.
     await login(identifier, password);
+  };
+
+  const bypass = async () => {
+    if (isSubmitting) return;
+    Keyboard.dismiss();
+    setBypassing(true);
+    await devBypass();
+    setBypassing(false);
   };
 
   return (
@@ -160,7 +171,7 @@ const Login = () => {
               style={styles.input}
               value={identifier}
               onChangeText={edit(setIdentifier)}
-              placeholder="you@uts.edu.au"
+              placeholder="you@example.com"
               placeholderTextColor={colors.textMuted}
               keyboardType="email-address"
               autoCapitalize="none"
@@ -305,13 +316,59 @@ const Login = () => {
               end={{ x: 0.5, y: 1 }}
               style={styles.submitFill}
             >
-              {isSubmitting ? (
+              {isSubmitting && !bypassing ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
                 <Text style={styles.submitLabel}>Log in</Text>
               )}
             </LinearGradient>
           </Pressable>
+
+          {/*
+            Development builds only. __DEV__ is false in any release build, so
+            this cannot ship - and the API refuses the route outside
+            NODE_ENV=development regardless.
+          */}
+          {__DEV__ ? (
+            <>
+              <View
+                style={styles.or}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              >
+                <View style={styles.orRule} />
+                <Text style={styles.orLabel}>DEV BYPASS</Text>
+                <View style={styles.orRule} />
+              </View>
+
+              <Pressable
+                onPress={bypass}
+                disabled={isSubmitting}
+                style={({ pressed, hovered }: WebPressState) => [
+                  styles.devButton,
+                  hovered && !isSubmitting && styles.lifted,
+                  pressed && { opacity: 0.8 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Continue as the dev account"
+                accessibilityHint="Development builds only. Skips login."
+                accessibilityState={{ disabled: isSubmitting, busy: bypassing }}
+              >
+                {bypassing ? (
+                  <ActivityIndicator color={colors.text} />
+                ) : (
+                  <>
+                    <Feather
+                      name="terminal"
+                      size={LOGIN_ICON_SIZE}
+                      color={colors.textMuted}
+                    />
+                    <Text style={styles.devLabel}>Continue as dev account</Text>
+                  </>
+                )}
+              </Pressable>
+            </>
+          ) : null}
 
           <View style={styles.signup}>
             <Text style={styles.rowText}>No account?</Text>

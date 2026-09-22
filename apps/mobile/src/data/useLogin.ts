@@ -1,11 +1,13 @@
 import { useCallback, useState } from "react";
 
 import { ApiError } from "./api";
-import { login as signIn } from "./auth";
+import { devLogin, login as signIn } from "./auth";
 
 export interface LoginState {
   /** Resolves true on success. On false, `error` is already set and on screen. */
   login: (identifier: string, password: string) => Promise<boolean>;
+  /** Signs in as the shared dev account. Same contract as `login`. */
+  devBypass: () => Promise<boolean>;
   isSubmitting: boolean;
   error?: string;
   reset: () => void;
@@ -40,8 +42,30 @@ export const useLogin = (): LoginState => {
     }
   }, []);
 
+  // Shares isSubmitting and error with login, so the screen has one busy state
+  // and one error box, whichever way in was tried.
+  const devBypass = useCallback(async () => {
+    setIsSubmitting(true);
+    setError(undefined);
+
+    try {
+      await devLogin();
+      return true;
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? describeBypass(err)
+          : "Dev bypass failed. Try again.",
+      );
+      return false;
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, []);
+
   return {
     login,
+    devBypass,
     isSubmitting,
     error,
     reset: useCallback(() => setError(undefined), []),
@@ -70,6 +94,21 @@ const describe = (err: ApiError): string => {
     default:
       // Includes status 0, where api.ts has already written a message that
       // names the fix ("check EXPO_PUBLIC_API_URL").
+      return err.message;
+  }
+};
+
+/**
+ * The bypass has its own failure modes, and none of them is a wrong password -
+ * reusing the credentials message here would send someone hunting for a typo in
+ * fields they never filled in.
+ */
+const describeBypass = (err: ApiError): string => {
+  switch (err.status) {
+    case 404:
+      // The API only mounts /api/auth/dev-token when NODE_ENV=development.
+      return "Dev bypass needs the API running with NODE_ENV=development.";
+    default:
       return err.message;
   }
 };

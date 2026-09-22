@@ -272,6 +272,31 @@ export const createLoginStyles = (colors: ColorScheme) => {
       transform: [{ translateY: -1 }],
     },
 
+    // --- Dev bypass ---
+    /**
+     * The control shape, outlined in DASHES rather than filled. Dashed on
+     * purpose: it should read as scaffolding, not as a second way in that
+     * stands level with Log in - which is also why it is neutral rather than
+     * primary.
+     */
+    devButton: {
+      height: 54,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderStyle: "dashed",
+      borderColor: colors.border,
+      backgroundColor: colors.backgrounds.input,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+    },
+    devLabel: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 16,
+      color: colors.text,
+    },
+
     // --- Sign up ---
     // marginTop auto pins it to the bottom when the screen has room to spare.
     signup: {
