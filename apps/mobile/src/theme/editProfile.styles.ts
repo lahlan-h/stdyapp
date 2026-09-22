@@ -1,16 +1,15 @@
 import type { ColorScheme } from "./colors";
 import { StyleSheet } from "react-native";
 
-/** Diameter of the back button on the edit screen, and its glyph. */
+/** Diameter of the back button, and its glyph. */
 const BACK_SIZE = 40;
-const ACCOUNT_BACK_ICON_SIZE = 18;
+const EDIT_PROFILE_BACK_ICON_SIZE = 18;
 
 /**
- * Sign-in and edit-profile. Both are a column of labelled inputs over a pinned
- * primary button, so they share one sheet. Values follow newPost.styles.ts so
- * the three form screens read as one family.
+ * Edit profile: a column of labelled inputs over a pinned Save button. Values
+ * follow newPost.styles.ts so the two form screens read as one family.
  */
-export const createAccountStyles = (colors: ColorScheme) => {
+export const createEditProfileStyles = (colors: ColorScheme) => {
   const styles = StyleSheet.create({
     container: { flex: 1 },
     safeArea: { flex: 1 },
@@ -18,11 +17,6 @@ export const createAccountStyles = (colors: ColorScheme) => {
       paddingHorizontal: 16,
       paddingTop: 8,
       gap: 18,
-    },
-    // Sign-in has no scroller header to sit under, so it centres instead.
-    centred: {
-      flexGrow: 1,
-      justifyContent: "center",
     },
 
     header: {
@@ -45,11 +39,6 @@ export const createAccountStyles = (colors: ColorScheme) => {
       fontFamily: "PlusJakartaSans_700Bold",
       fontSize: 32,
       color: colors.text,
-    },
-    subtitle: {
-      fontFamily: "PlusJakartaSans_400Regular",
-      fontSize: 15,
-      color: colors.textMuted,
     },
 
     // --- Fields ---
@@ -118,7 +107,7 @@ export const createAccountStyles = (colors: ColorScheme) => {
       color: colors.danger,
     },
 
-    // --- Buttons --- (see newPost.styles.ts for why centring is on the fill)
+    // --- Save button --- (see newPost.styles.ts for why centring is on the fill)
     footer: {
       paddingHorizontal: 16,
       paddingTop: 12,
@@ -142,19 +131,6 @@ export const createAccountStyles = (colors: ColorScheme) => {
       fontSize: 16,
       color: "#ffffff",
     },
-    secondary: {
-      height: 48,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    secondaryLabel: {
-      fontFamily: "PlusJakartaSans_600SemiBold",
-      fontSize: 15,
-      color: colors.textMuted,
-    },
 
     stateText: {
       fontFamily: "PlusJakartaSans_400Regular",
@@ -166,4 +142,4 @@ export const createAccountStyles = (colors: ColorScheme) => {
   return styles;
 };
 
-export { ACCOUNT_BACK_ICON_SIZE };
+export { EDIT_PROFILE_BACK_ICON_SIZE };

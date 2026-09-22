@@ -16,7 +16,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { router } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 
-import { useTheme, useAccountStyles, ACCOUNT_BACK_ICON_SIZE } from "@theme";
+import { useTheme, useEditProfileStyles, EDIT_PROFILE_BACK_ICON_SIZE } from "@theme";
 import {
   useProfile,
   MAX_NAME_LENGTH,
@@ -82,7 +82,7 @@ const diff = (form: Form, profile: Profile) => {
 
 const EditProfile = () => {
   const { colors } = useTheme();
-  const styles = useAccountStyles();
+  const styles = useEditProfileStyles();
   const insets = useSafeAreaInsets();
   const { profile, isLoading, loadError, reload, save, isSaving, saveError, resetSaveError } =
     useProfile();
@@ -164,7 +164,7 @@ const EditProfile = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Back"
               >
-                <Feather name="chevron-left" size={ACCOUNT_BACK_ICON_SIZE} color={colors.text} />
+                <Feather name="chevron-left" size={EDIT_PROFILE_BACK_ICON_SIZE} color={colors.text} />
               </Pressable>
               <Text style={styles.screenTitle}>Edit profile</Text>
             </View>

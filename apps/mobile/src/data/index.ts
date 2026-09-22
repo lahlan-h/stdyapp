@@ -45,19 +45,7 @@ export {
   type NotificationPreferences,
   type NotificationPreferencesState,
 } from "./useNotificationPreferences";
-export {
-  useAuth,
-  restoreSession,
-  signIn,
-  signInAsDev,
-  signOut,
-  signUp,
-  describeSignInError,
-  MIN_PASSWORD_LENGTH,
-  MAX_PASSWORD_BYTES,
-  type NewAccount,
-  type AuthState,
-} from "./auth";
+export { signOut, onSignOut, REFRESH_TOKEN_STORAGE_KEY } from "./auth";
 export {
   useProfile,
   MAX_NAME_LENGTH,

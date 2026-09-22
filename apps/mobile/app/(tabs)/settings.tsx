@@ -39,8 +39,7 @@ const Settings = () => {
 
   /**
    * Confirmed first: it is one tap from the bottom of a scroll, and undoing it
-   * means typing a password. No navigation after - the root layout's guard
-   * swaps the tabs for the sign-in screen when the session clears.
+   * means signing in again. No navigation here - see signOut in @data.
    */
   const confirmSignOut = () => {
     Alert.alert("Sign out?", "You will need to sign in again to use stdy.", [
