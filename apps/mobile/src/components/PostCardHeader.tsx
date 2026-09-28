@@ -3,15 +3,14 @@ import { View, Text, Image } from "react-native";
 import { useStyles } from "@theme";
 import { formatRelativeTime } from "@stdyapp/shared";
 
+import { defaultAvatar } from "./defaultAvatar";
+
 interface PostCardHeaderProps {
   displayName: string;
   avatarUrl?: string;
   /** Epoch milliseconds. */
   createdAt: number;
 }
-
-const defaultAvatar = (seed: string) =>
-  `https://api.dicebear.com/9.x/initials/png?seed=${encodeURIComponent(seed)}`;
 
 const PostCardHeader = ({ displayName, avatarUrl, createdAt }: PostCardHeaderProps) => {
   const homeStyles = useStyles("home");
