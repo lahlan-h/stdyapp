@@ -88,3 +88,22 @@ export const getBaselines = async (req, res) => {
   const baselines = await focusService.getBaselines(req.user.id);
   res.status(200).json({ data: baselines });
 };
+
+/**
+ * GET /api/focus/accuracy - how well the estimate matches the caller's own
+ * 1-5 ratings. Returns nulls with `ready: false` until enough sessions are
+ * rated; that is the honest answer, not an error.
+ */
+export const getAccuracy = async (req, res) => {
+  const accuracy = await focusService.getAccuracy(req.user.id);
+  res.status(200).json({ data: accuracy });
+};
+
+/**
+ * GET /api/focus/leaderboard - focus-weighted minutes over a recent window.
+ * Defaults to the last 7 days.
+ */
+export const getLeaderboard = async (req, res) => {
+  const board = await focusService.getLeaderboard(req.user.id, req.validated.query);
+  res.status(200).json({ data: board });
+};

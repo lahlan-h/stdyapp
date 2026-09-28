@@ -6,6 +6,8 @@ import {
   listSamples,
   rateSession,
   getBaselines,
+  getAccuracy,
+  getLeaderboard,
 } from "../controllers/focus.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { validate } from "../middleware/validate.js";
@@ -15,6 +17,7 @@ import {
   createFocusSamplesSchema,
   focusRatingSchema,
   listSamplesQuerySchema,
+  leaderboardQuerySchema,
 } from "../validation/focus.validation.js";
 
 /**
@@ -67,3 +70,13 @@ export const focusRouter = Router();
 focusRouter.use(requireAuth);
 
 focusRouter.get("/baseline", asyncHandler(getBaselines));
+
+// No :id on either - both are about the caller, so taking a user from the URL
+// would only be an authorisation check waiting to be forgotten.
+focusRouter.get("/accuracy", asyncHandler(getAccuracy));
+
+focusRouter.get(
+  "/leaderboard",
+  validate({ query: leaderboardQuerySchema }),
+  asyncHandler(getLeaderboard),
+);

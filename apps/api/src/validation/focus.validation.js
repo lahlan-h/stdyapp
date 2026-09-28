@@ -119,3 +119,17 @@ export const listSamplesQuerySchema = z.strictObject({
     .max(MAX_PAGE_SIZE)
     .default(DEFAULT_PAGE_SIZE),
 });
+
+/**
+ * GET /api/focus/leaderboard.
+ *
+ * `days` rather than `weeks` so "today" and "yesterday" boards are expressible
+ * without a second parameter; 7 is the default because the weekly board is the
+ * one in the pitch. Capped at a term's worth - an all-time board is a different
+ * query with different indexing needs, and should be its own route rather than
+ * this one with a large number.
+ */
+export const leaderboardQuerySchema = z.strictObject({
+  days: z.coerce.number().int().min(1).max(120).default(7),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
