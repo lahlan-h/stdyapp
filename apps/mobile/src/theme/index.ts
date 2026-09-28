@@ -20,7 +20,7 @@ export { createHomeStyles } from "./home.styles";
 export {
   createStudyStyles,
   DIAL_SIZE,
-  DIAL_RING,
+  DIAL_TICKS,
   STUDY_ICON_SIZE,
   STUDY_FOOTER_ROOM,
 } from "./study.styles";

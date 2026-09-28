@@ -240,6 +240,10 @@ export const getSessionFocus = async (sessionId, userId) => {
       (sum, i) => sum + (i.durationSec ?? 0),
       0,
     ),
+    // Count as well as total, because they say different things: four short
+    // glances away is a different session from one long one, and a recap that
+    // shows only minutes cannot tell them apart.
+    interruptionCount: (session.interruptions ?? []).length,
     selfRating: rating?.selfRating ?? null,
     // Says out loud what this number is, so no client has to infer it.
     isEstimate: true,

@@ -71,7 +71,23 @@ interface SamplePage {
   data: { computedFocus: number }[];
 }
 
-export type FocusPhase = "idle" | "running" | "finished";
+/** What GET /api/sessions/:id/focus answers once the session has ended. */
+interface FocusSummary {
+  data: {
+    awaySeconds: number;
+    interruptionCount: number;
+    sampleCount: number;
+    selfRating: number | null;
+  };
+}
+
+/**
+ * Four steps, not two. The recap and the self-rating are separate screens
+ * because they ask for opposite things - one is read, the other is answered -
+ * and stacking them puts the rating below the fold on a small phone, which is
+ * how ground-truth data quietly stops being collected.
+ */
+export type FocusPhase = "idle" | "running" | "recap" | "rating";
 
 export interface FocusResult {
   /** 0-100, or null when the session produced no samples to score. */
@@ -81,6 +97,10 @@ export interface FocusResult {
   /** The other feature's gamification number, shown beside ours, never merged. */
   focusPoints: number;
   hadWatch: boolean;
+  awaySeconds: number;
+  interruptionCount: number;
+  /** How long the session actually ran, for the recap's total-time row. */
+  totalSec: number;
 }
 
 export interface FocusSessionState {
@@ -94,11 +114,21 @@ export interface FocusSessionState {
   awaySec: number;
   result: FocusResult | null;
   rating: number | null;
+  /**
+   * Per-sample scores in time order, 0-1, for the recap's trace. Empty until
+   * the session ends - during one the dial already carries the average, and a
+   * chart redrawing every 15 seconds is motion without information.
+   */
+  trace: number[];
+  /** Seconds left against the plan, or null for an open-ended session. */
+  remainingSec: number | null;
   error?: string;
   busy: boolean;
   start: () => void;
   end: () => void;
   rate: (value: number) => void;
+  /** Moves between the recap and the rating step. */
+  goTo: (phase: FocusPhase) => void;
   reset: () => void;
 }
 
@@ -110,6 +140,7 @@ export const useFocusSession = (): FocusSessionState => {
   const [liveFocus, setLiveFocus] = useState<number | null>(null);
   const [awaySec, setAwaySec] = useState(0);
   const [result, setResult] = useState<FocusResult | null>(null);
+  const [trace, setTrace] = useState<number[]>([]);
   const [rating, setRating] = useState<number | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -267,6 +298,7 @@ export const useFocusSession = (): FocusSessionState => {
         setLiveFocus(null);
         setResult(null);
         setRating(null);
+        setTrace([]);
         setPhase("running");
         startTimers();
       } catch (err) {
@@ -301,14 +333,46 @@ export const useFocusSession = (): FocusSessionState => {
           }),
         );
 
+        // The end response carries the score but not the away time or the
+        // interruption count the recap shows, so the authoritative summary is
+        // read back in one call rather than assembled from two shapes.
+        let summary: FocusSummary["data"] | null = null;
+        try {
+          summary = (
+            await withAuth((token) =>
+              request<FocusSummary>(`/api/sessions/${sessionId}/focus`, { token }),
+            )
+          ).data;
+        } catch {
+          /* the score alone is still enough to show a recap */
+        }
+
         setResult({
           focusScore: ended.focusScore,
           focusWeightedMinutes: ended.focusWeightedMinutes,
           completionFactor: ended.completionFactor,
           focusPoints: ended.focusPoints,
           hadWatch: ended.hadWatch,
+          awaySeconds: summary?.awaySeconds ?? 0,
+          interruptionCount: summary?.interruptionCount ?? 0,
+          totalSec: startedAtRef.current
+            ? Math.round((Date.now() - startedAtRef.current) / 1000)
+            : 0,
         });
-        setPhase("finished");
+
+        try {
+          const page = await withAuth((token) =>
+            request<SamplePage>(
+              `/api/sessions/${sessionId}/focus-samples?limit=500`,
+              { token },
+            ),
+          );
+          setTrace(page.data.map((sample) => sample.computedFocus));
+        } catch {
+          /* no trace: the recap simply omits the chart */
+        }
+
+        setPhase("recap");
       } catch (err) {
         setError(describe(err));
         // Back to idle rather than stuck mid-session: the timers are already
@@ -361,12 +425,26 @@ export const useFocusSession = (): FocusSessionState => {
     setAwaySec(0);
     setResult(null);
     setRating(null);
+    setTrace([]);
     setError(undefined);
   }, []);
+
+  /**
+   * Counts DOWN against a plan and up without one, matching what the dial
+   * shows. Floored at zero rather than going negative: running over a plan is
+   * allowed, and "-04:12" reads as a fault.
+   */
+  const remainingSec =
+    plannedMinutes === null ? null : Math.max(0, plannedMinutes * 60 - elapsedSec);
+
+  const goTo = useCallback((next: FocusPhase) => setPhase(next), []);
 
   return {
     phase,
     elapsedSec,
+    trace,
+    remainingSec,
+    goTo,
     plannedMinutes,
     setPlannedMinutes,
     sampleCount,
