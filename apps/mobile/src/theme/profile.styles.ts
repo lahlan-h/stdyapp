@@ -130,41 +130,31 @@ export const createProfileStyles = (colors: ColorScheme) => {
       backgroundColor: colors.border,
     },
 
-    // --- Study card ---
-    studyCard: {
-      flexDirection: "row",
+    // --- Study bubble ---
+    // Absolutely placed so the avatar stays CENTRED on the screen rather than
+    // being pushed off-centre by a sibling in a row. The header is its
+    // positioning parent.
+    studyBubble: {
+      position: "absolute",
+      left: 0,
+      top: 10,
       alignItems: "center",
-      borderRadius: 20,
+      gap: 14,
+      paddingVertical: 15,
+      paddingHorizontal: 13,
+      borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.border,
-      paddingVertical: 16,
-      overflow: "hidden",
+      backgroundColor: colors.surface,
     },
-    studyFigure: {
-      flex: 1,
+    studyBubbleFigure: {
       alignItems: "center",
-      gap: 4,
+      gap: 3,
     },
-    studyValueRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    studyValue: {
+    studyBubbleValue: {
       fontFamily: "PlusJakartaSans_700Bold",
-      fontSize: 20,
+      fontSize: 15,
       color: colors.text,
-    },
-    studyLabel: {
-      fontFamily: "PlusJakartaSans_400Regular",
-      fontSize: 12,
-      color: colors.textMuted,
-    },
-    studyDivider: {
-      width: StyleSheet.hairlineWidth,
-      alignSelf: "stretch",
-      marginVertical: 2,
-      backgroundColor: colors.border,
     },
 
     // --- Posts ---

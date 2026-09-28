@@ -21,7 +21,7 @@ import ReportDialog from "@components/ReportDialog";
 import ProfileHeader from "@components/ProfileHeader";
 import ProfileActions from "@components/ProfileActions";
 import ProfileStats from "@components/ProfileStats";
-import ProfileStudyCard from "@components/ProfileStudyCard";
+import ProfileStudyBubble from "@components/ProfileStudyBubble";
 
 /**
  * The signed-in user's profile.
@@ -124,14 +124,22 @@ const Profile = () => {
           // scroll views and break the inner one's virtualisation.
           ListHeaderComponent={
             <View style={styles.postList}>
-              <ProfileHeader profile={profile} />
+              {/*
+                The bubble is absolutely positioned against THIS wrapper, which
+                is what keeps the avatar centred on the screen: a sibling in a
+                row would push it off-centre by half the bubble's width.
+                Rendered after the header so it draws on top of it.
+              */}
+              <View>
+                <ProfileHeader profile={profile} />
+                <ProfileStudyBubble streak={streak} totals={totals} />
+              </View>
               <ProfileActions />
               <ProfileStats
                 posts={posts.length}
                 followers={summary?.followers}
                 following={summary?.following}
               />
-              <ProfileStudyCard streak={streak} totals={totals} />
               {likeError ? (
                 <Text style={styles.message}>{likeError}</Text>
               ) : null}
