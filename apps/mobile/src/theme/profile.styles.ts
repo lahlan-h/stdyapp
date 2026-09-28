@@ -66,17 +66,22 @@ export const createProfileStyles = (colors: ColorScheme) => {
     },
 
     // --- Actions ---
+    // Stacked rather than side by side, and centred under the name.
     actions: {
-      flexDirection: "row",
-      gap: 10,
+      alignItems: "center",
+      gap: 8,
       paddingTop: 4,
     },
+    // A shared minimum width is what makes the stack read as one control
+    // rather than two pills of different lengths: "Edit profile" and "Sign out"
+    // are six characters apart, so intrinsic sizing would stagger their edges.
     actionButton: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
       gap: 7,
-      paddingVertical: 10,
+      minWidth: 190,
+      paddingVertical: 11,
       paddingHorizontal: 18,
       borderRadius: 999,
       borderWidth: 1,
