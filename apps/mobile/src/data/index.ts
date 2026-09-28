@@ -29,6 +29,7 @@ export {
 } from "./registrationChecks";
 export { usePosts, type FeedState, type SetLiked } from "./usePosts";
 export { usePost } from "./usePost";
+export { useUserPosts, type UserPostsState } from "./useUserPosts";
 // The store's own setter, for a screen that shows ONE post and so has no feed
 // hook to take it from. Same function usePosts hands back - there is one array.
 export { setLiked as setPostLiked } from "./postStore";
