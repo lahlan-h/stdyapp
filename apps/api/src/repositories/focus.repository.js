@@ -255,3 +255,20 @@ export const findBlockedUserIds = async (userId) => {
   }
   return [...ids];
 };
+
+/** @param {string} userId */
+export const findCalibration = (userId) => {
+  return prisma.focusCalibration.findUnique({ where: { userId } });
+};
+
+/**
+ * @param {{ userId: string, offset: number, ratingCount: number }} calibration
+ */
+export const upsertCalibration = ({ userId, offset, ratingCount }) => {
+  const stats = { offset, ratingCount };
+  return prisma.focusCalibration.upsert({
+    where: { userId },
+    create: { userId, ...stats },
+    update: stats,
+  });
+};

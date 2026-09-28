@@ -28,6 +28,7 @@ export {
   type RegistrationResults,
 } from "./registrationChecks";
 export { usePosts, type FeedState, type SetLiked } from "./usePosts";
+export { useMotionVariance, type MotionSource } from "./useMotionVariance";
 export {
   useFocusSession,
   type FocusSessionState,

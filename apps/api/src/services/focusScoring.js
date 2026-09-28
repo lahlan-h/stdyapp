@@ -528,3 +528,69 @@ export const computeAccuracy = (pairs, minSamples = RATING_MIN_SAMPLES) => {
 
   return { count: n, meanAbsoluteError, bias, correlation };
 };
+
+/**
+ * The largest correction calibration may apply, in score points.
+ *
+ * A ceiling rather than a trust in the maths: a handful of contrarian ratings
+ * should nudge the estimate, never redefine it. At 25 the correction can move
+ * a score a full band, which is as much as any feedback loop should be allowed
+ * to do without a human looking at it.
+ */
+export const MAX_CALIBRATION_OFFSET = 25;
+
+/**
+ * How much of a measured residual is taken on board each time.
+ *
+ * Under 1 on purpose. The residual is an average over a small, noisy sample, so
+ * applying it whole overshoots and the offset rings back and forth between
+ * sessions. Half converges in a few rounds and is visibly stable in between.
+ */
+export const CALIBRATION_LEARNING_RATE = 0.5;
+
+/**
+ * Folds a freshly measured residual into the standing offset.
+ *
+ * ACCUMULATES rather than replaces, which is the whole trick. Stored scores
+ * already carry the offset that was in force when they were written, so the
+ * bias measured against them is what is LEFT OVER. Replacing the offset with it
+ * would throw away the correction already working and oscillate; adding a
+ * fraction of it converges, exactly like the integral term of a controller.
+ *
+ * @param {number} currentOffset - points currently added to every raw score
+ * @param {number} residualBias - measured (estimate - user's own verdict)
+ * @returns {number} the new offset, clamped
+ */
+export const nextCalibrationOffset = (currentOffset, residualBias) => {
+  if (!Number.isFinite(residualBias)) return currentOffset;
+
+  // Subtracted: a POSITIVE bias means the estimate reads high, so the
+  // correction has to come down.
+  const next = currentOffset - CALIBRATION_LEARNING_RATE * residualBias;
+
+  return Math.max(
+    -MAX_CALIBRATION_OFFSET,
+    Math.min(MAX_CALIBRATION_OFFSET, Number.isFinite(next) ? next : currentOffset),
+  );
+};
+
+/**
+ * Applies a user's calibration to a raw score.
+ *
+ * Ignores the offset until the user has rated enough sessions for it to mean
+ * anything - the same threshold the accuracy report uses, and for the same
+ * reason a baseline is ignored below 30 samples.
+ *
+ * @param {number|null} rawScore - 0-100, or null when nothing was measured
+ * @param {{ offset?: number, ratingCount?: number } | null} calibration
+ * @returns {number|null}
+ */
+export const applyCalibration = (rawScore, calibration) => {
+  if (rawScore === null) return null;
+  if (!calibration || (calibration.ratingCount ?? 0) < RATING_MIN_SAMPLES) {
+    return rawScore;
+  }
+
+  const offset = Number.isFinite(calibration.offset) ? calibration.offset : 0;
+  return Math.round(Math.max(0, Math.min(100, rawScore + offset)));
+};

@@ -157,6 +157,66 @@ export const createStudyStyles = (colors: ColorScheme) => {
 
     helpText: { fontSize: 12, color: colors.textMuted, lineHeight: 17 },
 
+    /** The 🎉 at the top of the recap. Carries the celebration on its own. */
+    heroEmoji: { fontSize: 44, textAlign: "center" },
+
+    /**
+     * Two reward cards side by side - XP and streak.
+     *
+     * Their own shape rather than more rows, because they are the payoff and
+     * the rows are the report. A reward that looks like a statistic is not a
+     * reward.
+     */
+    rewardRow: { flexDirection: "row", gap: 10 },
+    rewardCard: {
+      flex: 1,
+      alignItems: "center",
+      gap: 2,
+      paddingVertical: 14,
+      borderRadius: 16,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    rewardEmoji: { fontSize: 22 },
+    rewardValue: {
+      fontSize: 20,
+      fontWeight: "800",
+      color: colors.text,
+      fontVariant: ["tabular-nums"],
+    },
+    rewardLabel: {
+      fontSize: 10,
+      fontWeight: "600",
+      letterSpacing: 0.8,
+      textTransform: "uppercase",
+      color: colors.textMuted,
+    },
+
+    /** Band name shown inline beside the score, e.g. "Deep focus" next to 84. */
+    bandChip: {
+      paddingVertical: 3,
+      paddingHorizontal: 9,
+      borderRadius: 999,
+      marginRight: 8,
+    },
+    bandChipText: { fontSize: 11, fontWeight: "700" },
+
+    /** A single warning chip under the dial, shown only when there is one. */
+    warnChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      alignSelf: "center",
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      backgroundColor: colors.dangerTint,
+      borderWidth: 1,
+      borderColor: colors.dangerEdge,
+    },
+    warnChipText: { fontSize: 12, fontWeight: "600", color: colors.danger },
+
     // ---- recap rows ------------------------------------------------------
     recapHeader: { alignItems: "center", gap: 4, paddingTop: 4 },
     recapTitle: {

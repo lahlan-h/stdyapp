@@ -14,6 +14,10 @@ import {
   updateBaseline,
   computeAwayFraction,
   computeAccuracy,
+  applyCalibration,
+  nextCalibrationOffset,
+  MAX_CALIBRATION_OFFSET,
+  CALIBRATION_LEARNING_RATE,
   ratingToScore,
   RATING_MIN_SAMPLES,
   SIGNAL_WEIGHTS,
@@ -673,5 +677,70 @@ describe("computeAccuracy", () => {
   it("honours a custom threshold", () => {
     assert.equal(computeAccuracy([pair(50, 3)], 1).meanAbsoluteError, 0);
     assert.equal(RATING_MIN_SAMPLES, 5);
+  });
+});
+
+describe("nextCalibrationOffset", () => {
+  it("moves against the measured bias", () => {
+    // Estimate reading 10 points high -> the correction must come DOWN.
+    closeTo(nextCalibrationOffset(0, 10), -10 * CALIBRATION_LEARNING_RATE);
+    closeTo(nextCalibrationOffset(0, -10), 10 * CALIBRATION_LEARNING_RATE);
+  });
+
+  it("accumulates rather than replacing", () => {
+    // The whole reason this converges: stored scores already carry the standing
+    // offset, so what is measured later is the residual, and it is ADDED.
+    const first = nextCalibrationOffset(0, -12);
+    const second = nextCalibrationOffset(first, -6);
+    assert.ok(second > first, "a residual in the same direction must push further");
+  });
+
+  it("converges on the true bias instead of oscillating", () => {
+    const TRUE_BIAS = -14;
+    let offset = 0;
+    for (let i = 0; i < 25; i += 1) {
+      // Residual shrinks as the offset closes the gap - what really happens
+      // once corrected scores are the ones being rated.
+      offset = nextCalibrationOffset(offset, TRUE_BIAS + offset);
+    }
+    closeTo(offset, -TRUE_BIAS, 0.5);
+  });
+
+  it("never exceeds the ceiling in either direction", () => {
+    assert.equal(nextCalibrationOffset(0, -9999), MAX_CALIBRATION_OFFSET);
+    assert.equal(nextCalibrationOffset(0, 9999), -MAX_CALIBRATION_OFFSET);
+  });
+
+  it("ignores a non-finite residual rather than poisoning the offset", () => {
+    assert.equal(nextCalibrationOffset(-8, NaN), -8);
+    assert.equal(nextCalibrationOffset(-8, null), -8);
+  });
+});
+
+describe("applyCalibration", () => {
+  const calibrated = { offset: -12, ratingCount: 10 };
+
+  it("shifts a score by the offset", () => {
+    assert.equal(applyCalibration(70, calibrated), 58);
+  });
+
+  it("does nothing below the rating threshold", () => {
+    // Four ratings is not evidence. Correcting on it would be guessing twice.
+    assert.equal(applyCalibration(70, { offset: -12, ratingCount: 4 }), 70);
+    assert.equal(applyCalibration(70, null), 70);
+  });
+
+  it("keeps the result inside 0-100", () => {
+    assert.equal(applyCalibration(4, { offset: -25, ratingCount: 10 }), 0);
+    assert.equal(applyCalibration(96, { offset: 25, ratingCount: 10 }), 100);
+  });
+
+  it("leaves an unmeasured session unmeasured", () => {
+    // Null means "we did not measure", and a correction cannot invent a score.
+    assert.equal(applyCalibration(null, calibrated), null);
+  });
+
+  it("survives a corrupt offset", () => {
+    assert.equal(applyCalibration(70, { offset: NaN, ratingCount: 10 }), 70);
   });
 });

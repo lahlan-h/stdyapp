@@ -6,8 +6,11 @@ import {
   scoreSession,
   updateBaseline,
   computeAccuracy,
+  applyCalibration,
+  nextCalibrationOffset,
   CALIBRATION_MIN_SAMPLES,
   RATING_MIN_SAMPLES,
+  MAX_CALIBRATION_OFFSET,
 } from "./focusScoring.js";
 
 /**
@@ -26,6 +29,9 @@ import {
  * only exports enums as values at runtime, and this file should not need the
  * generated client to be readable.
  */
+/** Ratings to consider when measuring accuracy or recalibrating. */
+const ACCURACY_SAMPLE_LIMIT = 200;
+
 const SIGNALS = Object.freeze({
   MOTION: "MOTION",
   PRESENCE: "PRESENCE",
@@ -136,9 +142,10 @@ export const ingestSamples = async (sessionId, userId, samples) => {
 export const finaliseSessionFocus = async (sessionId, userId) => {
   const session = await getOwnedSessionOrThrow(sessionId, userId);
 
-  const [samples, baselineRows] = await Promise.all([
+  const [samples, baselineRows, calibration] = await Promise.all([
     focusRepo.findSamplesBySession(sessionId),
     focusRepo.findBaselinesByUser(userId),
+    focusRepo.findCalibration(userId),
   ]);
 
   const result = scoreSession({
@@ -152,9 +159,25 @@ export const finaliseSessionFocus = async (sessionId, userId) => {
     interruptions: session.interruptions ?? [],
   });
 
+  /**
+   * The user's own correction, applied LAST and to the final score only.
+   *
+   * Not folded into the per-signal baselines: those normalise sensor readings,
+   * this corrects the answer, and mixing them would make each unreadable. The
+   * weighted minutes are recomputed from the corrected score so the two numbers
+   * stored on the row cannot disagree.
+   */
+  const calibratedScore = applyCalibration(result.focusScore, calibration);
+  const elapsedMinutes = Math.max(
+    0,
+    ((session.endedAt ?? new Date()).getTime() - session.startedAt.getTime()) / 60000,
+  );
+  const calibratedWeighted =
+    calibratedScore === null ? null : elapsedMinutes * (calibratedScore / 100);
+
   await focusRepo.updateSessionFocus(sessionId, {
-    focusScore: result.focusScore,
-    focusWeightedMinutes: result.focusWeightedMinutes,
+    focusScore: calibratedScore,
+    focusWeightedMinutes: calibratedWeighted,
     completionFactor: result.completionFactor,
     hadWatch: result.hadWatch,
   });
@@ -165,7 +188,32 @@ export const finaliseSessionFocus = async (sessionId, userId) => {
     await updateBaselinesFromSamples(userId, samples, baselineRows);
   }
 
-  return result;
+  return { ...result, focusScore: calibratedScore, focusWeightedMinutes: calibratedWeighted };
+};
+
+/**
+ * Re-measures how far this user's estimates sit from their own verdicts, and
+ * nudges their calibration offset by a fraction of what is left over.
+ *
+ * Run after a rating rather than after a session, because a rating is the only
+ * event that adds evidence. Non-fatal: a failure here costs a little accuracy
+ * later, and must not fail the rating the user just gave.
+ *
+ * @param {string} userId
+ */
+const recalibrate = async (userId) => {
+  const pairs = await focusRepo.findRatedSessions(userId, ACCURACY_SAMPLE_LIMIT);
+  const accuracy = computeAccuracy(pairs);
+  if (accuracy.bias === null) return;
+
+  const current = await focusRepo.findCalibration(userId);
+  const offset = nextCalibrationOffset(current?.offset ?? 0, accuracy.bias);
+
+  await focusRepo.upsertCalibration({
+    userId,
+    offset,
+    ratingCount: accuracy.count,
+  });
 };
 
 /**
@@ -276,7 +324,17 @@ export const listSessionSamples = async (sessionId, userId, { page, limit }) => 
  */
 export const rateSession = async (sessionId, userId, selfRating) => {
   await getOwnedSessionOrThrow(sessionId, userId);
-  return focusRepo.upsertRating({ sessionId, userId, selfRating });
+  const rating = await focusRepo.upsertRating({ sessionId, userId, selfRating });
+
+  // The feedback loop closes here: a new verdict is new evidence about how far
+  // the estimate is off, so the correction is re-measured immediately.
+  try {
+    await recalibrate(userId);
+  } catch {
+    /* a missed nudge costs accuracy later, never this request */
+  }
+
+  return rating;
 };
 
 /**
@@ -304,9 +362,6 @@ export const getBaselines = async (userId) => {
   };
 };
 
-/** Ratings to consider when measuring accuracy. */
-const ACCURACY_SAMPLE_LIMIT = 200;
-
 /**
  * How closely the estimate has matched this user's own verdicts.
  *
@@ -317,11 +372,17 @@ const ACCURACY_SAMPLE_LIMIT = 200;
  * @param {string} userId
  */
 export const getAccuracy = async (userId) => {
-  const pairs = await focusRepo.findRatedSessions(userId, ACCURACY_SAMPLE_LIMIT);
+  const [pairs, calibration] = await Promise.all([
+    focusRepo.findRatedSessions(userId, ACCURACY_SAMPLE_LIMIT),
+    focusRepo.findCalibration(userId),
+  ]);
   const accuracy = computeAccuracy(pairs);
 
   return {
     ...accuracy,
+    // Surfaced so the correction is inspectable rather than a hidden fudge.
+    calibrationOffset: calibration?.offset ?? 0,
+    maxCalibrationOffset: MAX_CALIBRATION_OFFSET,
     minSamples: RATING_MIN_SAMPLES,
     // Says plainly why the numbers are null, rather than leaving a client to
     // infer it from count < minSamples.

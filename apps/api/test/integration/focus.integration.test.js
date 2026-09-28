@@ -44,6 +44,7 @@ if (TEST_DB) {
 const destroyUser = async (id) => {
   await prisma.session.deleteMany({ where: { userId: id } });
   await prisma.focusBaseline.deleteMany({ where: { userId: id } });
+  await prisma.focusCalibration.deleteMany({ where: { userId: id } });
   await prisma.block.deleteMany({
     where: { OR: [{ blockerId: id }, { blockedId: id }] },
   });
@@ -241,6 +242,47 @@ describe("focus feature against a real database", { skip }, () => {
       assert.equal(ready.correlation, null);
     } finally {
       await destroyUser(fresh);
+    }
+  });
+
+  it("moves the calibration offset towards the user's own verdicts", async () => {
+    const learner = await makeUser("calibrate");
+    try {
+      const runAndRate = async (selfRating) => {
+        const id = await openSession(learner, { minutes: 30 });
+        await focusService.ingestSamples(id, learner, [
+          { motionVariance: 0.1, inApp: true },
+          { motionVariance: 0.1, inApp: true },
+        ]);
+        await sessionService.endSession(id, learner);
+        await focusService.rateSession(id, learner, selfRating);
+      };
+
+      // Below the threshold nothing is corrected - four ratings is not evidence.
+      for (let i = 0; i < 4; i += 1) await runAndRate(5);
+      assert.equal((await focusRepo.findCalibration(learner))?.offset ?? 0, 0);
+
+      // The fifth crosses it. Rating every session 5/5 against low estimates
+      // means the score reads LOW, so the correction must go UP.
+      await runAndRate(5);
+      const first = await focusRepo.findCalibration(learner);
+      assert.ok(first, "a calibration row should exist once rated enough");
+      assert.ok(first.offset > 0, `expected a positive offset, got ${first.offset}`);
+
+      // And it accumulates rather than resetting each time.
+      await runAndRate(5);
+      const second = await focusRepo.findCalibration(learner);
+      assert.ok(
+        second.offset > first.offset,
+        `expected the offset to keep climbing: ${first.offset} -> ${second.offset}`,
+      );
+      assert.ok(second.offset <= 25, "the offset must stay inside its ceiling");
+
+      // And it reaches the score the user is actually shown.
+      const accuracy = await focusService.getAccuracy(learner);
+      assert.equal(accuracy.calibrationOffset, second.offset);
+    } finally {
+      await destroyUser(learner);
     }
   });
 

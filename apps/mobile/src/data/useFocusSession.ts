@@ -3,6 +3,7 @@ import { AppState, type AppStateStatus } from "react-native";
 
 import { ApiError, request } from "./api";
 import { withAuth } from "./auth";
+import { useMotionVariance } from "./useMotionVariance";
 
 /**
  * Drives one focus session: start, stream samples, log time away, end, rate.
@@ -37,21 +38,6 @@ const LIVE_REFRESH_EVERY = 4;
  */
 const MIN_AWAY_SEC = 5;
 
-/**
- * Device motion for one interval, as a variance in g².
- *
- * PLACEHOLDER. A real reading needs expo-sensors' Accelerometer, which is not
- * a dependency of this app yet, so adding it is a decision for whoever owns
- * the mobile package rather than something to slip in here. It would also buy
- * nothing today: the iOS Simulator has no accelerometer and reports a constant.
- *
- * The shape is what matters and is already right - one number per interval,
- * scored against the user's own baseline server-side - so swapping this for
- * the real subscription is a change to this function and nothing else.
- *
- * Returns a low, slightly noisy value: "sitting still, holding the phone".
- */
-const readMotionVariance = (): number => 0.08 + Math.random() * 0.06;
 
 /** What PATCH /api/sessions/:id/end answers, which is the session row itself. */
 interface EndedSession {
@@ -69,6 +55,11 @@ interface StartedSession {
 
 interface SamplePage {
   data: { computedFocus: number }[];
+}
+
+/** What GET /api/streaks/me answers - a bare row, not wrapped in `data`. */
+interface StreakRow {
+  currentCount: number;
 }
 
 /** What GET /api/sessions/:id/focus answers once the session has ended. */
@@ -122,6 +113,10 @@ export interface FocusSessionState {
   trace: number[];
   /** Seconds left against the plan, or null for an open-ended session. */
   remainingSec: number | null;
+  /** False when motion is the fallback rather than a real accelerometer. */
+  hasMotionSensor: boolean;
+  /** Days in a row, for the recap's reward card. 0 until the streak loads. */
+  streakDays: number;
   error?: string;
   busy: boolean;
   start: () => void;
@@ -141,6 +136,7 @@ export const useFocusSession = (): FocusSessionState => {
   const [awaySec, setAwaySec] = useState(0);
   const [result, setResult] = useState<FocusResult | null>(null);
   const [trace, setTrace] = useState<number[]>([]);
+  const [streakDays, setStreakDays] = useState(0);
   const [rating, setRating] = useState<number | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -157,6 +153,8 @@ export const useFocusSession = (): FocusSessionState => {
   const awaySinceRef = useRef<number | null>(null);
 
   const stopTimers = useRef<() => void>(() => {});
+
+  const { startMotion, stopMotion, readMotionVariance, hasSensor } = useMotionVariance();
 
   const describe = (err: unknown) =>
     err instanceof ApiError ? err.message : "Something went wrong";
@@ -187,13 +185,16 @@ export const useFocusSession = (): FocusSessionState => {
     // report anything, so "not active" is as close as this gets in-band. The
     // real absence is caught by the interruption logged on return.
     const inApp = AppState.currentState === "active";
+    // Reads and RESETS the window, so each sample describes only the interval
+    // since the last one.
+    const motionVariance = readMotionVariance();
 
     try {
       await withAuth((token) =>
         request(`/api/sessions/${sessionId}/focus-samples`, {
           method: "POST",
           token,
-          body: { samples: [{ motionVariance: readMotionVariance(), inApp }] },
+          body: { samples: [{ motionVariance, inApp }] },
         }),
       );
 
@@ -209,7 +210,7 @@ export const useFocusSession = (): FocusSessionState => {
       // whole thing, and the phone is the least reliable part of this path.
       if (__DEV__) console.warn("[focus] sample dropped:", describe(err));
     }
-  }, [refreshLiveFocus]);
+  }, [refreshLiveFocus, readMotionVariance]);
 
   /**
    * Records a trip out of the app as an interruption.
@@ -239,6 +240,8 @@ export const useFocusSession = (): FocusSessionState => {
 
   /** Ticking clock, sampler and AppState listener, all torn down together. */
   const startTimers = useCallback(() => {
+    startMotion();
+
     const tick = setInterval(() => {
       if (startedAtRef.current) {
         setElapsedSec(Math.floor((Date.now() - startedAtRef.current) / 1000));
@@ -263,9 +266,10 @@ export const useFocusSession = (): FocusSessionState => {
       clearInterval(tick);
       clearInterval(sampler);
       subscription.remove();
+      stopMotion();
       stopTimers.current = () => {};
     };
-  }, [sendSample, logAway]);
+  }, [sendSample, logAway, startMotion, stopMotion]);
 
   // Nothing may outlive the screen: an interval still posting samples after
   // the user has navigated away would keep writing to a session they think
@@ -372,6 +376,17 @@ export const useFocusSession = (): FocusSessionState => {
           /* no trace: the recap simply omits the chart */
         }
 
+        // Read AFTER the session ends, because ending it is what extends the
+        // streak - fetching earlier would show yesterday's number.
+        try {
+          const streak = await withAuth((token) =>
+            request<StreakRow>("/api/streaks/me", { token }),
+          );
+          setStreakDays(streak.currentCount ?? 0);
+        } catch {
+          /* the reward card falls back to hiding the streak */
+        }
+
         setPhase("recap");
       } catch (err) {
         setError(describe(err));
@@ -444,6 +459,8 @@ export const useFocusSession = (): FocusSessionState => {
     elapsedSec,
     trace,
     remainingSec,
+    streakDays,
+    hasMotionSensor: hasSensor(),
     goTo,
     plannedMinutes,
     setPlannedMinutes,

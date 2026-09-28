@@ -143,6 +143,7 @@ model User {
 
   focusRatings   FocusRating[]
   focusBaselines FocusBaseline[]
+  focusCalibration FocusCalibration?
 
   @@map("users")
 }
@@ -1056,6 +1057,38 @@ enum FocusSignal {
   MOTION
   PRESENCE
   HEART_RATE
+}
+
+/// How far this user's focus estimate has to be shifted to match their own
+/// verdicts — the feedback loop that makes the score self-correcting.
+///
+/// SEPARATE FROM FocusBaseline, which normalises each SIGNAL against the user's
+/// own sensor readings. This corrects the FINAL SCORE against the user's own
+/// ratings, which is a different quantity measured against different evidence:
+/// a perfectly baselined user can still be handed scores that read ten points
+/// low across the board.
+///
+/// The offset ACCUMULATES rather than being recomputed from scratch, and that
+/// detail is load-bearing. Stored focusScores already include the correction
+/// applied when they were written, so the bias measured against them later is
+/// the RESIDUAL. Recomputing from it would drive the offset back to zero and
+/// oscillate; adding the residual to the standing offset converges instead.
+model FocusCalibration {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Points ADDED to the raw 0-100 score. Negative when the estimate runs high.
+  /// Clamped when written, so a handful of odd ratings cannot swing the score.
+  offset      Float    @default(0)
+
+  /// How many rated sessions the offset was last measured from. Below the
+  /// threshold in focusScoring.js the offset is ignored entirely.
+  ratingCount Int      @default(0)
+
+  updatedAt   DateTime @updatedAt
+
+  @@map("focus_calibrations")
 }
 
 /// A user's personal normal for one signal — the denominator of the z-score.
