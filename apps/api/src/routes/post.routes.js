@@ -89,12 +89,14 @@ const cacheOne = cache({
   buildKey: (req, [postVersion]) => postKey(req.params.id, req.user.id, postVersion),
 });
 
-// GET / — the caller's own list. Shares postUserListKey with the route below,
-// because listMyPosts and listPostsByUser return byte-identical data.
+// GET / — the caller's own list. Still shares postUserListKey with the route
+// below: here the author and the viewer are both the caller, which is exactly
+// what GET /user/me resolves to, so the two compose an identical key.
 const cacheMyList = cache({
   ttlSec: CACHE_TTL_POST_USER_LIST_SEC,
   versionKeys: (req) => [postAuthorVersionKey(req.user.id)],
-  buildKey: (req, [userVersion]) => postUserListKey(req.user.id, userVersion),
+  buildKey: (req, [userVersion]) =>
+    postUserListKey(req.user.id, req.user.id, userVersion),
 });
 
 /**
@@ -109,8 +111,11 @@ const cacheMyList = cache({
 const cacheUserList = cache({
   ttlSec: CACHE_TTL_POST_USER_LIST_SEC,
   versionKeys: (req) => [postAuthorVersionKey(resolveTargetUserId(req))],
+  // req.user.id is the VIEWER and is REQUIRED in the key: these rows carry
+  // isLiked / isReported / isMine, so the answer depends on who is asking. See
+  // postUserListKey.
   buildKey: (req, [userVersion]) =>
-    postUserListKey(resolveTargetUserId(req), userVersion),
+    postUserListKey(resolveTargetUserId(req), req.user.id, userVersion),
 });
 
 /**
