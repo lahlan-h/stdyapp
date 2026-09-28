@@ -1,8 +1,8 @@
 import { prisma } from "@stdyapp/core";
 
-export const createSession = ({ userId, groupId, inviteCode }) => {
+export const createSession = ({ userId, groupId, inviteCode, plannedMinutes = null }) => {
   return prisma.session.create({
-    data: { userId, groupId, inviteCode },
+    data: { userId, groupId, inviteCode, plannedMinutes },
   });
 };
 
@@ -28,9 +28,9 @@ export const deleteSession = (id) => {
   return prisma.session.delete({ where: { id } });
 };
 
-export const addInterruption = ({ sessionId, durationSec, penaltyApplied }) => {
+export const addInterruption = ({ sessionId, durationSec, penaltyApplied, type = null }) => {
   return prisma.sessionInterruption.create({
-    data: { sessionId, durationSec, penaltyApplied },
+    data: { sessionId, durationSec, penaltyApplied, type },
   });
 };
 
