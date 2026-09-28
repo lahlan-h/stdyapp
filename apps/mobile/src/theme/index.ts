@@ -3,6 +3,7 @@ export {
   useStyles,
   ThemeProvider,
   useHomeStyles,
+  useStudyStyles,
   useSettingsStyles,
   useTabBarStyles,
   useNewPostStyles,
@@ -15,6 +16,13 @@ export {
 } from "./useTheme";
 export { lightColors, darkColors, type ColorScheme } from "./colors";
 export { createHomeStyles } from "./home.styles";
+export {
+  createStudyStyles,
+  DIAL_SIZE,
+  DIAL_RING,
+  STUDY_ICON_SIZE,
+  STUDY_FOOTER_ROOM,
+} from "./study.styles";
 export {
   createSettingsStyles,
   ROW_ICON_SIZE,
