@@ -119,6 +119,7 @@ const GOAL_EPOCH = "go1";
 const STREAK_EPOCH = "st1";
 const SUBSCRIPTION_EPOCH = "sb1";
 const NOTIFICATION_EPOCH = "nt1";
+const ANALYTICS_EPOCH = "an1";
 
 /**
  * Version counters outlive the payloads beneath them by a wide margin, and that
@@ -1130,3 +1131,27 @@ export const bumpVersions = async (keys) => {
     noteFailure(`incr ${unique.length} versions`, err);
   }
 };
+
+/**
+ * Personal analytics - GET /api/analytics/me.
+ *
+ * Stamped with three counters from three domains (sessions, goals, streak) and
+ * with today's date in the caller's zone - see the note above cacheMine in
+ * analytics.routes.js for why each is there.
+ *
+ * range and tz are in the key because they change the answer. tz must be the
+ * CANONICAL spelling analytics.validation.js produces, or one answer is cached
+ * under several keys.
+ *
+ * No viewer segment, unlike sessionKey: the route only ever answers for the
+ * token's own user, so the subject IS the viewer.
+ *
+ * @param {string} userId
+ * @param {{ range: string, tz: string, today: string, sessionVersion: number,
+ *   goalVersion: number, streakVersion: number }} parts
+ */
+export const analyticsKey = (
+  userId,
+  { range, tz, today, sessionVersion, goalVersion, streakVersion },
+) =>
+  `${ANALYTICS_EPOCH}:analytics:me:${userId}:${range}:${tz}:${today}:s${sessionVersion}:g${goalVersion}:t${streakVersion}`;

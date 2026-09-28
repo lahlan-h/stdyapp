@@ -136,6 +136,21 @@ const Settings = () => {
           </SettingsSection>
 
           {/*
+            Here until the Profile tab is built, which is the natural home for
+            it - move the row there then.
+          */}
+          <SettingsSection title="Study">
+            <SettingsRow
+              isFirst
+              icon="bar-chart-2"
+              label="Analytics"
+              description="Focus time, goals and habits"
+              onPress={() => router.push("/analytics")}
+              right={<Feather name="chevron-right" size={ROW_ICON_SIZE} color={colors.textMuted} />}
+            />
+          </SettingsSection>
+
+          {/*
             Edit profile and Sign out are live. Privacy and Delete account are
             still placeholders: the API stores isPrivate but nothing enforces it
             yet, and account deletion needs its own confirm-with-password flow.

@@ -60,6 +60,8 @@ export default function RootLayout() {
           <Stack.Screen name="post/[id]" />
           {/* A push, for post/[id]'s reason: you go there and come back. */}
           <Stack.Screen name="edit-profile" />
+          {/* A push, for the same reason. */}
+          <Stack.Screen name="analytics" />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

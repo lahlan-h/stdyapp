@@ -16,6 +16,7 @@ import goalRoutes from "./goal.routes.js"
 import streakRoutes from "./streak.routes.js"
 import subscriptionRoutes from "./subscription.routes.js"
 import notificationRoutes from "./notification.routes.js"
+import analyticsRoutes from "./analytics.routes.js"
 import devAuthRoutes from "./devAuth.routes.js"
 import { isDevAuthEnabled } from "../config/auth.js";
 
@@ -38,6 +39,7 @@ router.use("/goals", goalRoutes);
 router.use("/streaks", streakRoutes);
 router.use("/subscriptions", subscriptionRoutes);
 router.use("/notifications", notificationRoutes);
+router.use("/analytics", analyticsRoutes);
 
 // DEVELOPMENT ONLY. POST /api/auth/dev-token mints an access token with no
 // credentials, so it must be ABSENT rather than merely guarded anywhere else:
