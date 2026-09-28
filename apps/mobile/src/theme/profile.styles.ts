@@ -161,14 +161,21 @@ export const createProfileStyles = (colors: ColorScheme) => {
     // shares the bubble's anchor so it grows out of where the user tapped.
     // zIndex is what lifts it above the cards below; its wrapper carries one
     // too, or those later siblings would paint on top of it.
+    // ⚠ The vertical metrics here MUST match studyBubble exactly - same top,
+    // same paddingVertical, same gap, and rows that reuse studyBubbleFigure.
+    // That is what keeps the icons and values from moving when it opens: only
+    // the labels side grows, so the figures stay under the finger that tapped
+    // them. paddingRight is the one dimension that differs, because that is
+    // the side the labels appear on.
     studyPanel: {
       position: "absolute",
       left: 0,
       top: 10,
-      gap: 12,
+      gap: 14,
       paddingVertical: 15,
-      paddingHorizontal: 16,
-      borderRadius: 24,
+      paddingLeft: 13,
+      paddingRight: 18,
+      borderRadius: 26,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
@@ -179,16 +186,13 @@ export const createProfileStyles = (colors: ColorScheme) => {
       shadowOffset: { width: 0, height: 6 },
       elevation: 8,
     },
+    // The figure keeps its stacked icon-over-value shape; the label sits beside
+    // the pair rather than the three running in a line, which would drop every
+    // value onto a different baseline than the collapsed bubble puts it on.
     studyPanelRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 10,
-    },
-    studyPanelValue: {
-      fontFamily: "PlusJakartaSans_700Bold",
-      fontSize: 16,
-      color: colors.text,
-      minWidth: 34,
+      gap: 12,
     },
     studyPanelLabel: {
       fontFamily: "PlusJakartaSans_400Regular",

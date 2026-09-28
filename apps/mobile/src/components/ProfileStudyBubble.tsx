@@ -69,6 +69,10 @@ export const studyFigures = (
  * drawn OVER the header from the same anchor rather than displacing it, so
  * nothing below moves and the panel grows out of where the user tapped.
  *
+ * The panel reuses this component's own figure block and matches its vertical
+ * metrics, so opening it grows the card to the RIGHT and leaves every icon and
+ * value exactly where it was. Only the labels are new.
+ *
  * Tapping either state toggles, so the panel is its own way out - there is no
  * full-screen backdrop to catch a tap elsewhere, which inside a list header
  * would have to live at screen level the way ReportDialog does.
@@ -91,12 +95,20 @@ const ProfileStudyBubble = ({ streak, totals }: ProfileStudyBubbleProps) => {
       >
         {figures.map(({ icon, value, label, isLit }) => (
           <View key={label} style={styles.studyPanelRow}>
-            <Feather
-              name={icon}
-              size={PROFILE_STUDY_ICON_SIZE}
-              color={isLit ? colors.warning : colors.textMuted}
-            />
-            <Text style={styles.studyPanelValue}>{value}</Text>
+            {/*
+              The SAME figure block the collapsed bubble draws, deliberately -
+              icon stacked over value, identical styles. Laying the three out in
+              a line instead would put every value on a different baseline than
+              the collapsed state, so the numbers would visibly jump on tap.
+            */}
+            <View style={styles.studyBubbleFigure}>
+              <Feather
+                name={icon}
+                size={PROFILE_STUDY_ICON_SIZE}
+                color={isLit ? colors.warning : colors.textMuted}
+              />
+              <Text style={styles.studyBubbleValue}>{value}</Text>
+            </View>
             <Text style={styles.studyPanelLabel}>{label}</Text>
           </View>
         ))}
