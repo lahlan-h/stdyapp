@@ -36,3 +36,11 @@ android/
 
 # Prisma generated client
 packages/core/generated/
+
+# Claude Code - local assistant files, never shared
+.claude/
+CLAUDE.local.md
+
+# Nested .DS_Store: the bare rule above matches only the repo root, which is how
+# packages/shared/.DS_Store ended up tracked on home-interface.
+**/.DS_Store
