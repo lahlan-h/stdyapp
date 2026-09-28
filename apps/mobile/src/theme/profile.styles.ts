@@ -97,14 +97,16 @@ export const createProfileStyles = (colors: ColorScheme) => {
       color: colors.danger,
     },
 
-    // --- Stats row ---
-    // Deliberately NOT a card: the figures read as part of the header block
-    // above them, and boxing them would put a third border between the name and
-    // the first post.
+    // --- Stats card ---
     stats: {
       flexDirection: "row",
       justifyContent: "center",
-      paddingTop: 4,
+      alignItems: "center",
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 14,
+      overflow: "hidden",
     },
     stat: {
       flex: 1,

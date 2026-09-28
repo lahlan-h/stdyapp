@@ -1,6 +1,7 @@
 import { View, Text } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 
-import { useStyles } from "@theme";
+import { useTheme, useStyles } from "@theme";
 
 interface ProfileStatsProps {
   posts: number;
@@ -33,18 +34,24 @@ const Stat = ({ value, label }: StatProps) => {
   );
 };
 
-/** Posts, followers and following, as three plain figures under the header. */
+/** Posts, followers and following, in their own card under the header. */
 const ProfileStats = ({ posts, followers, following }: ProfileStatsProps) => {
+  const { colors } = useTheme();
   const styles = useStyles("profile");
 
   return (
-    <View style={styles.stats}>
+    <LinearGradient
+      style={styles.stats}
+      colors={colors.gradients.surface}
+      start={{ x: 0.5, y: 0 }}
+      end={{ x: 0.5, y: 1 }}
+    >
       <Stat value={String(posts)} label="Posts" />
       <View style={styles.statDivider} />
       <Stat value={show(followers)} label="Followers" />
       <View style={styles.statDivider} />
       <Stat value={show(following)} label="Following" />
-    </View>
+    </LinearGradient>
   );
 };
 
