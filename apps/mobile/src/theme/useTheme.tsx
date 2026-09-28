@@ -221,6 +221,9 @@ export const useStyles = <K extends StyleName>(name: K): BuiltStyles[K] => {
 /** The home stylesheet for the active theme. Never rebuilds. */
 export const useHomeStyles = () => useStyles("home");
 
+/** @see useStyles */
+export const useStudyStyles = () => useStyles("study");
+
 /** The settings stylesheet for the active theme. Never rebuilds. */
 export const useSettingsStyles = () => useStyles("settings");
 
