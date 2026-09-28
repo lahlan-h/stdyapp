@@ -200,6 +200,13 @@ model Session {
 
   startedAt     DateTime  @default(now())
   endedAt       DateTime?
+
+  /// How long the user MEANT to study, set when the session starts. Nullable: a
+  /// session opened without a plan is still valid, and every session created
+  /// before this column existed has none. When present it drives the focus
+  /// estimate's completion factor; when absent the scorer falls back to sample
+  /// coverage.
+  plannedMinutes Int?
   /// The gamification score: minutes studied minus interruption penalties.
   /// Deliberately LEFT ALONE by the focus-estimate feature — focusScore below
   /// is a different number answering a different question.

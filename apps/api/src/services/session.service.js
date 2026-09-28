@@ -101,7 +101,7 @@ export const invalidateDetachedSessions = async (refs) => {
   });
 };
 
-export const startSession = async ({ userId, groupId }) => {
+export const startSession = async ({ userId, groupId, plannedMinutes = null }) => {
   // A group session counts towards that group - its stats, and later its
   // leaderboard - so only a member may start one. Without this, anyone who
   // knew a group's id could attach sessions to it.
@@ -120,7 +120,12 @@ export const startSession = async ({ userId, groupId }) => {
     ? Math.random().toString(36).slice(2, 8).toUpperCase()
     : null;
 
-  const session = await sessionRepo.createSession({ userId, groupId, inviteCode });
+  const session = await sessionRepo.createSession({
+    userId,
+    groupId,
+    inviteCode,
+    plannedMinutes,
+  });
 
   // Only the OWNER scope. A brand new session has no cached single-session
   // payload to orphan — nobody can have read an id that did not exist — but it
@@ -259,7 +264,7 @@ export const deleteSession = async (sessionId, userId) => {
   return result;
 };
 
-export const logInterruption = async (sessionId, userId, { durationSec }) => {
+export const logInterruption = async (sessionId, userId, { durationSec, type = null }) => {
   const session = await getOwnedSessionOrThrow(sessionId, userId);
 
   if (session.endedAt) {
@@ -274,6 +279,7 @@ export const logInterruption = async (sessionId, userId, { durationSec }) => {
     sessionId,
     durationSec,
     penaltyApplied,
+    type,
   });
 
   // CONTENT scope only, and the asymmetry is deliberate. findSessionById
