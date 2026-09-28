@@ -7,6 +7,14 @@ interface PostCardBodyProps {
   caption?: string;
 }
 
+/**
+ * The post's text: a headline, and supporting text when there is any.
+ *
+ * The caption is the optional half. A post is complete with a title and a
+ * photo, so the second Text is dropped entirely rather than rendered empty -
+ * an empty Text still takes the container's gap and leaves a ragged space
+ * under the title.
+ */
 const PostCardBody = ({ title, caption }: PostCardBodyProps) => {
   const homeStyles = useStyles("home");
 

@@ -202,12 +202,20 @@ export const invalidateDetachedPosts = async (posts) => {
  * the write is wrapped so a failed insert takes the orphan with it.
  *
  * @param {{ userId: string, sessionId?: string, routineId?: string,
- *           caption: string, photo: Buffer }} input - photo is the parsed file
- *           part, size-capped and guaranteed non-empty by uploadImage()
+ *           title: string, caption?: string, photo: Buffer }} input - photo is
+ *           the parsed file part, size-capped and guaranteed non-empty by
+ *           uploadImage()
  * @returns {Promise<object>} the created post
  * @throws 403 when a link is not the caller's, 415 for non-image bytes, 502 R2 down
  */
-export const createPost = async ({ userId, sessionId, routineId, caption, photo }) => {
+export const createPost = async ({
+  userId,
+  sessionId,
+  routineId,
+  title,
+  caption,
+  photo,
+}) => {
   // FIRST, before a byte reaches R2. Both checks hit the database, so they are
   // not free - but they are far cheaper than an upload, and doing them first
   // means a 403 leaves nothing behind to reclaim.
@@ -234,7 +242,10 @@ export const createPost = async ({ userId, sessionId, routineId, caption, photo 
       // "no link", not "field omitted".
       sessionId: sessionId ?? null,
       routineId: routineId ?? null,
-      caption,
+      title,
+      // Same reasoning: the column is nullable and an omitted caption means
+      // "no caption", not "field missing".
+      caption: caption ?? null,
       photoUrl,
     });
   } catch (err) {
@@ -268,11 +279,64 @@ export const getPost = async (postId, requesterId) => {
  *
  * Returns the { items, total, page, limit } shape listUsers returns, so the
  * controller can build the pagination envelope the same way.
+ *
+ * VIEWER-SPECIFIC, which is new, and only safe because this is the one post
+ * read deliberately left UNCACHED - cache() sits on GET /:id, GET / and
+ * GET /user/:userId only. So no cache key needs a viewer dimension and no
+ * invalidation changes. If /all is ever cached, its key MUST carry req.user.id
+ * the way postKey already does, or one caller's heart state would be replayed
+ * to everyone else for the whole TTL.
+ *
+ * THAT WARNING NOW GUARDS TWO FACTS, AND THE SECOND IS MUCH WORSE TO LEAK. A
+ * replayed heart is a cosmetic wrong answer. A replayed `isReported` would tell
+ * one user that another had reported a post - the single fact this entity exists
+ * to withhold, and the one the Report model's doc block calls a retaliation
+ * vector. Caching this route without a viewer dimension is therefore not a
+ * performance trade-off to weigh; it is a privacy bug.
  */
-export const listAllPosts = async ({ page, limit }) => {
-  const [items, total] = await postRepo.findAllPosts({
-    skip: (page - 1) * limit,
-    take: limit,
+export const listAllPosts = async ({ page, limit }, viewerId) => {
+  const [rows, total] = await postRepo.findAllPosts(
+    { skip: (page - 1) * limit, take: limit },
+    viewerId,
+  );
+
+  // Flattened HERE rather than shipped as it comes back. Each relation is
+  // filtered to the viewer and capped at one row by its unique, so its length is
+  // the whole answer - but leaving the array on the payload would put an
+  // internal join shape on the wire and invite a client to read it as "the
+  // likers" or, far worse, "the reporters", which it is not. Both are
+  // destructured off so neither can survive the spread.
+  const items = rows.map(({ likes, reports, ...post }) => {
+    const report = reports[0];
+    // Presence is NOT the answer. A withdrawn report is still a row - the unique
+    // keeps it there so the reporter can file again - and getPostReportStatus in
+    // report.service.js draws the same line, so the two must agree or a feed
+    // flag and the status route would disagree about the same post.
+    const isReported = Boolean(report) && report.status !== "WITHDRAWN";
+
+    return {
+      ...post,
+      isLiked: likes.length > 0,
+      isReported,
+      // Both only while the report is live. Handing back the id of a WITHDRAWN
+      // row would let a client PATCH it to WITHDRAWN a second time - a write
+      // that changes nothing, spends the rate limit and reads as success - and
+      // its reason would have the app tell a reporter they had filed something
+      // they had already taken back.
+      reportId: isReported ? report.id : null,
+      reportReason: isReported ? report.reason : null,
+      // The third of a family: isLiked, isReported and isMine are all facts
+      // about the VIEWER rather than about the post, worked out here so no
+      // client has to work them out twice and disagree.
+      //
+      // Unlike its two siblings it discloses nothing. userId is a Post scalar
+      // and user.id is already joined onto every row of this feed, so a client
+      // could derive this itself the moment it knew its own id - which, today,
+      // it does not. It exists so the app can WITHHOLD an action, never to
+      // grant one: fileReport rejects a self-report on its own authority, and
+      // that check is what actually enforces the rule.
+      isMine: post.userId === viewerId,
+    };
   });
 
   return { items, total, page, limit };
@@ -344,7 +408,7 @@ export const deleteMyPosts = async (userId) => {
 };
 
 /**
- * Editable: caption and the two links. The author, createdAt and PHOTO are
+ * Editable: title, caption and the two links. The author, createdAt and PHOTO are
  * history and stay unwritable — the fields are destructured out explicitly
  * rather than passing req.body through, the same defence updateRoutine uses, so
  * extra keys in the body cannot reach the database.
@@ -362,7 +426,7 @@ export const deleteMyPosts = async (userId) => {
 export const updatePost = async (
   postId,
   requesterId,
-  { caption, sessionId, routineId },
+  { title, caption, sessionId, routineId },
 ) => {
   await getOwnedPostOrThrow(postId, requesterId);
 
@@ -372,6 +436,7 @@ export const updatePost = async (
   await Promise.all(checks);
 
   const post = await postRepo.updatePost(postId, {
+    title,
     caption,
     sessionId,
     routineId,

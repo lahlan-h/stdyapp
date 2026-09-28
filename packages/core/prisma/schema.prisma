@@ -20,8 +20,20 @@ model User {
   username     String    @unique
   passwordHash String
 
+  /// Google's stable subject id (`sub`) for an account that has signed in with
+  /// Google - set on first Google sign-in, whether that created the account or
+  /// linked an existing one by verified email. See loginWithGoogle in
+  /// apps/api/src/services/auth.service.js.
+  ///
+  /// @unique so one Google account can never map to two users; nullable because
+  /// most accounts never use Google. passwordHash above stays REQUIRED: an
+  /// account created through Google gets a random password nobody knows, the
+  /// same approach devAuth.service.js takes, so password login needs no special
+  /// case for it.
+  googleId     String?   @unique
+
   // The account-level real name. Nullable in the database so this migration
-  // needed no backfill, but REQUIRED at signup — see registerSchema in
+  // needed no backfill, and optional at signup too - see registerSchema in
   // apps/api/src/validation/auth.validation.js.
   firstName    String?
   lastName     String?
@@ -309,7 +321,15 @@ model Post {
   routineId String?
   routine   StudyRoutine? @relation(fields: [routineId], references: [id], onDelete: SetNull)
 
-  caption   String
+  // The headline, and the only text a post must have. Length is capped in
+  // post.validation.js rather than here, the same way every other title in this
+  // schema is - TEXT in Postgres, bounded at the edge.
+  title     String
+
+  // Optional: a title alone is a complete post. Was NOT NULL until title
+  // existed, when it was carrying the headline; see the add_post_title
+  // migration, which moved that text across and cleared this column.
+  caption   String?
   photoUrl  String
   createdAt DateTime     @default(now())
 
@@ -317,11 +337,19 @@ model Post {
   comments  Comment[]
   bookmarks Bookmark[]
 
-  // The reports filed against this post. NO ROUTE reads this side, for the reason
-  // `bookmarks` above has no "saved by" route: a report count on a post would tell
-  // its author they had been reported, and the count moving would say it again
-  // every time. It is here so Prisma can express the foreign key, and for
-  // findReporterIdsByPosts. See the note on the Report model.
+  // The reports filed against this post. EXACTLY ONE ROUTE reads this side, and
+  // only ever FILTERED TO THE VIEWER: findAllPosts selects the caller's own
+  // report to answer "have I reported this", which is the read the
+  // @@unique([reporterId, targetPostId]) on Report names itself for. That is the
+  // same discipline `likes` takes one line up — a where-clause on the viewer and
+  // a select of two columns, never `reports: true`, which would put every
+  // reporter's id on every row of a public feed.
+  //
+  // What stays forbidden is the UNFILTERED side, for the reason `bookmarks` above
+  // has no "saved by" route: a report count on a post would tell its author they
+  // had been reported, and the count moving would say it again every time. No
+  // count, no "who reported this", and no route from which either can be derived.
+  // See the note on the Report model.
   reports   Report[]     @relation("ReportTargetPost")
 
   // Covers the per-user feed — the caller's own posts, newest first. Composite
@@ -837,6 +865,21 @@ model Report {
   // report.validation.js — so the API rejects an unknown reason while the column
   // stays free to grow one.
   reason       String
+
+  // The reporter's own words, and the only free text this table holds. NULL for
+  // most rows: the seven reasons carry the complaint on their own, and this is
+  // the overflow for the one that cannot — OTHER means nothing to a moderator
+  // without it, so createReportSchema makes it mandatory there and optional
+  // everywhere else.
+  //
+  // Unbounded TEXT here with the limit at the edge (MAX_REPORT_DETAILS in
+  // report.validation.js), for `reason`'s reason directly above: a cap that will
+  // be argued about belongs where changing it is not a migration.
+  //
+  // It follows `reason` through a reopen — see fileReport — because a reopened
+  // report is a NEW complaint wearing an old id, and stale text under a fresh
+  // accusation is worse than none.
+  details      String?
 
   // Where the report sits in its lifecycle. A String for reason's reason, plus a
   // second one: the interesting values (REVIEWED, ACTIONED, DISMISSED) belong to a

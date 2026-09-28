@@ -76,6 +76,28 @@ export const getJwtSecret = () => {
 export const isDevAuthEnabled = () => process.env.NODE_ENV === "development";
 
 /**
+ * The OAuth client IDs a Google ID token may be issued to - one per platform
+ * the app signs in from (web, iOS, Android), comma-separated in
+ * GOOGLE_CLIENT_IDS.
+ *
+ * This list IS the audience check. A Google ID token is proof of identity only
+ * to the client it was minted for; accepting one issued to someone else's
+ * app would let that app sign its users into ours as themselves.
+ *
+ * Empty when unset, and deliberately NOT part of assertAuthConfig: Google
+ * sign-in is optional, so a missing value turns /api/auth/google into a 503
+ * rather than stopping the whole API from booting. Read at call time, for the
+ * reason at the top of this file.
+ *
+ * @returns {string[]}
+ */
+export const getGoogleClientIds = () =>
+  (process.env.GOOGLE_CLIENT_IDS ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+/**
  * Fails fast at boot if auth is misconfigured.
  *
  * Called from index.js AFTER ./config/env.js has run. Without this the app

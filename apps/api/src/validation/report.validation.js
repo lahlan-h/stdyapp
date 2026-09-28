@@ -38,6 +38,16 @@ export const REPORT_REASONS = [
 ];
 
 /**
+ * How much free text may accompany a report.
+ *
+ * Lives here rather than on the column for REPORT_REASONS' reason: the edge is
+ * where a limit can change without a migration. The mobile client mirrors this
+ * number in a character counter, so moving it means moving it in both places —
+ * which is why it is exported rather than inlined into the schema below.
+ */
+export const MAX_REPORT_DETAILS = 200;
+
+/**
  * The lifecycle states a report can be in.
  *
  * THE FULL VOCABULARY, NOT the set a reporter may choose from. Only PENDING and
@@ -98,12 +108,31 @@ export const reportPostParamSchema = z.strictObject({
  * The path is set to targetUserId so the issue lands on a field rather than at
  * the object root, where validate.js would have to fall back to naming the whole
  * body.
+ *
+ * `details` is the one field a reporter writes in their own words, and the
+ * second refine makes it MANDATORY for OTHER. A report whose only content is
+ * "OTHER" tells a moderator nothing at all — it is the one reason that cannot
+ * stand on its own — so the requirement is a data-quality rule, not UI polish,
+ * and belongs here rather than in the client that happens to ask for it today.
+ *
+ * It stays OPTIONAL for the other six rather than being forbidden outright. A
+ * reporter who wants to add context to a HARASSMENT report is giving a moderator
+ * more to work with, and a schema that rejected it would turn a helpful client
+ * into a 400 for no gain.
  */
 export const createReportSchema = z
   .strictObject({
     targetUserId: z.uuid("targetUserId must be a UUID").optional(),
     targetPostId: z.uuid("targetPostId must be a UUID").optional(),
     reason: z.enum(REPORT_REASONS),
+    // Trimmed BEFORE the length check, so a body of spaces cannot satisfy a
+    // min(1) that a moderator would then read as an empty explanation.
+    details: z
+      .string()
+      .trim()
+      .min(1, "details must not be empty")
+      .max(MAX_REPORT_DETAILS, `details must be ${MAX_REPORT_DETAILS} characters or fewer`)
+      .optional(),
   })
   .refine(
     (body) => Boolean(body.targetUserId) !== Boolean(body.targetPostId),
@@ -112,7 +141,11 @@ export const createReportSchema = z
         "exactly one of targetUserId or targetPostId must be provided",
       path: ["targetUserId"],
     },
-  );
+  )
+  .refine((body) => body.reason !== "OTHER" || Boolean(body.details), {
+    message: "details is required when reason is OTHER",
+    path: ["details"],
+  });
 
 /**
  * PATCH /api/reports/:id.

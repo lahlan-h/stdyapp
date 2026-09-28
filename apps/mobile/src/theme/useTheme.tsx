@@ -17,6 +17,13 @@ import { createHomeStyles } from "./home.styles";
 import { createStudyStyles } from "./study.styles";
 import { createProfileStyles } from "./profile.styles";
 import { createSettingsStyles } from "./settings.styles";
+import { createNewPostStyles } from "./newPost.styles";
+import { createPostDetailStyles } from "./postDetail.styles";
+import { createReportDialogStyles } from "./reportDialog.styles";
+import { createTabBarStyles } from "./tabBar.styles";
+import { createLoginStyles } from "./login.styles";
+import { createRegisterStyles } from "./register.styles";
+import { createEditProfileStyles } from "./editProfile.styles";
 
 const STORAGE_KEY = "themePreference";
 
@@ -61,6 +68,13 @@ const styleMap = {
   study: createStudyStyles,
   profile: createProfileStyles,
   settings: createSettingsStyles,
+  newPost: createNewPostStyles,
+  postDetail: createPostDetailStyles,
+  reportDialog: createReportDialogStyles,
+  tabBar: createTabBarStyles,
+  login: createLoginStyles,
+  register: createRegisterStyles,
+  editProfile: createEditProfileStyles,
 } as const;
 
 type StyleName = keyof typeof styleMap;
@@ -198,3 +212,36 @@ export const useTheme = () => {
 export const useStyles = <K extends StyleName>(name: K): BuiltStyles[K] => {
   return useTheme().styles[name];
 };
+
+// Per-screen shorthands for useStyles, kept so the screens written against
+// them keep working. Each is exactly useStyles(<name>).
+
+/** The home stylesheet for the active theme. Never rebuilds. */
+export const useHomeStyles = () => useStyles("home");
+
+/** The settings stylesheet for the active theme. Never rebuilds. */
+export const useSettingsStyles = () => useStyles("settings");
+
+/** The tab bar stylesheet for the active theme. Never rebuilds. */
+export const useTabBarStyles = () => useStyles("tabBar");
+
+/** The new-post stylesheet for the active theme. Never rebuilds. */
+export const useNewPostStyles = () => useStyles("newPost");
+
+/** The post-detail stylesheet for the active theme. Never rebuilds. */
+export const usePostDetailStyles = () => useStyles("postDetail");
+
+/** The report-dialog stylesheet for the active theme. Never rebuilds. */
+export const useReportDialogStyles = () => useStyles("reportDialog");
+
+/** The login stylesheet for the active theme. Never rebuilds. */
+export const useLoginStyles = () => useStyles("login");
+
+/**
+ * The sign-up screen's own stylesheet for the active theme. Never rebuilds.
+ * Used alongside useLoginStyles, which supplies everything the two share.
+ */
+export const useRegisterStyles = () => useStyles("register");
+
+/** The edit-profile stylesheet for the active theme. Never rebuilds. */
+export const useEditProfileStyles = () => useStyles("editProfile");

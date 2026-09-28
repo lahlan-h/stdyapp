@@ -25,6 +25,12 @@ import { z } from "zod";
 // a study-session caption and far below anything that would hurt.
 const MAX_CAPTION_LENGTH = 2000;
 
+// Post.title is TEXT too, and bounded here for the same reason. Much tighter
+// than the caption because it is a headline: it renders as one bold line on a
+// feed card, and anything longer than this wraps into a paragraph and stops
+// reading as a title at all. Matches the cap on StudyRoutine.title.
+const MAX_TITLE_LENGTH = 100;
+
 /**
  * The optional links, as a uuid.
  *
@@ -59,6 +65,12 @@ const captionSchema = z
   .min(1, "caption must not be empty")
   .max(MAX_CAPTION_LENGTH, `caption must be at most ${MAX_CAPTION_LENGTH} characters`);
 
+const titleSchema = z
+  .string()
+  .trim()
+  .min(1, "title must not be empty")
+  .max(MAX_TITLE_LENGTH, `title must be at most ${MAX_TITLE_LENGTH} characters`);
+
 /**
  * POST /api/posts - the text fields of the multipart body.
  *
@@ -74,7 +86,12 @@ const captionSchema = z
  * createUserSchema. The server derives photoUrl from the key it just wrote.
  */
 export const createPostSchema = z.strictObject({
-  caption: captionSchema,
+  title: titleSchema,
+  // Optional: a title and a photo are a complete post. Note this cannot use the
+  // empty-string normalisation the links use - a caption is free text, so ""
+  // has to be rejected as "you typed nothing" rather than read as "absent". The
+  // client omits the field entirely when there is no caption.
+  caption: captionSchema.optional(),
   sessionId: formLinkSchema,
   routineId: formLinkSchema,
 });
@@ -105,7 +122,10 @@ export const createPostSchema = z.strictObject({
  */
 export const updatePostSchema = z
   .strictObject({
-    caption: captionSchema.optional(),
+    // Inside the literal, not bolted on with .extend(): the .refine below makes
+    // this a ZodEffects, which has no .extend().
+    title: titleSchema.optional(),
+    caption: captionSchema.nullish(),
     sessionId: linkSchema.nullish(),
     routineId: linkSchema.nullish(),
   })

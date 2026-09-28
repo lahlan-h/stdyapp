@@ -1,72 +1,34 @@
-import { useCallback } from "react";
-import { usePaginatedQuery } from "convex/react";
-import { api } from "@stdyapp/convex-stub";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
+import { request } from "./api";
+import { withAuth } from "./auth";
+import { toFeedPost, type RawFeedRow } from "./feedMapping";
+import * as postStore from "./postStore";
 import type { FeedPost } from "./types";
 
-/** How many posts to fetch per page. */
+/** How many posts to fetch per page. The API caps `limit` at 100. */
 const PAGE_SIZE = 10;
 
-/**
- * One row as the backend returns it, before mapping onto the UI's own shape.
- *
- * This is the boundary: Convex's `_id` / `_creationTime` naming stops here and
- * never reaches a component. Declared structurally rather than imported from the
- * generated Convex types so replacing the backend does not ripple outward.
- */
-interface RawFeedRow {
-  _id: string;
-  authorId: string;
-  _creationTime: number;
-  title: string;
-  caption?: string;
-  durationMinutes: number;
-  goalsHit: number;
-  imageUrl?: string;
-  likeCount: number;
-  author: {
-    _id: string;
-    username: string;
-    displayName: string;
-    avatarUrl?: string;
-  } | null;
+interface FeedResponse {
+  data: RawFeedRow[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+  };
 }
 
 /**
- * Returns null when the author is missing - the query joins the author but
- * leaves it nullable, because dropping rows inside a paginated query returns
- * short pages and confuses the cursor. Filtering belongs here instead. See
- * getPosts in packages/convex-stub/convex/posts.ts.
+ * Applies one post's like state to every screen showing it.
+ *
+ * The optimistic half of a like lives in postStore rather than in useLikePost
+ * because the store OWNS the posts - a second copy of them over there would be
+ * two sources of truth for the same heart, and they would disagree the moment
+ * a page is appended or the feed is refreshed underneath a tap.
  */
-const toFeedPost = (row: RawFeedRow): FeedPost | null => {
-  if (!row.author) {
-    // Loud in development, because this failure is otherwise invisible: a post
-    // dropped here just does not appear, so a feed where every author dangled
-    // would render empty with no error - indistinguishable from a backend that
-    // is not answering at all.
-    if (__DEV__) {
-      console.warn(`[usePosts] dropping post ${row._id}: author ${row.authorId} did not resolve`);
-    }
-    return null;
-  }
-
-  return {
-    id: row._id,
-    title: row.title,
-    caption: row.caption,
-    durationMinutes: row.durationMinutes,
-    goalsHit: row.goalsHit,
-    imageUrl: row.imageUrl,
-    likeCount: row.likeCount,
-    createdAt: row._creationTime,
-    author: {
-      id: row.author._id,
-      username: row.author.username,
-      displayName: row.author.displayName,
-      avatarUrl: row.author.avatarUrl,
-    },
-  };
-};
+export type SetLiked = (postId: string, isLiked: boolean) => void;
 
 export interface FeedState {
   posts: FeedPost[];
@@ -74,28 +36,73 @@ export interface FeedState {
   isLoading: boolean;
   canLoadMore: boolean;
   loadMore: () => void;
+  /** Set when the feed could not be read. The screen shows it rather than an empty feed. */
+  error?: string;
+  /** Re-reads from page one. Call after creating a post. */
+  refresh: () => void;
+  /** Flips one post's heart and count - see SetLiked. */
+  setLiked: SetLiked;
 }
 
 /**
  * The home feed, newest first.
  *
- * One subscription per page, with each post's author already attached. The feed
- * used to fetch every post in the table on load and then fire a query per card
- * for its author and another for its likes.
+ * Pages are appended rather than refetched, so scrolling does not re-request
+ * what is already on screen. Each row arrives with its author and linked
+ * session attached, which is why there is no per-card query.
+ *
+ * The posts themselves live in postStore, not here: the detail screen reads the
+ * same array, so a like tapped there updates the card behind it without either
+ * screen refetching, and without the feed losing its place.
  */
 export const usePosts = (): FeedState => {
-  const { results, status, loadMore } = usePaginatedQuery(
-    api.posts.getPosts,
-    {},
-    { initialNumItems: PAGE_SIZE },
-  );
+  const posts = useSyncExternalStore(postStore.subscribe, postStore.getSnapshot);
+
+  const [page, setPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  const fetchPage = useCallback(async (target: number) => {
+    setIsFetching(true);
+    try {
+      const response = await withAuth((token) =>
+        request<FeedResponse>(
+          `/api/posts/all?page=${target}&limit=${PAGE_SIZE}`,
+          { token },
+        ),
+      );
+
+      // Page one replaces, later pages append - so refresh() needs no second
+      // code path, and it drops rows deleted since the last read.
+      postStore.setPage(response.data.map(toFeedPost), target);
+      setHasNextPage(response.pagination.hasNextPage);
+      setPage(target);
+      setError(undefined);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load the feed.");
+    } finally {
+      setIsFetching(false);
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPage(1);
+  }, [fetchPage]);
 
   return {
-    posts: (results as RawFeedRow[])
-      .map(toFeedPost)
-      .filter((post): post is FeedPost => post !== null),
-    isLoading: status === "LoadingFirstPage",
-    canLoadMore: status === "CanLoadMore",
-    loadMore: useCallback(() => loadMore(PAGE_SIZE), [loadMore]),
+    posts,
+    isLoading,
+    canLoadMore: hasNextPage && !isFetching,
+    // Guarded rather than debounced: FlatList fires onEndReached repeatedly
+    // while a fetch is in flight, and each one would append the same page.
+    loadMore: useCallback(() => {
+      if (!isFetching && hasNextPage) fetchPage(page + 1);
+    }, [fetchPage, isFetching, hasNextPage, page]),
+    error,
+    refresh: useCallback(() => fetchPage(1), [fetchPage]),
+    setLiked: postStore.setLiked,
   };
 };

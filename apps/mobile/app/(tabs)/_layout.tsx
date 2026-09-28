@@ -1,51 +1,28 @@
-import { NativeTabs } from "expo-router/unstable-native-tabs";
-import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
-import AntDesign from "@expo/vector-icons/AntDesign";
-import Feather from "@expo/vector-icons/Feather";
+import { Tabs } from "expo-router/js-tabs";
 
-import { useTheme } from "@theme";
+import TabBar, { TABS } from "@components/TabBar";
 
 /**
- * `family` is typed as the union of the icon sets actually listed below, so a
- * typo in `icon` is a compile error against the right set. It used to be cast
- * to `any`, which turned every icon name into an unchecked string.
+ * The JS tab navigator, not `NativeTabs`.
+ *
+ * The native bar renders a real UITabBarController / BottomNavigationView and
+ * takes styling tokens only - there is no way to place the add-post circle
+ * between its icons, so the design could not be built on it. TabBar draws the
+ * bar instead; everything about which screens exist stays file-based.
+ *
+ * `headerShown: false` is load-bearing: NativeTabs never had a header, but this
+ * navigator shows one by default, and without this every screen grows one.
  */
-type IconFamily = typeof AntDesign | typeof Feather | typeof FontAwesome5;
-
-interface TabConfig {
-  name: string;
-  label: string;
-  family: IconFamily;
-  icon: string;
-}
-
-const TABS: TabConfig[] = [
-  { name: "index", label: "Home", family: AntDesign, icon: "home" },
-  { name: "study", label: "Study", family: Feather, icon: "book" },
-  { name: "profile", label: "Profile", family: FontAwesome5, icon: "user" },
-  { name: "settings", label: "Settings", family: Feather, icon: "settings" },
-];
-
 const TabsLayout = () => {
-  const { colors } = useTheme();
-
   return (
-    <NativeTabs
-      tintColor={colors.primary}
-      iconColor={{ default: colors.textMuted, selected: colors.primary }}
-      minimizeBehavior="onScrollDown"
+    <Tabs
+      screenOptions={{ headerShown: false }}
+      tabBar={(props) => <TabBar {...props} />}
     >
-      {TABS.map(({ name, label, family, icon }) => (
-        <NativeTabs.Trigger key={name} name={name}>
-          <NativeTabs.Trigger.Label selectedStyle={{ color: colors.primary }}>
-            {label}
-          </NativeTabs.Trigger.Label>
-          <NativeTabs.Trigger.Icon
-            src={<NativeTabs.Trigger.VectorIcon family={family} name={icon} />}
-          />
-        </NativeTabs.Trigger>
+      {TABS.map(({ name }) => (
+        <Tabs.Screen key={name} name={name} />
       ))}
-    </NativeTabs>
+    </Tabs>
   );
 };
 

@@ -10,18 +10,19 @@ import * as postService from "../services/post.service.js";
  * sees it - so uploadImage is what guarantees req.file.buffer is a non-empty
  * Buffer within the size cap, and imageType.js is what decides it is an image.
  *
- * Every check that used to live here is now in createPostSchema: shape, caption
- * length, uuid-ness of the links, and the loud 400 for a client still sending a
- * photoUrl.
+ * Every check that used to live here is now in createPostSchema: shape, title
+ * and caption length, uuid-ness of the links, and the loud 400 for a client
+ * still sending a photoUrl.
  */
 export const create = async (req, res, next) => {
   try {
-    const { sessionId, routineId, caption } = req.validated.body;
+    const { sessionId, routineId, title, caption } = req.validated.body;
 
     const post = await postService.createPost({
       userId: req.user.id,
       sessionId,
       routineId,
+      title,
       caption,
       photo: req.file.buffer,
     });
@@ -55,11 +56,18 @@ export const getOne = async (req, res, next) => {
  *     handler in this file does. asyncHandler exists for the users/auth
  *     controllers, which throw and have no catch of their own; a handler that
  *     already catches gains nothing from it.
+ *
+ * The viewer is passed as well as the page, and that is what lets each row
+ * carry isLiked - a per-caller answer _count.likes cannot give, since it is a
+ * total over everyone. req.user.id is safe to read unguarded here: the router
+ * applies requireAuth to every route in this file, so an unauthenticated
+ * request never reaches this handler.
  */
 export const listAll = async (req, res, next) => {
   try {
     const { items, total, page, limit } = await postService.listAllPosts(
       req.validated.query,
+      req.user.id,
     );
 
     res.status(200).json({
@@ -136,9 +144,10 @@ export const update = async (req, res, next) => {
     //
     // photoUrl is gone from the schema entirely: a post's photo is fixed at
     // creation, so sending one is now a 400 rather than a silent no-op.
-    const { caption, sessionId, routineId } = req.validated.body;
+    const { title, caption, sessionId, routineId } = req.validated.body;
 
     const post = await postService.updatePost(req.params.id, req.user.id, {
+      title,
       caption,
       sessionId,
       routineId,
