@@ -36,6 +36,11 @@ export {
   type FollowCountsState,
 } from "./useFollowCounts";
 export { useStreak, type Streak, type StreakState } from "./useStreak";
+export {
+  useStudySessions,
+  type StudyTotals,
+  type StudySessionsState,
+} from "./useStudySessions";
 // The store's own setter, for a screen that shows ONE post and so has no feed
 // hook to take it from. Same function usePosts hands back - there is one array.
 export { setLiked as setPostLiked } from "./postStore";
