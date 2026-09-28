@@ -232,33 +232,78 @@ export const scoreSample = (sample, baselines = {}) => {
 };
 
 /**
- * How much of the session the sampling actually covered, 0-1.
+ * How much of the session the user saw through, 0-1.
  *
- * A note on what this measures, because it is not what the original spec
- * described. The spec framed completion as time served against a PLANNED
- * duration - but no planned duration is recorded anywhere in the schema, and
- * adding one would mean changing the session-create endpoint, which belongs to
- * another feature. Sample coverage is derivable from data that already exists
- * and captures the same thing in practice: a user who abandons a session
- * halfway stops producing samples halfway, so coverage falls. A user who sees
- * it through produces samples to the end, and coverage approaches 1.
+ * Two sources, in order of preference:
  *
- * Returns 0 for a session with fewer than two samples: a single sample spans no
- * time, so nothing has been covered.
+ *  1. PLANNED DURATION, when the client recorded one at session start. This is
+ *     the honest measure the spec asked for: elapsed time against what the user
+ *     said they would do. Ending a planned hour at 30 minutes is 0.5. Running
+ *     over is capped at 1 - overshooting a plan is commitment, but it is not
+ *     "more than complete", and letting it exceed 1 would let a long session
+ *     buy back a poor focus score.
  *
- * @param {{ startedAt: Date, endedAt: Date, samples: Array<{ timestamp: Date }> }} args
+ *  2. SAMPLE COVERAGE otherwise: the span from first to last sample over the
+ *     session's elapsed time. A user who abandons a session halfway stops
+ *     producing samples halfway, so coverage falls in the same way. Kept as the
+ *     fallback so every session started without a plan - including all of them
+ *     created before plannedMinutes existed - still gets a meaningful value.
+ *
+ * Coverage returns 0 for fewer than two samples: a single sample spans no time.
+ *
+ * @param {{
+ *   startedAt: Date,
+ *   endedAt: Date,
+ *   samples: Array<{ timestamp: Date }>,
+ *   plannedMinutes?: number|null,
+ * }} args
  * @returns {number}
  */
-export const computeCompletionFactor = ({ startedAt, endedAt, samples }) => {
-  if (!Array.isArray(samples) || samples.length < 2) return 0;
-
+export const computeCompletionFactor = ({ startedAt, endedAt, samples, plannedMinutes = null }) => {
   const elapsedMs = new Date(endedAt).getTime() - new Date(startedAt).getTime();
   if (!(elapsedMs > 0)) return 0;
+
+  if (Number.isFinite(plannedMinutes) && plannedMinutes > 0) {
+    return clamp01(elapsedMs / (plannedMinutes * 60_000));
+  }
+
+  if (!Array.isArray(samples) || samples.length < 2) return 0;
 
   const times = samples.map((s) => new Date(s.timestamp).getTime());
   const coveredMs = Math.max(...times) - Math.min(...times);
 
   return clamp01(coveredMs / elapsedMs);
+};
+
+/**
+ * The fraction of a session the user was away from the app, 0-1.
+ *
+ * WHY THIS EXISTS AT ALL. The per-sample presence signal cannot see this. When
+ * a user leaves the app, iOS suspends it: JavaScript stops, and no sample is
+ * sent saying `inApp: false` — no sample is sent at all. So a user who spent
+ * half the session in another app produces samples only from the half they were
+ * present for, and scoring those alone would rate them as if the absence never
+ * happened.
+ *
+ * What the client CAN see is the gap. On returning to the app it logs an
+ * interruption with how long it was away, which is what this reads.
+ *
+ * @param {Array<{ durationSec: number }>} interruptions
+ * @param {number} elapsedMs - the session's wall-clock duration
+ * @returns {number}
+ */
+export const computeAwayFraction = (interruptions, elapsedMs) => {
+  if (!Array.isArray(interruptions) || interruptions.length === 0) return 0;
+  if (!(elapsedMs > 0)) return 0;
+
+  const awaySec = interruptions.reduce(
+    (sum, i) => sum + (Number.isFinite(i?.durationSec) ? Math.max(0, i.durationSec) : 0),
+    0,
+  );
+
+  // Clamped because the client owns these durations and overlapping or
+  // mis-clocked ones can sum past the session itself.
+  return clamp01((awaySec * 1000) / elapsedMs);
 };
 
 /**
@@ -274,6 +319,8 @@ export const computeCompletionFactor = ({ startedAt, endedAt, samples }) => {
  *   startedAt: Date,
  *   endedAt: Date,
  *   baselines?: object,
+ *   plannedMinutes?: number|null,
+ *   interruptions?: Array<{ durationSec: number }>,
  * }} args
  * @returns {{
  *   focusScore: number|null,
@@ -283,7 +330,14 @@ export const computeCompletionFactor = ({ startedAt, endedAt, samples }) => {
  *   sampleCount: number,
  * }}
  */
-export const scoreSession = ({ samples, startedAt, endedAt, baselines = {} }) => {
+export const scoreSession = ({
+  samples,
+  startedAt,
+  endedAt,
+  baselines = {},
+  plannedMinutes = null,
+  interruptions = [],
+}) => {
   const list = Array.isArray(samples) ? samples : [];
 
   // A watch was involved if ANY sample carried a heart rate. Partial coverage
@@ -305,18 +359,29 @@ export const scoreSession = ({ samples, startedAt, endedAt, baselines = {} }) =>
     list.reduce((sum, sample) => sum + scoreSample(sample, baselines).composite, 0) /
     list.length;
 
-  const completionFactor = computeCompletionFactor({ startedAt, endedAt, samples: list });
+  const elapsedMs = new Date(endedAt).getTime() - new Date(startedAt).getTime();
+  const awayFraction = computeAwayFraction(interruptions, elapsedMs);
+
+  // Time away counts as zero focus, rather than simply not counting. The
+  // samples only describe the time the user was present, so without this a
+  // 60-minute session spent 30 minutes in another app would score exactly like
+  // a 30-minute session of the same quality.
+  const presentFocus = meanComposite * (1 - awayFraction);
+
+  const completionFactor = computeCompletionFactor({
+    startedAt,
+    endedAt,
+    samples: list,
+    plannedMinutes,
+  });
 
   const blended = clamp01(
-    SAMPLE_WEIGHT * meanComposite + COMPLETION_WEIGHT * completionFactor,
+    SAMPLE_WEIGHT * presentFocus + COMPLETION_WEIGHT * completionFactor,
   );
 
   const focusScore = Math.round(blended * 100);
 
-  const elapsedMinutes = Math.max(
-    0,
-    (new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 60000,
-  );
+  const elapsedMinutes = Math.max(0, elapsedMs / 60000);
 
   // Derived from the ROUNDED score on purpose, so the stored minutes always
   // reconcile with the score the user was shown. Deriving from `blended` would
@@ -329,6 +394,7 @@ export const scoreSession = ({ samples, startedAt, endedAt, baselines = {} }) =>
     completionFactor,
     hadWatch,
     sampleCount: list.length,
+    awayFraction,
   };
 };
 
@@ -371,4 +437,94 @@ export const updateBaseline = (current, values) => {
     sampleCount: count,
     isCalibrated: count >= CALIBRATION_MIN_SAMPLES,
   };
+};
+
+/**
+ * Turns a 1-5 self-rating into the 0-100 score it claims the session was.
+ *
+ * Linear across the range, so 1 -> 0 and 5 -> 100. Crude, and deliberately so:
+ * a fancier mapping would be fitting a curve to data nobody has collected yet.
+ * The point of measuring accuracy is to find out whether even this holds.
+ *
+ * @param {number} selfRating - 1-5
+ * @returns {number} 0-100
+ */
+export const ratingToScore = (selfRating) => ((selfRating - 1) / 4) * 100;
+
+/**
+ * How well the estimate matches what users said about their own sessions.
+ *
+ * This is the only thing that can tell you whether the focus score means
+ * anything at all. Every weight and threshold in this file is a defensible
+ * guess; FocusRating is the ground truth those guesses are answerable to, and
+ * until something compares the two the estimate is unfalsifiable.
+ *
+ * Three numbers, because they fail in different ways:
+ *
+ *  - meanAbsoluteError: typical distance, in score points. The headline.
+ *  - bias: SIGNED mean error. Separates "noisy" from "consistently generous",
+ *    which need opposite fixes — a positive bias means the estimate flatters.
+ *  - correlation: Pearson's r on the pairs. Catches the case MAE cannot: an
+ *    estimate that is always wrong by the same amount is merely miscalibrated
+ *    and trivially fixed, whereas one uncorrelated with how the session
+ *    actually felt is measuring nothing.
+ *
+ * Returns nulls rather than zeros when there is not enough data. Zero error and
+ * zero correlation are both real, meaningful results, and neither is what "we
+ * have three ratings" means.
+ *
+ * @param {Array<{ focusScore: number|null, selfRating: number|null }>} pairs
+ * @param {number} [minSamples] - below this, refuse to report
+ * @returns {{
+ *   count: number,
+ *   meanAbsoluteError: number|null,
+ *   bias: number|null,
+ *   correlation: number|null,
+ * }}
+ */
+export const RATING_MIN_SAMPLES = 5;
+
+export const computeAccuracy = (pairs, minSamples = RATING_MIN_SAMPLES) => {
+  const usable = (Array.isArray(pairs) ? pairs : []).filter(
+    (p) => Number.isFinite(p?.focusScore) && Number.isFinite(p?.selfRating),
+  );
+
+  const empty = {
+    count: usable.length,
+    meanAbsoluteError: null,
+    bias: null,
+    correlation: null,
+  };
+  if (usable.length < minSamples) return empty;
+
+  const estimated = usable.map((p) => p.focusScore);
+  const claimed = usable.map((p) => ratingToScore(p.selfRating));
+
+  const n = usable.length;
+  const meanAbsoluteError =
+    estimated.reduce((sum, e, i) => sum + Math.abs(e - claimed[i]), 0) / n;
+  const bias = estimated.reduce((sum, e, i) => sum + (e - claimed[i]), 0) / n;
+
+  const meanE = estimated.reduce((a, b) => a + b, 0) / n;
+  const meanC = claimed.reduce((a, b) => a + b, 0) / n;
+
+  let cov = 0;
+  let varE = 0;
+  let varC = 0;
+  for (let i = 0; i < n; i += 1) {
+    const de = estimated[i] - meanE;
+    const dc = claimed[i] - meanC;
+    cov += de * dc;
+    varE += de * de;
+    varC += dc * dc;
+  }
+
+  // Undefined, not zero, when either side never varies: a user who rated every
+  // session 4 has told us nothing about which sessions were better, and
+  // reporting r=0 would read as "the estimate is worthless" instead of "there
+  // is nothing here to correlate against".
+  const denom = Math.sqrt(varE * varC);
+  const correlation = denom > MIN_STANDARD_DEVIATION ? cov / denom : null;
+
+  return { count: n, meanAbsoluteError, bias, correlation };
 };

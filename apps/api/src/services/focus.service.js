@@ -5,7 +5,9 @@ import {
   scoreSample,
   scoreSession,
   updateBaseline,
+  computeAccuracy,
   CALIBRATION_MIN_SAMPLES,
+  RATING_MIN_SAMPLES,
 } from "./focusScoring.js";
 
 /**
@@ -144,6 +146,10 @@ export const finaliseSessionFocus = async (sessionId, userId) => {
     startedAt: session.startedAt,
     endedAt: session.endedAt ?? new Date(),
     baselines: toBaselineMap(baselineRows),
+    plannedMinutes: session.plannedMinutes,
+    // findSessionById includes these. Without them the estimate cannot see
+    // time the user spent out of the app - see computeAwayFraction.
+    interruptions: session.interruptions ?? [],
   });
 
   await focusRepo.updateSessionFocus(sessionId, {
@@ -222,9 +228,18 @@ export const getSessionFocus = async (sessionId, userId) => {
     focusScore: session.focusScore,
     focusWeightedMinutes: session.focusWeightedMinutes,
     completionFactor: session.completionFactor,
+    // Returned so a client can tell WHICH completion path produced the number:
+    // null here means it came from sample coverage, not a plan.
+    plannedMinutes: session.plannedMinutes,
     hadWatch: session.hadWatch,
     focusPoints: session.focusPoints,
     sampleCount,
+    // Surfaced so the score is explainable: "you were away for 12 minutes" is
+    // the single most useful thing to show next to a low estimate.
+    awaySeconds: (session.interruptions ?? []).reduce(
+      (sum, i) => sum + (i.durationSec ?? 0),
+      0,
+    ),
     selfRating: rating?.selfRating ?? null,
     // Says out loud what this number is, so no client has to infer it.
     isEstimate: true,
@@ -282,5 +297,69 @@ export const getBaselines = async (userId) => {
       isCalibrated: row.isCalibrated,
       samplesUntilCalibrated: Math.max(0, CALIBRATION_MIN_SAMPLES - row.sampleCount),
     })),
+  };
+};
+
+/** Ratings to consider when measuring accuracy. */
+const ACCURACY_SAMPLE_LIMIT = 200;
+
+/**
+ * How closely the estimate has matched this user's own verdicts.
+ *
+ * Per-user rather than global on purpose: the estimate is calibrated against
+ * each person's own baseline, so its accuracy is a per-person property. A
+ * global average would hide the user for whom it is badly wrong.
+ *
+ * @param {string} userId
+ */
+export const getAccuracy = async (userId) => {
+  const pairs = await focusRepo.findRatedSessions(userId, ACCURACY_SAMPLE_LIMIT);
+  const accuracy = computeAccuracy(pairs);
+
+  return {
+    ...accuracy,
+    minSamples: RATING_MIN_SAMPLES,
+    // Says plainly why the numbers are null, rather than leaving a client to
+    // infer it from count < minSamples.
+    ready: accuracy.meanAbsoluteError !== null,
+    ratedSessions: pairs.filter((p) => p.focusScore !== null).length,
+  };
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Focus-weighted minutes over a recent window, biggest first.
+ *
+ * Weighted minutes rather than raw minutes is the entire point: a leaderboard
+ * on time alone rewards leaving a timer running, which is the behaviour this
+ * feature exists to see through.
+ *
+ * @param {string} userId - the caller
+ * @param {{ days: number, limit: number }} options
+ */
+export const getLeaderboard = async (userId, { days, limit }) => {
+  const since = new Date(Date.now() - days * DAY_MS);
+
+  const blocked = await focusRepo.findBlockedUserIds(userId);
+
+  const [entries, mine] = await Promise.all([
+    focusRepo.sumWeightedMinutesByUser({ since, excludeUserIds: blocked, take: limit }),
+    focusRepo.sumWeightedMinutesForUser({ userId, since }),
+  ]);
+
+  return {
+    since,
+    days,
+    entries,
+    // Always returned, even when the caller is already in `entries`: a client
+    // showing "you" in a sticky footer should not have to scan the page to
+    // find out whether to render it.
+    me: {
+      userId,
+      weightedMinutes: mine.weightedMinutes,
+      sessions: mine.sessions,
+      rank: entries.find((e) => e.userId === userId)?.rank ?? null,
+    },
   };
 };

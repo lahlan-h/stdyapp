@@ -137,3 +137,121 @@ export const upsertBaseline = ({
     update: stats,
   });
 };
+
+/**
+ * Every rated session of one user, as (estimate, self-rating) pairs.
+ *
+ * Driven from focusRatings rather than sessions because that is the smaller
+ * side by far — most sessions are never rated — and focus_ratings has an index
+ * on userId for exactly this query.
+ *
+ * @param {string} userId
+ * @param {number} take
+ */
+export const findRatedSessions = async (userId, take) => {
+  const rows = await prisma.focusRating.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    take,
+    select: {
+      selfRating: true,
+      createdAt: true,
+      session: { select: { id: true, focusScore: true, endedAt: true } },
+    },
+  });
+
+  return rows.map((row) => ({
+    sessionId: row.session?.id ?? null,
+    focusScore: row.session?.focusScore ?? null,
+    selfRating: row.selfRating,
+    ratedAt: row.createdAt,
+  }));
+};
+
+/**
+ * Focus-weighted minutes per user since a cutoff, biggest first.
+ *
+ * groupBy rather than reading the rows and summing in JavaScript: a week of
+ * sessions across a cohort is a lot of rows to move for one number each, and
+ * Postgres does this in the index.
+ *
+ * Sessions with a null focusWeightedMinutes are excluded rather than counted as
+ * zero — they were never scored, which is not the same as scoring badly.
+ *
+ * @param {{ since: Date, excludeUserIds?: string[], take: number }} args
+ */
+export const sumWeightedMinutesByUser = async ({ since, excludeUserIds = [], take }) => {
+  const grouped = await prisma.session.groupBy({
+    by: ["userId"],
+    where: {
+      endedAt: { gte: since },
+      focusWeightedMinutes: { not: null },
+      ...(excludeUserIds.length ? { userId: { notIn: excludeUserIds } } : {}),
+    },
+    _sum: { focusWeightedMinutes: true },
+    _count: { _all: true },
+    orderBy: { _sum: { focusWeightedMinutes: "desc" } },
+    take,
+  });
+
+  if (grouped.length === 0) return [];
+
+  // A second query rather than a join: groupBy cannot include relations, and
+  // this is one indexed read on the primary key for a page of at most `take`.
+  const users = await prisma.user.findMany({
+    where: { id: { in: grouped.map((g) => g.userId) } },
+    select: { id: true, username: true, avatarUrl: true },
+  });
+  const byId = new Map(users.map((u) => [u.id, u]));
+
+  return grouped.map((g, i) => ({
+    rank: i + 1,
+    userId: g.userId,
+    username: byId.get(g.userId)?.username ?? null,
+    avatarUrl: byId.get(g.userId)?.avatarUrl ?? null,
+    weightedMinutes: g._sum.focusWeightedMinutes ?? 0,
+    sessions: g._count._all,
+  }));
+};
+
+/**
+ * One user's own weighted-minutes total since a cutoff, so the caller can be
+ * shown their standing even when they are nowhere near the top of the board.
+ *
+ * @param {{ userId: string, since: Date }} args
+ */
+export const sumWeightedMinutesForUser = async ({ userId, since }) => {
+  const agg = await prisma.session.aggregate({
+    where: { userId, endedAt: { gte: since }, focusWeightedMinutes: { not: null } },
+    _sum: { focusWeightedMinutes: true },
+    _count: { _all: true },
+  });
+
+  return {
+    weightedMinutes: agg._sum.focusWeightedMinutes ?? 0,
+    sessions: agg._count._all,
+  };
+};
+
+/**
+ * Both directions of the block relation for one user.
+ *
+ * Both, not just the caller's own blocks: a leaderboard is a social surface, so
+ * someone who blocked the caller must not be shown to them either. Mirrors what
+ * the feed already does.
+ *
+ * @param {string} userId
+ * @returns {Promise<string[]>}
+ */
+export const findBlockedUserIds = async (userId) => {
+  const rows = await prisma.block.findMany({
+    where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
+    select: { blockerId: true, blockedId: true },
+  });
+
+  const ids = new Set();
+  for (const row of rows) {
+    ids.add(row.blockerId === userId ? row.blockedId : row.blockerId);
+  }
+  return [...ids];
+};

@@ -12,6 +12,10 @@ import {
   computeCompletionFactor,
   scoreSession,
   updateBaseline,
+  computeAwayFraction,
+  computeAccuracy,
+  ratingToScore,
+  RATING_MIN_SAMPLES,
   SIGNAL_WEIGHTS,
   POPULATION_BASELINES,
   CALIBRATION_MIN_SAMPLES,
@@ -462,5 +466,212 @@ describe("updateBaseline", () => {
     closeTo(result.mean, 42);
     assert.equal(result.variance, 0);
     assert.ok(Number.isFinite(result.variance));
+  });
+});
+
+describe("computeCompletionFactor with a planned duration", () => {
+  it("measures elapsed time against the plan", () => {
+    // Planned an hour, stopped at 30 minutes.
+    const factor = computeCompletionFactor({
+      startedAt: START,
+      endedAt: at(30),
+      samples: [],
+      plannedMinutes: 60,
+    });
+    closeTo(factor, 0.5);
+  });
+
+  it("is 1 when the plan is met exactly", () => {
+    closeTo(
+      computeCompletionFactor({ startedAt: START, endedAt: at(45), samples: [], plannedMinutes: 45 }),
+      1,
+    );
+  });
+
+  it("caps at 1 when the user runs over their plan", () => {
+    // Overshooting is commitment, not "more than complete" - it must not let a
+    // long session buy back a poor focus score.
+    assert.equal(
+      computeCompletionFactor({ startedAt: START, endedAt: at(90), samples: [], plannedMinutes: 60 }),
+      1,
+    );
+  });
+
+  it("prefers the plan over sample coverage when both are available", () => {
+    // Samples span the whole 30 minutes (coverage = 1), but the plan was 60.
+    const factor = computeCompletionFactor({
+      startedAt: START,
+      endedAt: at(30),
+      samples: [{ timestamp: START }, { timestamp: at(30) }],
+      plannedMinutes: 60,
+    });
+    closeTo(factor, 0.5);
+  });
+
+  it("falls back to sample coverage when there is no plan", () => {
+    for (const plannedMinutes of [null, undefined, 0, -5, NaN]) {
+      const factor = computeCompletionFactor({
+        startedAt: START,
+        endedAt: at(60),
+        samples: [{ timestamp: START }, { timestamp: at(30) }],
+        plannedMinutes,
+      });
+      closeTo(factor, 0.5);
+    }
+  });
+
+  it("still returns 0 for a zero-length session even with a plan", () => {
+    assert.equal(
+      computeCompletionFactor({ startedAt: START, endedAt: START, samples: [], plannedMinutes: 30 }),
+      0,
+    );
+  });
+});
+
+describe("scoreSession with a planned duration", () => {
+  it("feeds the plan into completion, and completion into the score", () => {
+    const samples = [typicalSample(), typicalSample({ timestamp: at(30) })];
+
+    const onPlan = scoreSession({ samples, startedAt: START, endedAt: at(30), plannedMinutes: 30 });
+    const halfPlan = scoreSession({ samples, startedAt: START, endedAt: at(30), plannedMinutes: 60 });
+
+    closeTo(onPlan.completionFactor, 1);
+    closeTo(halfPlan.completionFactor, 0.5);
+    // Identical samples, so the only difference is the completion term:
+    // 0.15 x 0.5 = 7.5 points, which rounds to a 7 or 8 point gap.
+    const gap = onPlan.focusScore - halfPlan.focusScore;
+    assert.ok(gap >= 7 && gap <= 8, `expected a 7-8 point gap, got ${gap}`);
+  });
+});
+
+describe("computeAwayFraction", () => {
+  const HOUR = 3600 * 1000;
+
+  it("is 0 when the user never left", () => {
+    assert.equal(computeAwayFraction([], HOUR), 0);
+    assert.equal(computeAwayFraction(undefined, HOUR), 0);
+  });
+
+  it("sums every interruption against the session length", () => {
+    closeTo(computeAwayFraction([{ durationSec: 900 }, { durationSec: 900 }], HOUR), 0.5);
+  });
+
+  it("clamps at 1 when the client's durations overrun the session", () => {
+    // Overlapping or mis-clocked interruptions can sum past the session.
+    assert.equal(computeAwayFraction([{ durationSec: 99999 }], HOUR), 1);
+  });
+
+  it("ignores malformed durations rather than producing NaN", () => {
+    const f = computeAwayFraction(
+      [{ durationSec: 1800 }, { durationSec: null }, {}, { durationSec: -60 }],
+      HOUR,
+    );
+    assert.ok(Number.isFinite(f));
+    closeTo(f, 0.5);
+  });
+
+  it("is 0 for a zero-length session", () => {
+    assert.equal(computeAwayFraction([{ durationSec: 60 }], 0), 0);
+  });
+});
+
+describe("scoreSession with interruptions", () => {
+  const samples = [typicalSample(), typicalSample({ timestamp: at(60) })];
+  const base = { samples, startedAt: START, endedAt: at(60) };
+
+  it("scores lower when the user was away, even with identical samples", () => {
+    // The regression this guards: samples only exist for time the user was
+    // PRESENT, because iOS suspends a backgrounded app. Without the away
+    // correction, half an hour in another app is invisible to the score.
+    const present = scoreSession(base);
+    const away = scoreSession({ ...base, interruptions: [{ durationSec: 1800 }] });
+
+    assert.ok(
+      away.focusScore < present.focusScore,
+      `away ${away.focusScore} should be below present ${present.focusScore}`,
+    );
+    closeTo(away.awayFraction, 0.5);
+    assert.equal(present.awayFraction, 0);
+  });
+
+  it("changes nothing when there are no interruptions", () => {
+    const withEmpty = scoreSession({ ...base, interruptions: [] });
+    assert.equal(withEmpty.focusScore, scoreSession(base).focusScore);
+  });
+
+  it("still produces a valid score when the user was away the whole time", () => {
+    const gone = scoreSession({ ...base, interruptions: [{ durationSec: 99999 }] });
+    assert.ok(gone.focusScore >= 0 && gone.focusScore <= 100);
+    // Only the completion term survives, so the score is small but not negative.
+    assert.ok(gone.focusScore < 20, `expected a low score, got ${gone.focusScore}`);
+  });
+});
+
+describe("ratingToScore", () => {
+  it("maps the 1-5 scale onto 0-100", () => {
+    assert.equal(ratingToScore(1), 0);
+    assert.equal(ratingToScore(3), 50);
+    assert.equal(ratingToScore(5), 100);
+  });
+});
+
+describe("computeAccuracy", () => {
+  const pair = (focusScore, selfRating) => ({ focusScore, selfRating });
+
+  it("refuses to report below the sample threshold", () => {
+    const result = computeAccuracy([pair(80, 4), pair(60, 3)]);
+    assert.equal(result.count, 2);
+    assert.equal(result.meanAbsoluteError, null);
+    assert.equal(result.bias, null);
+    assert.equal(result.correlation, null);
+  });
+
+  it("reports zero error for a perfectly calibrated estimate", () => {
+    const pairs = [1, 2, 3, 4, 5].map((r) => pair(ratingToScore(r), r));
+    const result = computeAccuracy(pairs);
+    assert.equal(result.count, 5);
+    closeTo(result.meanAbsoluteError, 0);
+    closeTo(result.bias, 0);
+    closeTo(result.correlation, 1);
+  });
+
+  it("separates a generous estimate from a noisy one", () => {
+    // Consistently 10 points high: large bias, but still perfectly correlated,
+    // which is the signature of something merely miscalibrated.
+    const generous = computeAccuracy(
+      [1, 2, 3, 4, 5].map((r) => pair(ratingToScore(r) + 10, r)),
+    );
+    closeTo(generous.bias, 10);
+    closeTo(generous.meanAbsoluteError, 10);
+    closeTo(generous.correlation, 1);
+  });
+
+  it("detects an estimate that tracks the user's verdict backwards", () => {
+    const inverted = computeAccuracy(
+      [1, 2, 3, 4, 5].map((r) => pair(ratingToScore(6 - r), r)),
+    );
+    closeTo(inverted.correlation, -1);
+  });
+
+  it("returns a null correlation when one side never varies", () => {
+    // A user who rates every session 4 has said nothing about which were
+    // better. r=0 would read as "the estimate is worthless" instead.
+    const flat = computeAccuracy([70, 50, 90, 30, 60].map((s) => pair(s, 4)));
+    assert.equal(flat.correlation, null);
+    assert.ok(Number.isFinite(flat.meanAbsoluteError));
+  });
+
+  it("skips unscored or unrated pairs", () => {
+    const pairs = [
+      ...[1, 2, 3, 4, 5].map((r) => pair(ratingToScore(r), r)),
+      pair(null, 5),
+      pair(80, null),
+    ];
+    assert.equal(computeAccuracy(pairs).count, 5);
+  });
+
+  it("honours a custom threshold", () => {
+    assert.equal(computeAccuracy([pair(50, 3)], 1).meanAbsoluteError, 0);
+    assert.equal(RATING_MIN_SAMPLES, 5);
   });
 });
