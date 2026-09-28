@@ -130,7 +130,7 @@ const Profile = () => {
                 row would push it off-centre by half the bubble's width.
                 Rendered after the header so it draws on top of it.
               */}
-              <View>
+              <View style={styles.headerArea}>
                 <ProfileHeader profile={profile} />
                 <ProfileStudyBubble streak={streak} totals={totals} />
               </View>

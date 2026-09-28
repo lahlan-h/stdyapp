@@ -157,6 +157,49 @@ export const createProfileStyles = (colors: ColorScheme) => {
       color: colors.text,
     },
 
+    // The expanded panel, drawn OVER the header rather than displacing it - it
+    // shares the bubble's anchor so it grows out of where the user tapped.
+    // zIndex is what lifts it above the cards below; its wrapper carries one
+    // too, or those later siblings would paint on top of it.
+    studyPanel: {
+      position: "absolute",
+      left: 0,
+      top: 10,
+      gap: 12,
+      paddingVertical: 15,
+      paddingHorizontal: 16,
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      zIndex: 10,
+      shadowColor: colors.shadow,
+      shadowOpacity: 0.18,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 8,
+    },
+    studyPanelRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    studyPanelValue: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 16,
+      color: colors.text,
+      minWidth: 34,
+    },
+    studyPanelLabel: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.textMuted,
+    },
+    // Lifts the header (and so the panel inside it) above the cards that follow.
+    headerArea: {
+      zIndex: 1,
+    },
+
     // --- Posts ---
     sectionTitle: {
       fontFamily: "PlusJakartaSans_600SemiBold",

@@ -1,4 +1,5 @@
-import { View, Text } from "react-native";
+import { useState } from "react";
+import { View, Text, Pressable } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 import type { ComponentProps } from "react";
 
@@ -61,19 +62,60 @@ export const studyFigures = (
 ];
 
 /**
- * The collapsed study bubble, beside the avatar.
+ * The study figures beside the avatar, collapsed to icons and values.
  *
- * Icons and values only - no labels. That is what keeps it narrow enough to sit
- * next to the avatar without pushing it off centre, and the labels are what the
- * expanded panel exists to add.
+ * Dropping the labels is what keeps it narrow enough to sit next to the avatar
+ * without pushing it off centre. Tapping adds them back: the expanded panel is
+ * drawn OVER the header from the same anchor rather than displacing it, so
+ * nothing below moves and the panel grows out of where the user tapped.
+ *
+ * Tapping either state toggles, so the panel is its own way out - there is no
+ * full-screen backdrop to catch a tap elsewhere, which inside a list header
+ * would have to live at screen level the way ReportDialog does.
  */
 const ProfileStudyBubble = ({ streak, totals }: ProfileStudyBubbleProps) => {
   const { colors } = useTheme();
   const styles = useStyles("profile");
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const figures = studyFigures(streak, totals);
+  const toggle = () => setIsExpanded((current) => !current);
+
+  if (isExpanded) {
+    return (
+      <Pressable
+        onPress={toggle}
+        accessibilityRole="button"
+        accessibilityLabel="Hide study details"
+        style={styles.studyPanel}
+      >
+        {figures.map(({ icon, value, label, isLit }) => (
+          <View key={label} style={styles.studyPanelRow}>
+            <Feather
+              name={icon}
+              size={PROFILE_STUDY_ICON_SIZE}
+              color={isLit ? colors.warning : colors.textMuted}
+            />
+            <Text style={styles.studyPanelValue}>{value}</Text>
+            <Text style={styles.studyPanelLabel}>{label}</Text>
+          </View>
+        ))}
+      </Pressable>
+    );
+  }
 
   return (
-    <View style={styles.studyBubble}>
-      {studyFigures(streak, totals).map(({ icon, value, isLit, label }) => (
+    <Pressable
+      onPress={toggle}
+      accessibilityRole="button"
+      // Reads the figures out, because collapsed they are numbers with no
+      // words next to them - an icon is not an accessible label.
+      accessibilityLabel={`Study details: ${figures
+        .map(({ value, label }) => `${value} ${label}`)
+        .join(", ")}`}
+      style={styles.studyBubble}
+    >
+      {figures.map(({ icon, value, isLit, label }) => (
         <View key={label} style={styles.studyBubbleFigure}>
           <Feather
             name={icon}
@@ -83,7 +125,7 @@ const ProfileStudyBubble = ({ streak, totals }: ProfileStudyBubbleProps) => {
           <Text style={styles.studyBubbleValue}>{value}</Text>
         </View>
       ))}
-    </View>
+    </Pressable>
   );
 };
 
