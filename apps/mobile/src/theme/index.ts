@@ -58,3 +58,9 @@ export {
   REGISTER_CHECK_ICON_SIZE,
 } from "./register.styles";
 export { createEditProfileStyles, EDIT_PROFILE_BACK_ICON_SIZE } from "./editProfile.styles";
+export {
+  createProfileStyles,
+  PROFILE_AVATAR_SIZE,
+  PROFILE_ACTION_ICON_SIZE,
+  PROFILE_STUDY_ICON_SIZE,
+} from "./profile.styles";
