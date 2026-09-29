@@ -96,8 +96,16 @@ export interface FocusResult {
 export interface FocusSessionState {
   phase: FocusPhase;
   elapsedSec: number;
-  plannedMinutes: number | null;
-  setPlannedMinutes: (minutes: number | null) => void;
+  /**
+   * The chosen length in SECONDS, which is what the picker produces and what
+   * the countdown shows. 0 means open-ended.
+   *
+   * Seconds rather than minutes because the wheel offers them and a countdown
+   * that rounded the user's own choice would be visibly wrong. The API column
+   * is whole minutes, so the request rounds - see start().
+   */
+  plannedSec: number;
+  setPlannedSec: (seconds: number) => void;
   sampleCount: number;
   /** Running average of the server's per-sample scores, 0-100. */
   liveFocus: number | null;
@@ -127,7 +135,7 @@ export interface FocusSessionState {
 export const useFocusSession = (): FocusSessionState => {
   const [phase, setPhase] = useState<FocusPhase>("idle");
   const [elapsedSec, setElapsedSec] = useState(0);
-  const [plannedMinutes, setPlannedMinutes] = useState<number | null>(25);
+  const [plannedSec, setPlannedSec] = useState(25 * 60);
   const [sampleCount, setSampleCount] = useState(0);
   const [liveFocus, setLiveFocus] = useState<number | null>(null);
   const [awaySec, setAwaySec] = useState(0);
@@ -284,7 +292,11 @@ export const useFocusSession = (): FocusSessionState => {
           request<StartedSession>("/api/sessions", {
             method: "POST",
             token,
-            body: plannedMinutes ? { plannedMinutes } : {},
+            // plannedMinutes is an Int column, so a 17m30s plan is stored as
+            // 18. The countdown on screen still uses the exact seconds chosen.
+            body: plannedSec
+              ? { plannedMinutes: Math.max(1, Math.round(plannedSec / 60)) }
+              : {},
           }),
         );
 
@@ -308,7 +320,7 @@ export const useFocusSession = (): FocusSessionState => {
         setBusy(false);
       }
     })();
-  }, [busy, phase, plannedMinutes, startTimers]);
+  }, [busy, phase, plannedSec, startTimers]);
 
   const end = useCallback(() => {
     const sessionId = sessionIdRef.current;
@@ -446,8 +458,7 @@ export const useFocusSession = (): FocusSessionState => {
    * shows. Floored at zero rather than going negative: running over a plan is
    * allowed, and "-04:12" reads as a fault.
    */
-  const remainingSec =
-    plannedMinutes === null ? null : Math.max(0, plannedMinutes * 60 - elapsedSec);
+  const remainingSec = plannedSec === 0 ? null : Math.max(0, plannedSec - elapsedSec);
 
   return {
     phase,
@@ -456,8 +467,8 @@ export const useFocusSession = (): FocusSessionState => {
     remainingSec,
     streakDays,
     hasMotionSensor: hasSensor(),
-    plannedMinutes,
-    setPlannedMinutes,
+    plannedSec,
+    setPlannedSec,
     sampleCount,
     liveFocus,
     awaySec,

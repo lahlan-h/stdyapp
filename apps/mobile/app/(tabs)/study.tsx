@@ -1,12 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StatusBar,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, StatusBar, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -21,6 +14,7 @@ import {
 } from "@theme";
 import { useFocusSession } from "@data";
 
+import DurationPicker from "@components/DurationPicker";
 import FocusDial from "@components/FocusDial";
 import FocusTrace from "@components/FocusTrace";
 import RatingSheet from "@components/RatingSheet";
@@ -41,11 +35,6 @@ import RatingSheet from "@components/RatingSheet";
  *
  * Every colour is a palette token; the screen holds no hex of its own.
  */
-
-const PRESETS = [25, 50, 90];
-
-/** Longest plan the API accepts, so the input cannot offer an invalid one. */
-const MAX_PLANNED_MINUTES = 1440;
 
 const clock = (totalSec: number) => {
   const s = Math.max(0, Math.round(totalSec));
@@ -84,8 +73,8 @@ const Study = () => {
     phase,
     elapsedSec,
     remainingSec,
-    plannedMinutes,
-    setPlannedMinutes,
+    plannedSec,
+    setPlannedSec,
     liveFocus,
     awaySec,
     trace,
@@ -100,8 +89,6 @@ const Study = () => {
     reset,
   } = useFocusSession();
 
-  /** Separate from plannedMinutes so a half-typed "1" is not a 1-minute plan. */
-  const [customText, setCustomText] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const running = phase === "running";
@@ -122,23 +109,9 @@ const Study = () => {
    * towards, so it fills by the focus reading instead - the only thing that
    * can meaningfully fill a ring in an open-ended session.
    */
-  const dialProgress = plannedMinutes
-    ? elapsedSec / (plannedMinutes * 60)
+  const dialProgress = plannedSec
+    ? elapsedSec / plannedSec
     : (liveFocus ?? 0) / 100;
-
-  const applyCustom = (text: string) => {
-    const digits = text.replace(/[^0-9]/g, "");
-    setCustomText(digits);
-    const value = parseInt(digits, 10);
-    if (Number.isFinite(value) && value >= 1 && value <= MAX_PLANNED_MINUTES) {
-      setPlannedMinutes(value);
-    }
-  };
-
-  const choosePreset = (minutes: number | null) => {
-    setPlannedMinutes(minutes);
-    setCustomText("");
-  };
 
   /**
    * The sheet comes up on its own when the recap lands, because a rating asked
@@ -154,6 +127,19 @@ const Study = () => {
   const finish = () => {
     setSheetOpen(false);
     reset();
+  };
+
+  /**
+   * Opens the composer AND clears the session.
+   *
+   * Without the reset, coming back from the composer landed on the same recap
+   * with no obvious way forward - the session was over but the screen still
+   * behaved as though it were not.
+   */
+  const share = () => {
+    setSheetOpen(false);
+    reset();
+    router.push("/new-post");
   };
 
   const Metric = ({
@@ -216,66 +202,17 @@ const Study = () => {
               <View style={styles.dialWrap}>
                 <FocusDial progress={0} color={colors.primary}>
                   <Text style={styles.dialValue}>
-                    {plannedMinutes ? clock(plannedMinutes * 60) : "∞"}
+                    {plannedSec ? clock(plannedSec) : "\u221e"}
                   </Text>
                   <Text style={styles.dialCaption}>
-                    {plannedMinutes ? "planned" : "no limit"}
+                    {plannedSec ? "planned" : "no limit"}
                   </Text>
                 </FocusDial>
               </View>
 
-              <View style={styles.chipRow}>
-                {PRESETS.map((minutes) => {
-                  const selected = plannedMinutes === minutes && customText === "";
-                  return (
-                    <Pressable
-                      key={minutes}
-                      style={[styles.chip, selected && styles.chipSelected]}
-                      onPress={() => choosePreset(minutes)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      accessibilityLabel={`${minutes} minutes`}
-                    >
-                      <Text
-                        style={[styles.chipText, selected && styles.chipTextSelected]}
-                      >
-                        {minutes}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-                <Pressable
-                  style={[styles.chip, plannedMinutes === null && styles.chipSelected]}
-                  onPress={() => choosePreset(null)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: plannedMinutes === null }}
-                  accessibilityLabel="No time limit"
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      plannedMinutes === null && styles.chipTextSelected,
-                    ]}
-                  >
-                    ∞
-                  </Text>
-                </Pressable>
-              </View>
-
-              <View style={styles.customRow}>
-                <TextInput
-                  style={styles.customInput}
-                  value={customText}
-                  onChangeText={applyCustom}
-                  keyboardType="number-pad"
-                  inputMode="numeric"
-                  maxLength={4}
-                  placeholder="Custom"
-                  placeholderTextColor={colors.textMuted}
-                  accessibilityLabel="Custom session length in minutes"
-                />
-                <Text style={styles.customUnit}>min</Text>
-              </View>
+              {/* Zero across all three wheels is an open-ended session, so
+                  there is no separate control for it. */}
+              <DurationPicker seconds={plannedSec} onChange={setPlannedSec} />
 
               <Pressable
                 style={[styles.action, busy && styles.actionDisabled]}
@@ -407,7 +344,7 @@ const Study = () => {
               */}
               <Pressable
                 style={styles.action}
-                onPress={() => router.push("/new-post")}
+                onPress={share}
                 accessibilityRole="button"
                 accessibilityLabel="Share to feed"
               >
@@ -415,13 +352,19 @@ const Study = () => {
                 <Text style={styles.actionText}>Share to feed</Text>
               </Pressable>
 
+              {/*
+                The way back to the start screen, and the only one - so it is a
+                button, not a faint link. Both actions end the recap, because a
+                finished session the user cannot leave is a dead end.
+              */}
               <Pressable
-                style={styles.linkButton}
+                style={styles.actionSecondary}
                 onPress={finish}
                 accessibilityRole="button"
-                accessibilityLabel="Save privately"
+                accessibilityLabel="Save privately and start again"
               >
-                <Text style={styles.linkText}>Save privately</Text>
+                <Feather name="check" size={STUDY_ICON_SIZE} color={colors.text} />
+                <Text style={styles.actionSecondaryText}>Save privately</Text>
               </Pressable>
             </>
           ) : null}

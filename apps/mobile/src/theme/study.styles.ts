@@ -16,6 +16,12 @@ const TICK_HEIGHT = 14;
 
 export const STUDY_ICON_SIZE = 18;
 
+/** Row height of the duration wheels, and the distance they snap by. */
+export const WHEEL_ITEM_HEIGHT = 44;
+
+/** Rows visible at once. Odd, so there is a true middle to select in. */
+export const WHEEL_VISIBLE_ITEMS = 5;
+
 /** Where the chart's horizontal grid sits, as % from the bottom. */
 export const TRACE_GRID_LINES = [25, 50, 75] as const;
 
@@ -128,50 +134,39 @@ export const createStudyStyles = (colors: ColorScheme) => {
     warnChipText: { fontSize: 12, fontWeight: "600", color: colors.danger },
 
     // ---- duration picker -------------------------------------------------
-    card: {
+    pickerWrap: { justifyContent: "center" },
+    pickerRow: { flexDirection: "row" },
+    /**
+     * The lane the chosen row sits in, drawn BEHIND the wheels and spanning
+     * all three - as on iOS, where one highlight reads as a single selection
+     * rather than three separate ones.
+     */
+    wheelLane: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      top: ((WHEEL_VISIBLE_ITEMS - 1) / 2) * WHEEL_ITEM_HEIGHT,
+      height: WHEEL_ITEM_HEIGHT,
+      borderRadius: 12,
       backgroundColor: colors.surface,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      padding: 16,
-      gap: 12,
     },
-    cardTitle: {
-      fontSize: 13,
-      fontWeight: "600",
-      letterSpacing: 0.6,
-      textTransform: "uppercase",
-      color: colors.textMuted,
-    },
-    chipRow: { flexDirection: "row", gap: 8 },
-    chip: {
-      flex: 1,
-      paddingVertical: 11,
-      borderRadius: 11,
-      borderWidth: 1,
-      borderColor: colors.border,
+    wheel: { flex: 1, height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS },
+    wheelItem: {
+      height: WHEEL_ITEM_HEIGHT,
+      flexDirection: "row",
       alignItems: "center",
-      backgroundColor: colors.bg,
+      justifyContent: "center",
+      gap: 6,
     },
-    chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-    chipText: { fontSize: 14, fontWeight: "600", color: colors.text },
-    /** Sits on the filled chip, which is `primary` in both themes. */
-    chipTextSelected: { color: colors.surface },
-
-    customRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-    customInput: {
-      flex: 1,
-      paddingVertical: 11,
-      paddingHorizontal: 14,
-      borderRadius: 11,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.backgrounds.input,
+    wheelNumber: {
+      fontSize: 23,
+      fontWeight: "600",
       color: colors.text,
-      fontSize: 15,
       fontVariant: ["tabular-nums"],
     },
-    customUnit: { fontSize: 14, color: colors.textMuted },
+    /** Unselected rows recede rather than disappear, so the wheel reads as one. */
+    wheelNumberDim: { color: colors.textMuted, fontWeight: "400" },
+    wheelUnit: { fontSize: 13, color: colors.textMuted },
 
     helpText: { fontSize: 12, color: colors.textMuted, lineHeight: 17 },
 
@@ -395,6 +390,28 @@ export const createStudyStyles = (colors: ColorScheme) => {
       borderColor: colors.dangerEdge,
     },
     actionDangerText: { color: colors.danger },
+
+    /**
+     * The second action, and a real button rather than a text link.
+     *
+     * It was a faint link, and that was a genuine dead end: finishing a
+     * session left "Save privately" as the only way back to the start screen,
+     * in muted grey, reading as a save rather than as "done". The way out of a
+     * flow has to look like a control.
+     */
+    actionSecondary: {
+      alignSelf: "stretch",
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingVertical: 15,
+      borderRadius: 14,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    actionSecondaryText: { fontSize: 16, fontWeight: "600", color: colors.text },
 
     linkButton: { alignItems: "center", paddingVertical: 12 },
     linkText: { fontSize: 14, fontWeight: "600", color: colors.textMuted },
