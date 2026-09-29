@@ -208,7 +208,11 @@ const PostDetail = () => {
           overflow:hidden for its corners, and would clip it.
         */}
         <Pressable
-          style={[styles.exit, { top: 14 }]}
+          // insets.top by hand: SafeAreaView insets its children with PADDING,
+          // and an absolutely positioned child ignores its parent's padding. A
+          // bare top: 14 is measured from the top of the SCREEN, which put the
+          // button under the status bar on any device that has one.
+          style={[styles.exit, { top: insets.top + 14 }]}
           onPress={() => router.back()}
           accessibilityRole="button"
           accessibilityLabel="Close and go back to the feed"
@@ -504,12 +508,14 @@ const CommentRow = ({ comment }: { comment: Comment }) => {
 const MissingPost = () => {
   const { colors } = useTheme();
   const styles = usePostDetailStyles();
+  const insets = useSafeAreaInsets();
 
   return (
     <LinearGradient colors={colors.gradients.background} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <Pressable
-          style={[styles.exit, { top: 14 }]}
+          // See the exit button in PostDetail for why the inset is added here.
+          style={[styles.exit, { top: insets.top + 14 }]}
           onPress={() => router.back()}
           accessibilityRole="button"
           accessibilityLabel="Go back to the feed"
