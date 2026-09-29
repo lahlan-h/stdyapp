@@ -73,12 +73,11 @@ interface FocusSummary {
 }
 
 /**
- * Four steps, not two. The recap and the self-rating are separate screens
- * because they ask for opposite things - one is read, the other is answered -
- * and stacking them puts the rating below the fold on a small phone, which is
- * how ground-truth data quietly stops being collected.
+ * Three steps. The self-rating is NOT one of them: it is a sheet over the
+ * recap, so the recap stays visible behind it and answering feels like part of
+ * finishing rather than a second task.
  */
-export type FocusPhase = "idle" | "running" | "recap" | "rating";
+export type FocusPhase = "idle" | "running" | "recap";
 
 export interface FocusResult {
   /** 0-100, or null when the session produced no samples to score. */
@@ -122,8 +121,6 @@ export interface FocusSessionState {
   start: () => void;
   end: () => void;
   rate: (value: number) => void;
-  /** Moves between the recap and the rating step. */
-  goTo: (phase: FocusPhase) => void;
   reset: () => void;
 }
 
@@ -452,8 +449,6 @@ export const useFocusSession = (): FocusSessionState => {
   const remainingSec =
     plannedMinutes === null ? null : Math.max(0, plannedMinutes * 60 - elapsedSec);
 
-  const goTo = useCallback((next: FocusPhase) => setPhase(next), []);
-
   return {
     phase,
     elapsedSec,
@@ -461,7 +456,6 @@ export const useFocusSession = (): FocusSessionState => {
     remainingSec,
     streakDays,
     hasMotionSensor: hasSensor(),
-    goTo,
     plannedMinutes,
     setPlannedMinutes,
     sampleCount,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 
 import {
@@ -22,24 +23,26 @@ import { useFocusSession } from "@data";
 
 import FocusDial from "@components/FocusDial";
 import FocusTrace from "@components/FocusTrace";
+import RatingSheet from "@components/RatingSheet";
 
 /**
- * The focus session screen: set up, run, recap, rate.
+ * The focus session screen: set up, run, recap.
  *
- * WRITTEN SHORT ON PURPOSE. The audience is students who already know how an
- * app works, and every sentence of explanation here is a sentence they will not
- * read. The controls carry the meaning instead - a dial, four chips, one
- * button - and the only prose left is the one line that says what the number
- * is, because that claim is the one we are not allowed to leave implied.
+ * WRITTEN SHORT ON PURPOSE. The audience already knows how an app works, so
+ * every sentence of explanation here is one they will not read. The controls
+ * carry the meaning - a dial, four chips, one button - and the only prose that
+ * survives is the line saying the score is an estimate, because that claim is
+ * the one we may not leave implied.
  *
- * Four states in one route, so no back gesture or deep link can land mid-
- * session with nothing running.
+ * THE DIAL IS FOR THE LIVE SESSION ONLY. Once the session ends it goes: a
+ * countdown with nothing left to count is decoration, and the recap is about
+ * numbers you compare, not one you watch. Each of those gets its own card so
+ * the eye can land on a single figure without reading the rest.
  *
  * Every colour is a palette token; the screen holds no hex of its own.
  */
 
 const PRESETS = [25, 50, 90];
-const RATINGS = [1, 2, 3, 4, 5];
 
 /** Longest plan the API accepts, so the input cannot offer an invalid one. */
 const MAX_PLANNED_MINUTES = 1440;
@@ -94,12 +97,12 @@ const Study = () => {
     start,
     end,
     rate,
-    goTo,
     reset,
   } = useFocusSession();
 
   /** Separate from plannedMinutes so a half-typed "1" is not a 1-minute plan. */
   const [customText, setCustomText] = useState("");
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const running = phase === "running";
   const score = running ? liveFocus : (result?.focusScore ?? null);
@@ -119,11 +122,9 @@ const Study = () => {
    * towards, so it fills by the focus reading instead - the only thing that
    * can meaningfully fill a ring in an open-ended session.
    */
-  const dialProgress = running
-    ? plannedMinutes
-      ? elapsedSec / (plannedMinutes * 60)
-      : (liveFocus ?? 0) / 100
-    : (score ?? 0) / 100;
+  const dialProgress = plannedMinutes
+    ? elapsedSec / (plannedMinutes * 60)
+    : (liveFocus ?? 0) / 100;
 
   const applyCustom = (text: string) => {
     const digits = text.replace(/[^0-9]/g, "");
@@ -139,24 +140,52 @@ const Study = () => {
     setCustomText("");
   };
 
-  const Row = ({
+  /**
+   * The sheet comes up on its own when the recap lands, because a rating asked
+   * for is a rating given and one hidden behind a button is not. Only once:
+   * flicking it away must not have it spring straight back, so this keys on
+   * the phase rather than on whether a rating exists.
+   */
+  useEffect(() => {
+    if (phase === "recap") setSheetOpen(true);
+    else setSheetOpen(false);
+  }, [phase]);
+
+  const finish = () => {
+    setSheetOpen(false);
+    reset();
+  };
+
+  const Metric = ({
     icon,
+    tint,
     label,
+    onPress,
+    accessibilityLabel,
     children,
-    first,
   }: {
     icon: keyof typeof Feather.glyphMap;
+    tint: string;
     label: string;
+    onPress?: () => void;
+    accessibilityLabel?: string;
     children: React.ReactNode;
-    first?: boolean;
   }) => (
-    <View style={[styles.row, !first && styles.rowDivider]}>
-      <View style={styles.rowIcon}>
-        <Feather name={icon} size={15} color={colors.textMuted} />
+    // Pressable only when it does something - a card that highlights under the
+    // finger and then does nothing is worse than a plain one.
+    <Pressable
+      style={styles.metricCard}
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={accessibilityLabel}
+    >
+      <View style={styles.metricIcon}>
+        <Feather name={icon} size={17} color={tint} />
       </View>
-      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.metricLabel}>{label}</Text>
       {children}
-    </View>
+    </Pressable>
   );
 
   return (
@@ -258,6 +287,10 @@ const Study = () => {
                 <Feather name="play" size={STUDY_ICON_SIZE} color={colors.surface} />
                 <Text style={styles.actionText}>Start</Text>
               </Pressable>
+
+              <Text style={styles.helpText}>
+                Focus is an estimate, not a measurement.
+              </Text>
             </>
           ) : null}
 
@@ -303,143 +336,109 @@ const Study = () => {
             </>
           ) : null}
 
-          {/* ---------------- recap ---------------- */}
+          {/* ---------------- recap: no dial, cards only ---------------- */}
           {phase === "recap" && result ? (
             <>
               <Text style={styles.heroEmoji}>🎉</Text>
               <View style={styles.recapHeader}>
                 <Text style={styles.recapTitle}>Session complete</Text>
+                <Text style={styles.recapSubtitle}>Nice work, keep it up.</Text>
               </View>
 
-              <View style={styles.dialWrap}>
-                <FocusDial progress={dialProgress} color={bandColor}>
-                  <Text style={styles.dialScore}>{result.focusScore ?? "—"}</Text>
-                  <Text style={styles.dialCaption}>focus</Text>
-                </FocusDial>
-              </View>
+              <Metric icon="clock" tint={colors.success} label="Total time">
+                <Text style={styles.metricValue}>{short(result.totalSec)}</Text>
+              </Metric>
 
-              <View style={styles.statusPill}>
-                <View style={[styles.statusDot, { backgroundColor: bandColor }]} />
-                <Text style={styles.statusText}>{scoreBand.label}</Text>
-              </View>
-
-              {/* The payoff, shaped as rewards rather than more statistics. */}
-              <View style={styles.rewardRow}>
-                <View style={styles.rewardCard}>
-                  <Text style={styles.rewardEmoji}>⭐</Text>
-                  <Text style={styles.rewardValue}>+{result.focusPoints}</Text>
-                  <Text style={styles.rewardLabel}>XP</Text>
-                </View>
-                <View style={styles.rewardCard}>
-                  <Text style={styles.rewardEmoji}>🔥</Text>
-                  <Text style={styles.rewardValue}>{streakDays}</Text>
-                  <Text style={styles.rewardLabel}>day streak</Text>
-                </View>
-              </View>
-
-              <View style={styles.card}>
-                <Row first icon="clock" label="Time">
-                  <Text style={styles.rowValue}>{short(result.totalSec)}</Text>
-                </Row>
-                <Row icon="target" label="Focused time">
-                  <Text style={styles.rowValue}>
-                    {result.focusWeightedMinutes == null
-                      ? "—"
-                      : short(result.focusWeightedMinutes * 60)}
-                  </Text>
-                </Row>
-                <Row icon="log-out" label="Distractions">
-                  <Text
-                    style={[
-                      styles.rowValue,
-                      result.interruptionCount > 0 ? { color: colors.warning } : null,
-                    ]}
-                  >
-                    {result.interruptionCount}
-                  </Text>
-                </Row>
-              </View>
-
-              <FocusTrace values={trace} />
-
-              <Pressable
-                style={styles.action}
-                onPress={() => goTo("rating")}
-                accessibilityRole="button"
+              <Metric
+                icon="target"
+                tint={colors.warning}
+                label="Focus estimate"
+                onPress={() => setSheetOpen(true)}
                 accessibilityLabel="Rate this session"
               >
-                <Feather name="star" size={STUDY_ICON_SIZE} color={colors.surface} />
-                <Text style={styles.actionText}>Rate it</Text>
+                <View
+                  style={[styles.bandPill, { backgroundColor: colors.successTint }]}
+                >
+                  <View style={[styles.bandDot, { backgroundColor: bandColor }]} />
+                  <Text style={[styles.bandPillText, { color: bandColor }]}>
+                    {scoreBand.label}
+                  </Text>
+                </View>
+                <Text style={[styles.metricValue, { color: bandColor }]}>
+                  {result.focusScore ?? "—"}
+                </Text>
+              </Metric>
+
+              <Metric icon="zap-off" tint={colors.danger} label="Distractions">
+                <Text style={styles.metricValue}>
+                  {result.interruptionCount}
+                  {result.awaySeconds > 0 ? ` · ${short(result.awaySeconds)}` : ""}
+                </Text>
+              </Metric>
+
+              <FocusTrace values={trace} totalSec={result.totalSec} />
+
+              <View style={styles.rewardRow}>
+                <View style={styles.rewardCard}>
+                  <View style={styles.rewardTop}>
+                    <Text style={styles.rewardEmoji}>⭐</Text>
+                    <Text style={[styles.rewardValue, { color: colors.primary }]}>
+                      +{result.focusPoints} XP
+                    </Text>
+                  </View>
+                  <Text style={styles.rewardCaption}>Banked to your total.</Text>
+                </View>
+
+                <View style={styles.rewardCard}>
+                  <View style={styles.rewardTop}>
+                    <Text style={styles.rewardEmoji}>🔥</Text>
+                    <Text style={[styles.rewardValue, { color: colors.warning }]}>
+                      {streakDays} {streakDays === 1 ? "day" : "days"}
+                    </Text>
+                  </View>
+                  <Text style={styles.rewardCaption}>Keep the streak alive.</Text>
+                </View>
+              </View>
+
+              {/*
+                Opens the composer. The post is NOT linked to this session yet -
+                useCreatePost deliberately does not send a sessionId - so that
+                connection is still the posts feature's to make.
+              */}
+              <Pressable
+                style={styles.action}
+                onPress={() => router.push("/new-post")}
+                accessibilityRole="button"
+                accessibilityLabel="Share to feed"
+              >
+                <Feather name="share-2" size={STUDY_ICON_SIZE} color={colors.surface} />
+                <Text style={styles.actionText}>Share to feed</Text>
               </Pressable>
 
               <Pressable
                 style={styles.linkButton}
-                onPress={reset}
+                onPress={finish}
                 accessibilityRole="button"
-                accessibilityLabel="Skip rating"
+                accessibilityLabel="Save privately"
               >
-                <Text style={styles.linkText}>Skip</Text>
+                <Text style={styles.linkText}>Save privately</Text>
               </Pressable>
             </>
           ) : null}
-
-          {/* ---------------- rating ---------------- */}
-          {phase === "rating" ? (
-            <>
-              <View style={styles.ratingWrap}>
-                <Text style={styles.heroEmoji}>🧠</Text>
-                <Text style={styles.ratingQuestion}>How focused{"\n"}did you feel?</Text>
-
-                <View style={styles.ratingRow}>
-                  {RATINGS.map((value) => {
-                    const selected = rating === value;
-                    return (
-                      <Pressable
-                        key={value}
-                        style={[
-                          styles.ratingButton,
-                          selected && styles.ratingButtonSelected,
-                        ]}
-                        onPress={() => rate(value)}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                        accessibilityLabel={`${value} out of 5`}
-                      >
-                        <Text
-                          style={[
-                            styles.ratingText,
-                            selected && styles.ratingTextSelected,
-                          ]}
-                        >
-                          {value}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <Text style={styles.ratingHint}>Tunes your score</Text>
-              </View>
-
-              <Pressable
-                style={[styles.action, rating === null && styles.actionDisabled]}
-                disabled={rating === null}
-                onPress={reset}
-                accessibilityRole="button"
-                accessibilityLabel="Submit rating"
-              >
-                <Feather name="check" size={STUDY_ICON_SIZE} color={colors.surface} />
-                <Text style={styles.actionText}>Submit</Text>
-              </Pressable>
-            </>
-          ) : null}
-
-          {/*
-            The one claim that cannot be left implied. Small, and on every state,
-            because a number that looks like a measurement will be read as one.
-          */}
-          <Text style={styles.ratingHint}>Focus is an estimate, not a measurement</Text>
         </ScrollView>
+
+        {/*
+          Over the recap rather than replacing it, so the numbers stay visible
+          while the question is answered - and a flick down is a cheap way out,
+          which matters because a rating someone felt cornered into is worse
+          data than no rating.
+        */}
+        <RatingSheet
+          visible={sheetOpen}
+          value={rating}
+          onRate={rate}
+          onClose={() => setSheetOpen(false)}
+        />
       </SafeAreaView>
     </LinearGradient>
   );

@@ -21,6 +21,7 @@ export {
   createStudyStyles,
   DIAL_SIZE,
   DIAL_TICKS,
+  TRACE_GRID_LINES,
   STUDY_ICON_SIZE,
   STUDY_FOOTER_ROOM,
 } from "./study.styles";

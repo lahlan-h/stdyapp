@@ -16,6 +16,9 @@ const TICK_HEIGHT = 14;
 
 export const STUDY_ICON_SIZE = 18;
 
+/** Where the chart's horizontal grid sits, as % from the bottom. */
+export const TRACE_GRID_LINES = [25, 50, 75] as const;
+
 /** Air under the last control, on top of the tab bar clearance. */
 export const STUDY_FOOTER_ROOM = 32;
 
@@ -109,6 +112,21 @@ export const createStudyStyles = (colors: ColorScheme) => {
     statusDot: { width: 8, height: 8, borderRadius: 4 },
     statusText: { fontSize: 13, fontWeight: "600", color: colors.text },
 
+    /** Shown mid-session only when the user has actually been away. */
+    warnChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      alignSelf: "center",
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      backgroundColor: colors.dangerTint,
+      borderWidth: 1,
+      borderColor: colors.dangerEdge,
+    },
+    warnChipText: { fontSize: 12, fontWeight: "600", color: colors.danger },
+
     // ---- duration picker -------------------------------------------------
     card: {
       backgroundColor: colors.surface,
@@ -158,105 +176,73 @@ export const createStudyStyles = (colors: ColorScheme) => {
     helpText: { fontSize: 12, color: colors.textMuted, lineHeight: 17 },
 
     /** The 🎉 at the top of the recap. Carries the celebration on its own. */
-    heroEmoji: { fontSize: 44, textAlign: "center" },
+    heroEmoji: { fontSize: 40, textAlign: "center" },
+
+    recapHeader: { alignItems: "center", gap: 3 },
+    recapTitle: {
+      fontSize: 26,
+      fontWeight: "700",
+      color: colors.text,
+      letterSpacing: -0.5,
+    },
+    recapSubtitle: { fontSize: 14, color: colors.textMuted },
 
     /**
-     * Two reward cards side by side - XP and streak.
+     * ONE CARD PER METRIC, rather than rows inside a single card.
      *
-     * Their own shape rather than more rows, because they are the payoff and
-     * the rows are the report. A reward that looks like a statistic is not a
-     * reward.
+     * Each number is a separate thing the user might care about, and separate
+     * cards let the eye land on one without reading the others. A grouped list
+     * reads as a settings screen; this reads as a scoreboard.
      */
-    rewardRow: { flexDirection: "row", gap: 10 },
-    rewardCard: {
-      flex: 1,
+    metricCard: {
+      flexDirection: "row",
       alignItems: "center",
-      gap: 2,
-      paddingVertical: 14,
+      gap: 12,
+      paddingVertical: 15,
+      paddingHorizontal: 15,
       borderRadius: 16,
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
     },
-    rewardEmoji: { fontSize: 22 },
-    rewardValue: {
-      fontSize: 20,
-      fontWeight: "800",
+    metricIcon: { width: 22, alignItems: "center" },
+    metricLabel: { flex: 1, fontSize: 15, color: colors.textMuted },
+    metricValue: {
+      fontSize: 19,
+      fontWeight: "700",
       color: colors.text,
       fontVariant: ["tabular-nums"],
     },
-    rewardLabel: {
-      fontSize: 10,
-      fontWeight: "600",
-      letterSpacing: 0.8,
-      textTransform: "uppercase",
-      color: colors.textMuted,
-    },
 
-    /** Band name shown inline beside the score, e.g. "Deep focus" next to 84. */
-    bandChip: {
-      paddingVertical: 3,
-      paddingHorizontal: 9,
-      borderRadius: 999,
-      marginRight: 8,
-    },
-    bandChipText: { fontSize: 11, fontWeight: "700" },
-
-    /** A single warning chip under the dial, shown only when there is one. */
-    warnChip: {
+    /** The "Deep focus" pill that sits beside the score in its card. */
+    bandPill: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
-      alignSelf: "center",
-      paddingVertical: 6,
-      paddingHorizontal: 12,
+      gap: 7,
+      paddingVertical: 7,
+      paddingHorizontal: 13,
       borderRadius: 999,
-      backgroundColor: colors.dangerTint,
+      marginRight: 10,
+    },
+    bandPillText: { fontSize: 13, fontWeight: "600" },
+    bandDot: { width: 7, height: 7, borderRadius: 3.5 },
+
+    // ---- rewards ---------------------------------------------------------
+    rewardRow: { flexDirection: "row", gap: 10 },
+    rewardCard: {
+      flex: 1,
+      gap: 3,
+      paddingVertical: 14,
+      paddingHorizontal: 14,
+      borderRadius: 16,
+      backgroundColor: colors.surface,
       borderWidth: 1,
-      borderColor: colors.dangerEdge,
+      borderColor: colors.border,
     },
-    warnChipText: { fontSize: 12, fontWeight: "600", color: colors.danger },
-
-    // ---- recap rows ------------------------------------------------------
-    recapHeader: { alignItems: "center", gap: 4, paddingTop: 4 },
-    recapTitle: {
-      fontSize: 24,
-      fontWeight: "700",
-      color: colors.text,
-      letterSpacing: -0.4,
-    },
-    recapSubtitle: { fontSize: 14, color: colors.textMuted },
-
-    row: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      paddingVertical: 13,
-    },
-    rowDivider: { borderTopWidth: 1, borderTopColor: colors.border },
-    rowIcon: {
-      width: 30,
-      height: 30,
-      borderRadius: 9,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.bg,
-    },
-    rowLabel: { flex: 1, fontSize: 15, color: colors.text },
-    rowValue: {
-      fontSize: 15,
-      fontWeight: "700",
-      color: colors.text,
-      fontVariant: ["tabular-nums"],
-    },
-    /** Small coloured pill beside a value, e.g. the band name next to a score. */
-    badge: {
-      paddingVertical: 3,
-      paddingHorizontal: 9,
-      borderRadius: 999,
-      marginRight: 8,
-    },
-    badgeText: { fontSize: 11, fontWeight: "700" },
+    rewardTop: { flexDirection: "row", alignItems: "center", gap: 7 },
+    rewardEmoji: { fontSize: 17 },
+    rewardValue: { fontSize: 17, fontWeight: "700", fontVariant: ["tabular-nums"] },
+    rewardCaption: { fontSize: 12, color: colors.textMuted },
 
     // ---- trace -----------------------------------------------------------
     traceCard: {
@@ -264,7 +250,7 @@ export const createStudyStyles = (colors: ColorScheme) => {
       borderRadius: 16,
       borderWidth: 1,
       borderColor: colors.border,
-      padding: 14,
+      padding: 15,
       gap: 10,
     },
     traceHeader: {
@@ -272,52 +258,114 @@ export const createStudyStyles = (colors: ColorScheme) => {
       alignItems: "center",
       justifyContent: "space-between",
     },
-    traceTitle: { fontSize: 13, fontWeight: "600", color: colors.text },
-    traceMeta: { fontSize: 11, color: colors.textMuted },
+    traceTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
+    traceAvg: {
+      fontSize: 12,
+      color: colors.textMuted,
+      fontVariant: ["tabular-nums"],
+    },
+
+    tracePlotRow: { flexDirection: "row", gap: 8 },
     tracePlot: {
-      height: 72,
+      flex: 1,
+      height: 104,
+      borderRadius: 10,
+      backgroundColor: colors.bg,
+      paddingHorizontal: 6,
+      paddingVertical: 6,
+      justifyContent: "flex-end",
+    },
+    /** Sits behind the bars so a bar's height can be read as a value. */
+    traceGrid: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      height: 1,
+      backgroundColor: colors.border,
+    },
+    traceBars: {
       flexDirection: "row",
       alignItems: "flex-end",
       gap: 2,
-      backgroundColor: colors.bg,
-      borderRadius: 10,
-      paddingHorizontal: 6,
-      paddingVertical: 6,
+      height: "100%",
     },
     traceBar: { flex: 1, borderRadius: 2, minWidth: 2 },
-    traceAxis: { flexDirection: "row", justifyContent: "space-between" },
 
-    // ---- rating ----------------------------------------------------------
-    ratingWrap: { alignItems: "center", gap: 6, paddingVertical: 8 },
-    ratingIcon: {
-      width: 64,
-      height: 64,
-      borderRadius: 20,
+    traceYAxis: { justifyContent: "space-between", paddingVertical: 4, width: 26 },
+    traceXAxis: { flexDirection: "row", justifyContent: "space-between" },
+    traceTick: {
+      fontSize: 10,
+      color: colors.textMuted,
+      fontVariant: ["tabular-nums"],
+    },
+
+    // ---- rating sheet ----------------------------------------------------
+    sheetBackdrop: { flex: 1, backgroundColor: colors.scrim },
+    /**
+     * Anchored to the bottom and taller than it looks: the extra height is
+     * dragged off-screen, so a downward drag never lifts the sheet's own
+     * bottom edge above the screen and exposes the backdrop under it.
+     */
+    sheet: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      alignItems: "center",
+      paddingTop: 10,
+      paddingHorizontal: 22,
+      gap: 6,
+      borderTopLeftRadius: 26,
+      borderTopRightRadius: 26,
+      backgroundColor: colors.surface,
+      borderTopWidth: 1,
+      borderColor: colors.border,
+    },
+    sheetHandle: {
+      width: 38,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.border,
+      marginBottom: 14,
+    },
+    sheetIcon: {
+      width: 58,
+      height: 58,
+      borderRadius: 18,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.surface,
+      backgroundColor: colors.bg,
       borderWidth: 1,
       borderColor: colors.border,
-      marginBottom: 10,
+      marginBottom: 6,
     },
-    ratingQuestion: {
-      fontSize: 24,
+    sheetTitle: {
+      fontSize: 25,
       fontWeight: "700",
       color: colors.text,
       textAlign: "center",
       letterSpacing: -0.4,
+      lineHeight: 31,
     },
-    ratingHint: { fontSize: 13, color: colors.textMuted, textAlign: "center" },
-    ratingRow: { flexDirection: "row", gap: 10, marginTop: 14 },
+    sheetLabel: { fontSize: 13, color: colors.textMuted, marginTop: 4 },
+    sheetHint: {
+      fontSize: 12,
+      color: colors.textMuted,
+      textAlign: "center",
+      marginTop: 14,
+      marginBottom: 12,
+    },
+
+    ratingRow: { flexDirection: "row", gap: 11, marginTop: 10 },
     ratingButton: {
-      width: 52,
-      height: 52,
-      borderRadius: 26,
+      width: 54,
+      height: 54,
+      borderRadius: 27,
       alignItems: "center",
       justifyContent: "center",
       borderWidth: 1,
       borderColor: colors.border,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.bg,
     },
     ratingButtonSelected: {
       backgroundColor: colors.primary,
@@ -328,6 +376,7 @@ export const createStudyStyles = (colors: ColorScheme) => {
 
     // ---- actions ---------------------------------------------------------
     action: {
+      alignSelf: "stretch",
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
