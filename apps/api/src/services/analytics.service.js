@@ -46,6 +46,17 @@ const DAYS_PER_WEEK = 7;
  */
 const HOUR_SLICE_MS = 15 * MILLISECONDS_PER_MINUTE;
 
+/**
+ * The least study time in the range before a per-hour rate is reported.
+ *
+ * A rate divides by hours studied, and a small divisor makes a small count
+ * look huge: one 45-second break in a 5-minute session is "11.2 per hour",
+ * which reads as a distraction problem rather than a single break. Below this,
+ * the rate is null (a dash on screen) and the plain count still shows beside
+ * it. Half an hour means one interruption reads as at most 2/hr.
+ */
+const MIN_MS_FOR_RATE = 30 * MILLISECONDS_PER_MINUTE;
+
 const toMinutes = (ms) => Math.round(ms / MILLISECONDS_PER_MINUTE);
 
 /** A percentage, or null when there is nothing to divide by. */
@@ -230,7 +241,7 @@ export const getMyAnalytics = async (userId, { range, tz }, now = new Date()) =>
     penaltyCount: interruptions.filter((item) => item.penaltyApplied).length,
     // One decimal: "1.4 per hour" is the resolution a person reasons in.
     interruptionsPerHour:
-      totalMs > 0
+      totalMs >= MIN_MS_FOR_RATE
         ? Math.round((interruptions.length / (totalMs / MILLISECONDS_PER_HOUR)) * 10) / 10
         : null,
     averageAwaySec: interruptions.length > 0 ? Math.round(awaySec / interruptions.length) : null,
@@ -241,11 +252,22 @@ export const getMyAnalytics = async (userId, { range, tz }, now = new Date()) =>
   // place with no history, so if someone raised their daily goal from 60 to
   // 120 on Wednesday, Monday is judged against 120. Recording target changes
   // would need a goal_history table - worth it only if this starts to matter.
+  //
+  // What IS known is when the goal was first set: createdAt, which the upsert
+  // in goal.repository.js leaves alone on every later change. Days (and weeks)
+  // before that are skipped entirely, not counted as misses - a day nobody had
+  // a goal for cannot have failed one. Clearing a goal and setting it again
+  // creates a new row, so it starts counting afresh from then.
   const goalByPeriod = Object.fromEntries(goals.map((goal) => [goal.period, goal]));
+
+  // The local day each goal was first set, as a date key comparable by string.
+  const goalStartKey = (goal) => localParts(goal.createdAt, tz).dateKey;
 
   const dailyGoal = goalByPeriod.DAILY
     ? hitRate(
-        rangeKeys.map((date) => ({ minutes: minutesOn(date), isCurrent: date === todayKey })),
+        rangeKeys
+          .filter((date) => date >= goalStartKey(goalByPeriod.DAILY))
+          .map((date) => ({ minutes: minutesOn(date), isCurrent: date === todayKey })),
         goalByPeriod.DAILY.targetMinutes,
       )
     : null;
@@ -256,15 +278,20 @@ export const getMyAnalytics = async (userId, { range, tz }, now = new Date()) =>
   const weekKeys = [...new Set(rangeKeys.map(weekStartKey))];
   const currentWeekKey = weekStartKey(todayKey);
 
+  // The week the goal was set in DOES count, whole: its minutes from before
+  // the goal still went towards the week, and if the week is not over yet it
+  // only counts once met anyway (see hitRate).
   const weeklyGoal = goalByPeriod.WEEKLY
     ? hitRate(
-        weekKeys.map((weekKey) => ({
-          minutes: toMinutes(
-            dateKeysEndingAt(shiftDateKey(weekKey, DAYS_PER_WEEK - 1), DAYS_PER_WEEK)
-              .reduce((sum, date) => sum + (msByDay.get(date) ?? 0), 0),
-          ),
-          isCurrent: weekKey === currentWeekKey,
-        })),
+        weekKeys
+          .filter((weekKey) => weekKey >= weekStartKey(goalStartKey(goalByPeriod.WEEKLY)))
+          .map((weekKey) => ({
+            minutes: toMinutes(
+              dateKeysEndingAt(shiftDateKey(weekKey, DAYS_PER_WEEK - 1), DAYS_PER_WEEK)
+                .reduce((sum, date) => sum + (msByDay.get(date) ?? 0), 0),
+            ),
+            isCurrent: weekKey === currentWeekKey,
+          })),
         goalByPeriod.WEEKLY.targetMinutes,
       )
     : null;
