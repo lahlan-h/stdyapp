@@ -199,20 +199,21 @@ const Study = () => {
           {/* ---------------- set up ---------------- */}
           {phase === "idle" ? (
             <>
+              {/*
+                The picker lives INSIDE the dial, so the circle the user sets
+                the length in is the same circle that then counts it down -
+                one object changing state rather than two controls swapping
+                places.
+              */}
               <View style={styles.dialWrap}>
-                <FocusDial progress={0} color={colors.primary}>
-                  <Text style={styles.dialValue}>
-                    {plannedSec ? clock(plannedSec) : "\u221e"}
-                  </Text>
-                  <Text style={styles.dialCaption}>
-                    {plannedSec ? "planned" : "no limit"}
-                  </Text>
+                <FocusDial progress={0} color={colors.primary} wideContent>
+                  <DurationPicker compact seconds={plannedSec} onChange={setPlannedSec} />
                 </FocusDial>
               </View>
 
-              {/* Zero across all three wheels is an open-ended session, so
-                  there is no separate control for it. */}
-              <DurationPicker seconds={plannedSec} onChange={setPlannedSec} />
+              <Text style={styles.plannedCaption}>
+                {plannedSec ? `${clock(plannedSec)} planned` : "No time limit"}
+              </Text>
 
               <Pressable
                 style={[styles.action, busy && styles.actionDisabled]}

@@ -6,7 +6,7 @@ import { StyleSheet } from "react-native";
  * it holds a clock that must stay legible on an SE, and the column around it
  * absorbs the difference on bigger phones.
  */
-export const DIAL_SIZE = 240;
+export const DIAL_SIZE = 280;
 
 /** How many tick marks make up the dial's ring. 60 reads as a clock face. */
 export const DIAL_TICKS = 60;
@@ -21,6 +21,16 @@ export const WHEEL_ITEM_HEIGHT = 44;
 
 /** Rows visible at once. Odd, so there is a true middle to select in. */
 export const WHEEL_VISIBLE_ITEMS = 5;
+
+/**
+ * The same wheel, shrunk to live inside the dial.
+ *
+ * Three rows rather than five: the dial's inner circle is about 190pt across,
+ * and five rows of 44 would spill past the ring. Three still shows a value
+ * above and below, which is what makes it read as a wheel rather than a list.
+ */
+export const WHEEL_ITEM_HEIGHT_COMPACT = 34;
+export const WHEEL_VISIBLE_COMPACT = 3;
 
 /** Where the chart's horizontal grid sits, as % from the bottom. */
 export const TRACE_GRID_LINES = [25, 50, 75] as const;
@@ -78,6 +88,8 @@ export const createStudyStyles = (colors: ColorScheme) => {
       backgroundColor: colors.border,
     },
     dialCenter: { alignItems: "center", paddingHorizontal: 30 },
+    /** When the dial holds the picker rather than a readout. */
+    dialCenterPicker: { alignSelf: "stretch", paddingHorizontal: 14 },
 
     dialValue: {
       fontSize: 46,
@@ -145,18 +157,16 @@ export const createStudyStyles = (colors: ColorScheme) => {
       position: "absolute",
       left: 0,
       right: 0,
-      top: ((WHEEL_VISIBLE_ITEMS - 1) / 2) * WHEEL_ITEM_HEIGHT,
-      height: WHEEL_ITEM_HEIGHT,
       borderRadius: 12,
       backgroundColor: colors.surface,
     },
-    wheel: { flex: 1, height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS },
+    // Height is set by the component, which knows whether it is compact.
+    wheel: { flex: 1 },
     wheelItem: {
-      height: WHEEL_ITEM_HEIGHT,
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "baseline",
       justifyContent: "center",
-      gap: 6,
+      gap: 3,
     },
     wheelNumber: {
       fontSize: 23,
@@ -168,7 +178,35 @@ export const createStudyStyles = (colors: ColorScheme) => {
     wheelNumberDim: { color: colors.textMuted, fontWeight: "400" },
     wheelUnit: { fontSize: 13, color: colors.textMuted },
 
+    /** In-dial variants. Smaller, and no fill on the lane - the ring already
+        frames the selection, so a second box inside it is noise. */
+    wheelLaneCompact: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      borderRadius: 10,
+      borderTopWidth: 1,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    wheelNumberCompact: {
+      fontSize: 22,
+      fontWeight: "700",
+      color: colors.text,
+      fontVariant: ["tabular-nums"],
+    },
+    wheelUnitCompact: { fontSize: 11, color: colors.textMuted },
+
     helpText: { fontSize: 12, color: colors.textMuted, lineHeight: 17 },
+
+    /** The chosen length, read back under the dial now the dial holds a wheel. */
+    plannedCaption: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: colors.textMuted,
+      textAlign: "center",
+      fontVariant: ["tabular-nums"],
+    },
 
     /** The 🎉 at the top of the recap. Carries the celebration on its own. */
     heroEmoji: { fontSize: 40, textAlign: "center" },

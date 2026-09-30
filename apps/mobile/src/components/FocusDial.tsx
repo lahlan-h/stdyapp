@@ -23,11 +23,16 @@ interface FocusDialProps {
   progress: number;
   /** Colour of the filled ticks. Always a palette token from the caller. */
   color: string;
-  /** The reading itself - a time, a score, or a placeholder. */
+  /** The reading itself - a time, a score, or the duration picker. */
   children: ReactNode;
+  /**
+   * Widens the centre for content that needs the room. The default padding
+   * keeps a caption clear of the ring; the picker needs the width instead.
+   */
+  wideContent?: boolean;
 }
 
-const FocusDial = ({ progress, color, children }: FocusDialProps) => {
+const FocusDial = ({ progress, color, children, wideContent = false }: FocusDialProps) => {
   const styles = useStyles("study");
 
   const filled = Math.round(Math.max(0, Math.min(1, progress)) * DIAL_TICKS);
@@ -43,7 +48,9 @@ const FocusDial = ({ progress, color, children }: FocusDialProps) => {
           <View style={[styles.tick, i < filled && { backgroundColor: color }]} />
         </View>
       ))}
-      <View style={styles.dialCenter}>{children}</View>
+      <View style={[styles.dialCenter, wideContent && styles.dialCenterPicker]}>
+        {children}
+      </View>
     </View>
   );
 };
