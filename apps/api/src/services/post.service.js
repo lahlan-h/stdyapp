@@ -271,6 +271,55 @@ export const getPost = async (postId, requesterId) => {
 };
 
 /**
+ * One row as a viewer sees it, with the join shapes flattened off.
+ *
+ * Flattened HERE rather than shipped as it comes back. Each relation is
+ * filtered to the viewer and capped at one row by its unique, so its length is
+ * the whole answer - but leaving the array on the payload would put an internal
+ * join shape on the wire and invite a client to read it as "the likers" or, far
+ * worse, "the reporters", which it is not. Both are destructured off so neither
+ * can survive the spread.
+ *
+ * Shared by the global feed and the per-user list so the two cannot disagree
+ * about the same post: they render through one client component, and a flag
+ * flattened in one but not the other reads as a bug in the screen.
+ *
+ * @param {string} viewerId - the caller's own id; guaranteed by requireAuth
+ */
+const toViewerPost = (viewerId) => ({ likes, reports, ...post }) => {
+  const report = reports[0];
+  // Presence is NOT the answer. A withdrawn report is still a row - the unique
+  // keeps it there so the reporter can file again - and getPostReportStatus in
+  // report.service.js draws the same line, so the two must agree or a feed flag
+  // and the status route would disagree about the same post.
+  const isReported = Boolean(report) && report.status !== "WITHDRAWN";
+
+  return {
+    ...post,
+    isLiked: likes.length > 0,
+    isReported,
+    // Both only while the report is live. Handing back the id of a WITHDRAWN
+    // row would let a client PATCH it to WITHDRAWN a second time - a write that
+    // changes nothing, spends the rate limit and reads as success - and its
+    // reason would have the app tell a reporter they had filed something they
+    // had already taken back.
+    reportId: isReported ? report.id : null,
+    reportReason: isReported ? report.reason : null,
+    // The third of a family: isLiked, isReported and isMine are all facts about
+    // the VIEWER rather than about the post, worked out here so no client has to
+    // work them out twice and disagree.
+    //
+    // Unlike its two siblings it discloses nothing. userId is a Post scalar and
+    // user.id is already joined onto every row, so a client could derive this
+    // itself the moment it knew its own id - which, today, it does not. It
+    // exists so the app can WITHHOLD an action, never to grant one: fileReport
+    // rejects a self-report on its own authority, and that check is what
+    // actually enforces the rule.
+    isMine: post.userId === viewerId,
+  };
+};
+
+/**
  * One page of the global feed — every post by everyone, newest first.
  *
  * Deliberately has NO ownership gate, for the same reason listPostsByUser has
@@ -300,50 +349,13 @@ export const listAllPosts = async ({ page, limit }, viewerId) => {
     viewerId,
   );
 
-  // Flattened HERE rather than shipped as it comes back. Each relation is
-  // filtered to the viewer and capped at one row by its unique, so its length is
-  // the whole answer - but leaving the array on the payload would put an
-  // internal join shape on the wire and invite a client to read it as "the
-  // likers" or, far worse, "the reporters", which it is not. Both are
-  // destructured off so neither can survive the spread.
-  const items = rows.map(({ likes, reports, ...post }) => {
-    const report = reports[0];
-    // Presence is NOT the answer. A withdrawn report is still a row - the unique
-    // keeps it there so the reporter can file again - and getPostReportStatus in
-    // report.service.js draws the same line, so the two must agree or a feed
-    // flag and the status route would disagree about the same post.
-    const isReported = Boolean(report) && report.status !== "WITHDRAWN";
-
-    return {
-      ...post,
-      isLiked: likes.length > 0,
-      isReported,
-      // Both only while the report is live. Handing back the id of a WITHDRAWN
-      // row would let a client PATCH it to WITHDRAWN a second time - a write
-      // that changes nothing, spends the rate limit and reads as success - and
-      // its reason would have the app tell a reporter they had filed something
-      // they had already taken back.
-      reportId: isReported ? report.id : null,
-      reportReason: isReported ? report.reason : null,
-      // The third of a family: isLiked, isReported and isMine are all facts
-      // about the VIEWER rather than about the post, worked out here so no
-      // client has to work them out twice and disagree.
-      //
-      // Unlike its two siblings it discloses nothing. userId is a Post scalar
-      // and user.id is already joined onto every row of this feed, so a client
-      // could derive this itself the moment it knew its own id - which, today,
-      // it does not. It exists so the app can WITHHOLD an action, never to
-      // grant one: fileReport rejects a self-report on its own authority, and
-      // that check is what actually enforces the rule.
-      isMine: post.userId === viewerId,
-    };
-  });
-
-  return { items, total, page, limit };
+  return { items: rows.map(toViewerPost(viewerId)), total, page, limit };
 };
 
 export const listMyPosts = async (userId) => {
-  return postRepo.findPostsByUser(userId);
+  // Both ids are the caller: these are their posts, and they are the viewer.
+  const rows = await postRepo.findPostsByUser(userId, userId);
+  return rows.map(toViewerPost(userId));
 };
 
 /**
@@ -358,9 +370,14 @@ export const listMyPosts = async (userId) => {
  * empty array — a client cannot otherwise tell "no such person" from "this
  * person has posted nothing", and those want different UI.
  */
-export const listPostsByUser = async (targetUserId) => {
+export const listPostsByUser = async (targetUserId, viewerId) => {
   await getUserById(targetUserId);
-  return postRepo.findPostsByUser(targetUserId);
+
+  // targetUserId owns the rows; viewerId answers isLiked / isReported / isMine.
+  // They differ whenever one user is looking at another's profile, which is the
+  // whole reason this takes two ids rather than one.
+  const rows = await postRepo.findPostsByUser(targetUserId, viewerId);
+  return rows.map(toViewerPost(viewerId));
 };
 
 /**
