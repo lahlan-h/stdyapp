@@ -115,7 +115,10 @@ const NewPost = () => {
         edges={["top", "left", "right"]}
       >
         <Pressable
-          style={[newPostStyles.exit, { top: 8 }]}
+          // insets.top by hand, as on the post detail screen: SafeAreaView's
+          // top padding does not move an absolutely positioned child, so a bare
+          // top: 8 put this button under the status bar.
+          style={[newPostStyles.exit, { top: insets.top + 8 }]}
           onPress={() => router.back()}
           accessibilityRole="button"
           accessibilityLabel="Discard post"

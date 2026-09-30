@@ -101,3 +101,48 @@ export const findCompletedSessionsSince = (userId, since) => {
     select: { startedAt: true, endedAt: true },
   });
 };
+
+/**
+ * The caller's FINISHED sessions since a moment in time, with what analytics
+ * needs from each.
+ *
+ * A sibling of findCompletedSessionsSince rather than a widening of it. That
+ * one feeds goal progress, which runs on the tail of every endSession, and
+ * pulling interruptions into it would add a join to the hottest write path in
+ * the app for a column goals never read.
+ *
+ * Rows rather than an aggregate, for the reason findCompletedSessionsSince
+ * gives: there is no duration column to sum. The window is bounded by the
+ * caller (analytics asks for at most two ranges plus a week of slack), so this
+ * is tens to low hundreds of narrow rows.
+ *
+ * Filtered on startedAt, matching findCompletedSessionsSince: a session
+ * belongs to the day it began.
+ *
+ * @param {string} userId
+ * @param {Date} since
+ * @returns {Promise<Array<{
+ *   startedAt: Date,
+ *   endedAt: Date,
+ *   focusPoints: number,
+ *   groupId: string | null,
+ *   interruptions: Array<{ durationSec: number, penaltyApplied: boolean }>,
+ * }>>}
+ */
+export const findCompletedSessionsForAnalytics = (userId, since) => {
+  return prisma.session.findMany({
+    where: {
+      userId,
+      endedAt: { not: null },
+      startedAt: { gte: since },
+    },
+    select: {
+      startedAt: true,
+      endedAt: true,
+      focusPoints: true,
+      groupId: true,
+      interruptions: { select: { durationSec: true, penaltyApplied: true } },
+    },
+    orderBy: { startedAt: "asc" },
+  });
+};

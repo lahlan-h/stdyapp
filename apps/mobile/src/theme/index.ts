@@ -11,6 +11,7 @@ export {
   useLoginStyles,
   useRegisterStyles,
   useEditProfileStyles,
+  useAnalyticsStyles,
   type ThemePreference,
 } from "./useTheme";
 export { lightColors, darkColors, type ColorScheme } from "./colors";
@@ -58,3 +59,11 @@ export {
   REGISTER_CHECK_ICON_SIZE,
 } from "./register.styles";
 export { createEditProfileStyles, EDIT_PROFILE_BACK_ICON_SIZE } from "./editProfile.styles";
+export {
+  createAnalyticsStyles,
+  ANALYTICS_BACK_ICON_SIZE,
+  ANALYTICS_ICON_SIZE,
+  DAILY_CHART_HEIGHT,
+  HOURLY_CHART_HEIGHT,
+  MIN_VISIBLE_BAR,
+} from "./analytics.styles";

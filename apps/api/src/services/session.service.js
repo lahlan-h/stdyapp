@@ -1,6 +1,7 @@
 import { createLogger } from "@stdyapp/core";
 
 import * as sessionRepo from "../repositories/session.repository.js";
+import { findMembership } from "../repositories/studyGroup.repository.js";
 // Gamification, hung off the end of endSession. Service imports rather than
 // repository ones, unlike the cross-domain reads elsewhere in this file: these
 // carry real rules - the consecutive-day test, the goal-crossing test - and
@@ -32,6 +33,12 @@ const notFound = () => {
 
 const forbidden = () => {
   const err = new Error("You don't have access to this session");
+  err.status = 403;
+  return err;
+};
+
+const notAMember = () => {
+  const err = new Error("You can only start a group session in a group you've joined");
   err.status = 403;
   return err;
 };
@@ -94,6 +101,19 @@ export const invalidateDetachedSessions = async (refs) => {
 };
 
 export const startSession = async ({ userId, groupId }) => {
+  // A group session counts towards that group - its stats, and later its
+  // leaderboard - so only a member may start one. Without this, anyone who
+  // knew a group's id could attach sessions to it.
+  //
+  // Owners pass too: createGroup adds the owner as a member.
+  //
+  // A groupId that does not exist also lands here, as a 403 rather than the
+  // foreign-key failure (a 500) it used to become at the insert below.
+  if (groupId) {
+    const membership = await findMembership(userId, groupId);
+    if (!membership) throw notAMember();
+  }
+
   // invite codes only make sense for group sessions — solo sessions get none
   const inviteCode = groupId
     ? Math.random().toString(36).slice(2, 8).toUpperCase()

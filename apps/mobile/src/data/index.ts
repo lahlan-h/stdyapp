@@ -74,3 +74,10 @@ export {
   type ProfileEdit,
   type ProfileState,
 } from "./useProfile";
+export {
+  useAnalytics,
+  type Analytics,
+  type AnalyticsRange,
+  type AnalyticsState,
+  type GoalHitRate,
+} from "./useAnalytics";

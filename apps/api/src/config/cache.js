@@ -453,6 +453,19 @@ export const CACHE_TTL_GOAL_PROGRESS_SEC = 30;
 export const CACHE_TTL_STREAK_SEC = 60;
 
 /**
+ * Personal analytics.
+ *
+ * Every write that changes the answer bumps a counter in the key, and the
+ * caller's day boundary is in the key too, so this TTL is mostly bounding how
+ * long an unread entry sits in Redis. Mostly: the embedded streak still expires
+ * at UTC midnight (see toEffectiveStreak), which is not the caller's midnight,
+ * so for up to this long after it an expired streak can still show. Two minutes
+ * keeps a user flicking between 7d and 30d on cache without that window
+ * mattering.
+ */
+export const CACHE_TTL_ANALYTICS_SEC = 120;
+
+/**
  * A subscription. Matches the single post and the single user profile at 120s -
  * the most static row a user has, and one only they can read.
  *
