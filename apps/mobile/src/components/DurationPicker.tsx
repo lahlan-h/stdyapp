@@ -7,13 +7,7 @@ import {
   type NativeScrollEvent,
 } from "react-native";
 
-import {
-  useStyles,
-  WHEEL_ITEM_HEIGHT,
-  WHEEL_ITEM_HEIGHT_COMPACT,
-  WHEEL_VISIBLE_ITEMS,
-  WHEEL_VISIBLE_COMPACT,
-} from "@theme";
+import { useStyles, WHEEL_ITEM_HEIGHT, WHEEL_VISIBLE_ITEMS } from "@theme";
 
 /**
  * An iOS-Clock-style duration picker: hours, minutes and seconds on three
@@ -29,25 +23,21 @@ import {
  *
  * ZERO IS A REAL CHOICE. 0h 0m 0s means an open-ended session, which is why
  * there is no separate "no limit" control - the wheel already expresses it.
- *
- * `compact` shrinks it to sit inside the dial, so the length is set in the same
- * circle that then counts it down.
  */
 
 interface WheelProps {
   values: number[];
   value: number;
   unit: string;
-  compact: boolean;
   onChange: (value: number) => void;
 }
 
-const Wheel = ({ values, value, unit, compact, onChange }: WheelProps) => {
+const Wheel = ({ values, value, unit, onChange }: WheelProps) => {
   const styles = useStyles("study");
   const ref = useRef<ScrollView>(null);
 
-  const H = compact ? WHEEL_ITEM_HEIGHT_COMPACT : WHEEL_ITEM_HEIGHT;
-  const visible = compact ? WHEEL_VISIBLE_COMPACT : WHEEL_VISIBLE_ITEMS;
+  const H = WHEEL_ITEM_HEIGHT;
+  const visible = WHEEL_VISIBLE_ITEMS;
   const pad = ((visible - 1) / 2) * H;
 
   /**
@@ -125,18 +115,11 @@ const Wheel = ({ values, value, unit, compact, onChange }: WheelProps) => {
           return (
             <View key={n} style={[styles.wheelItem, { height: H }]}>
               <Text
-                style={[
-                  compact ? styles.wheelNumberCompact : styles.wheelNumber,
-                  !selected && styles.wheelNumberDim,
-                ]}
+                style={[styles.wheelNumber, !selected && styles.wheelNumberDim]}
               >
                 {n}
               </Text>
-              {selected ? (
-                <Text style={compact ? styles.wheelUnitCompact : styles.wheelUnit}>
-                  {unit}
-                </Text>
-              ) : null}
+              {selected ? <Text style={styles.wheelUnit}>{unit}</Text> : null}
             </View>
           );
         })}
@@ -152,15 +135,13 @@ interface DurationPickerProps {
   /** Currently chosen length in seconds. 0 means open-ended. */
   seconds: number;
   onChange: (seconds: number) => void;
-  /** Shrinks it to sit inside the dial. */
-  compact?: boolean;
 }
 
-const DurationPicker = ({ seconds, onChange, compact = false }: DurationPickerProps) => {
+const DurationPicker = ({ seconds, onChange }: DurationPickerProps) => {
   const styles = useStyles("study");
 
-  const H = compact ? WHEEL_ITEM_HEIGHT_COMPACT : WHEEL_ITEM_HEIGHT;
-  const visible = compact ? WHEEL_VISIBLE_COMPACT : WHEEL_VISIBLE_ITEMS;
+  const H = WHEEL_ITEM_HEIGHT;
+  const visible = WHEEL_VISIBLE_ITEMS;
 
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -174,10 +155,7 @@ const DurationPicker = ({ seconds, onChange, compact = false }: DurationPickerPr
       {/* One lane across all three wheels, drawn behind them - as on iOS, where
           a single highlight reads as one selection rather than three. */}
       <View
-        style={[
-          compact ? styles.wheelLaneCompact : styles.wheelLane,
-          { top: ((visible - 1) / 2) * H, height: H },
-        ]}
+        style={[styles.wheelLane, { top: ((visible - 1) / 2) * H, height: H }]}
         pointerEvents="none"
       />
 
@@ -185,15 +163,13 @@ const DurationPicker = ({ seconds, onChange, compact = false }: DurationPickerPr
         <Wheel
           values={range(13)}
           value={h}
-          unit={compact ? "h" : "hours"}
-          compact={compact}
+          unit="hours"
           onChange={(v) => set({ h: v })}
         />
         <Wheel
           values={range(60)}
           value={m}
-          unit={compact ? "m" : "min"}
-          compact={compact}
+          unit="min"
           onChange={(v) => set({ m: v })}
         />
         {/* Five-second steps: nobody plans a study session to the second, and
@@ -201,8 +177,7 @@ const DurationPicker = ({ seconds, onChange, compact = false }: DurationPickerPr
         <Wheel
           values={range(60, 5)}
           value={s}
-          unit={compact ? "s" : "sec"}
-          compact={compact}
+          unit="sec"
           onChange={(v) => set({ s: v })}
         />
       </View>
