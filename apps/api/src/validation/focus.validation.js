@@ -133,3 +133,41 @@ export const leaderboardQuerySchema = z.strictObject({
   days: z.coerce.number().int().min(1).max(120).default(7),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
+
+/** Length of one checklist item. Long enough for a real task, short enough
+ *  that the row stays readable in a list. */
+const MAX_TASK_TITLE = 120;
+
+/** Mirrors MAX_TASKS_PER_SESSION in focus.service.js. */
+const MAX_TASKS_PER_REQUEST = 30;
+
+const taskTitleSchema = z
+  .string()
+  .trim()
+  .min(1, "a task needs a title")
+  .max(MAX_TASK_TITLE, `a task title must be at most ${MAX_TASK_TITLE} characters`);
+
+/**
+ * POST /api/sessions/:id/tasks.
+ *
+ * An ARRAY, because the setup screen collects a whole checklist before the
+ * session exists and then sends it in one go - a request per item would be a
+ * burst of writes for one user action, and a half-failed checklist.
+ */
+export const createTasksSchema = z.strictObject({
+  titles: z
+    .array(taskTitleSchema)
+    .min(1, "titles must not be empty")
+    .max(MAX_TASKS_PER_REQUEST, `at most ${MAX_TASKS_PER_REQUEST} tasks at a time`),
+});
+
+/** PATCH /api/sessions/:id/tasks/:taskId. */
+export const updateTaskSchema = z.strictObject({
+  isComplete: z.boolean(),
+});
+
+/** Both ids, since a task is only ever addressed through its session. */
+export const taskParamsSchema = z.strictObject({
+  id: z.uuid("id must be a UUID"),
+  taskId: z.uuid("taskId must be a UUID"),
+});

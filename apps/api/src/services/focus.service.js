@@ -157,6 +157,9 @@ export const finaliseSessionFocus = async (sessionId, userId) => {
     // findSessionById includes these. Without them the estimate cannot see
     // time the user spent out of the app - see computeAwayFraction.
     interruptions: session.interruptions ?? [],
+    // The checklist is the one input the user defines themselves, so it is
+    // read at finalise time rather than trusted from anything the client sent.
+    tasks: await focusRepo.findTasksBySession(sessionId),
   });
 
   /**
@@ -180,6 +183,10 @@ export const finaliseSessionFocus = async (sessionId, userId) => {
     focusWeightedMinutes: calibratedWeighted,
     completionFactor: result.completionFactor,
     hadWatch: result.hadWatch,
+    // Copied onto the row so the leaderboard can sum them without touching
+    // the task table.
+    tasksTotal: result.tasksTotal,
+    tasksCompleted: result.tasksCompleted,
   });
 
   // Baselines are updated only AFTER scoring, never before: folding this
@@ -265,9 +272,10 @@ const updateBaselinesFromSamples = async (userId, samples, baselineRows) => {
 export const getSessionFocus = async (sessionId, userId) => {
   const session = await getOwnedSessionOrThrow(sessionId, userId);
 
-  const [sampleCount, rating] = await Promise.all([
+  const [sampleCount, rating, tasks] = await Promise.all([
     focusRepo.countSamples(sessionId),
     focusRepo.findRatingBySession(sessionId),
+    focusRepo.findTasksBySession(sessionId),
   ]);
 
   return {
@@ -292,6 +300,8 @@ export const getSessionFocus = async (sessionId, userId) => {
     // glances away is a different session from one long one, and a recap that
     // shows only minutes cannot tell them apart.
     interruptionCount: (session.interruptions ?? []).length,
+    tasksTotal: tasks.length,
+    tasksCompleted: tasks.filter((t) => t.isComplete).length,
     selfRating: rating?.selfRating ?? null,
     // Says out loud what this number is, so no client has to infer it.
     isEstimate: true,
@@ -423,8 +433,99 @@ export const getLeaderboard = async (userId, { days, limit }) => {
     me: {
       userId,
       weightedMinutes: mine.weightedMinutes,
+      tasksCompleted: mine.tasksCompleted,
       sessions: mine.sessions,
       rank: entries.find((e) => e.userId === userId)?.rank ?? null,
     },
   };
+};
+
+// ---------------------------------------------------------------------------
+// Session checklist
+//
+// Lives in the focus feature rather than beside StudyRoutine's todos because
+// these items are SCORED: ticking them moves the focus estimate, which is this
+// service's responsibility and nothing else's.
+// ---------------------------------------------------------------------------
+
+/**
+ * A ceiling on checklist length.
+ *
+ * Not arbitrary: the task term is a fraction of the score regardless of how
+ * many items there are, so a hundred trivial items buys nothing but does make
+ * every finalise read a hundred rows. It is also a sanity bound on a field the
+ * client fills in freely.
+ */
+export const MAX_TASKS_PER_SESSION = 30;
+
+/** @param {string} sessionId @param {string} userId */
+export const listTasks = async (sessionId, userId) => {
+  await getOwnedSessionOrThrow(sessionId, userId);
+  return focusRepo.findTasksBySession(sessionId);
+};
+
+/**
+ * Appends items to the checklist.
+ *
+ * Allowed while the session is RUNNING as well as before it, because a plan
+ * that cannot change once you start is not how studying works. Refused after
+ * it ends: the score is already written, and a task added afterwards would
+ * describe a session it never affected.
+ *
+ * @param {string} sessionId
+ * @param {string} userId
+ * @param {string[]} titles
+ */
+export const addTasks = async (sessionId, userId, titles) => {
+  const session = await getOwnedSessionOrThrow(sessionId, userId);
+  if (session.endedAt) {
+    throw new HttpError(409, "Can't change the checklist of an ended session");
+  }
+
+  const existing = await focusRepo.countTasks(sessionId);
+  if (existing + titles.length > MAX_TASKS_PER_SESSION) {
+    throw new HttpError(
+      422,
+      `A session can have at most ${MAX_TASKS_PER_SESSION} tasks`,
+    );
+  }
+
+  await focusRepo.createTasks({ sessionId, titles, startPosition: existing });
+  return focusRepo.findTasksBySession(sessionId);
+};
+
+/**
+ * Ticks or un-ticks one item.
+ *
+ * Also allowed only while running: the score is computed from the checklist at
+ * finalise, so a tick afterwards would claim credit the score never counted.
+ *
+ * @param {string} sessionId
+ * @param {string} userId
+ * @param {string} taskId
+ * @param {boolean} isComplete
+ */
+export const setTaskComplete = async (sessionId, userId, taskId, isComplete) => {
+  const session = await getOwnedSessionOrThrow(sessionId, userId);
+  if (session.endedAt) {
+    throw new HttpError(409, "Can't change the checklist of an ended session");
+  }
+
+  const changed = await focusRepo.setTaskComplete({ sessionId, taskId, isComplete });
+  if (!changed) throw new HttpError(404, "Task not found");
+
+  return focusRepo.findTasksBySession(sessionId);
+};
+
+/** @param {string} sessionId @param {string} userId @param {string} taskId */
+export const removeTask = async (sessionId, userId, taskId) => {
+  const session = await getOwnedSessionOrThrow(sessionId, userId);
+  if (session.endedAt) {
+    throw new HttpError(409, "Can't change the checklist of an ended session");
+  }
+
+  const deleted = await focusRepo.deleteTask({ sessionId, taskId });
+  if (!deleted) throw new HttpError(404, "Task not found");
+
+  return focusRepo.findTasksBySession(sessionId);
 };

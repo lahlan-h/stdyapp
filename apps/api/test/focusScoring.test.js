@@ -20,7 +20,9 @@ import {
   CALIBRATION_LEARNING_RATE,
   ratingToScore,
   RATING_MIN_SAMPLES,
+  computeTaskCompletion,
   SIGNAL_WEIGHTS,
+  TASK_WEIGHT,
   POPULATION_BASELINES,
   CALIBRATION_MIN_SAMPLES,
   SAMPLE_WEIGHT,
@@ -306,12 +308,13 @@ describe("scoreSession", () => {
   });
 
   it("computes a hand-checkable score", () => {
-    // Two typical samples spanning the full hour:
-    //   motion   = 0.5  (exactly the population mean)
-    //   presence = 1
+    // Two typical samples spanning the full hour, and NO checklist:
+    //   motion    = 0.5  (exactly the population mean)
+    //   presence  = 1
     //   composite = (0.5*0.35 + 1*0.45) / 0.80 = 0.78125
     //   completion = 1
-    //   blended  = 0.85*0.78125 + 0.15*1 = 0.8140625  -> 81
+    // The task term is dropped and its weight shared out, so the two that
+    // remain are renormalised over 0.85 rather than used raw.
     const result = scoreSession({
       samples: [typicalSample(), typicalSample({ timestamp: at(60) })],
       startedAt: START,
@@ -321,10 +324,12 @@ describe("scoreSession", () => {
     const composite =
       (0.5 * SIGNAL_WEIGHTS.MOTION + SIGNAL_WEIGHTS.PRESENCE) /
       (SIGNAL_WEIGHTS.MOTION + SIGNAL_WEIGHTS.PRESENCE);
-    const blended = SAMPLE_WEIGHT * composite + COMPLETION_WEIGHT * 1;
+    const total = SAMPLE_WEIGHT + COMPLETION_WEIGHT;
+    const blended = (SAMPLE_WEIGHT * composite + COMPLETION_WEIGHT * 1) / total;
 
     assert.equal(result.focusScore, Math.round(blended * 100));
-    assert.equal(result.focusScore, 81);
+    assert.equal(result.focusScore, 82);
+    assert.equal(result.taskCompletion, null, "no checklist means no task score");
     closeTo(result.completionFactor, 1);
     assert.equal(result.sampleCount, 2);
   });
@@ -541,10 +546,11 @@ describe("scoreSession with a planned duration", () => {
 
     closeTo(onPlan.completionFactor, 1);
     closeTo(halfPlan.completionFactor, 0.5);
-    // Identical samples, so the only difference is the completion term:
-    // 0.15 x 0.5 = 7.5 points, which rounds to a 7 or 8 point gap.
+    // Identical samples, so the only difference is the completion term. With
+    // no checklist it carries 0.15/0.85 of the score, so halving completion
+    // costs about nine points.
     const gap = onPlan.focusScore - halfPlan.focusScore;
-    assert.ok(gap >= 7 && gap <= 8, `expected a 7-8 point gap, got ${gap}`);
+    assert.ok(gap >= 8 && gap <= 10, `expected an 8-10 point gap, got ${gap}`);
   });
 });
 
@@ -742,5 +748,89 @@ describe("applyCalibration", () => {
 
   it("survives a corrupt offset", () => {
     assert.equal(applyCalibration(70, { offset: NaN, ratingCount: 10 }), 70);
+  });
+});
+
+describe("computeTaskCompletion", () => {
+  it("is null when the session had no checklist", () => {
+    // Not zero. A session nobody wrote tasks for has not FAILED at them, and
+    // scoring it as if it had would punish everyone who ignores the feature.
+    assert.equal(computeTaskCompletion([]), null);
+    assert.equal(computeTaskCompletion(undefined), null);
+  });
+
+  it("is the fraction ticked", () => {
+    const tasks = (done, total) =>
+      Array.from({ length: total }, (_, i) => ({ isComplete: i < done }));
+    assert.equal(computeTaskCompletion(tasks(0, 4)), 0);
+    closeTo(computeTaskCompletion(tasks(1, 4)), 0.25);
+    closeTo(computeTaskCompletion(tasks(3, 4)), 0.75);
+    assert.equal(computeTaskCompletion(tasks(4, 4)), 1);
+  });
+});
+
+describe("scoreSession with a checklist", () => {
+  const samples = [typicalSample(), typicalSample({ timestamp: at(60) })];
+  const base = { samples, startedAt: START, endedAt: at(60) };
+  const tasks = (done, total) =>
+    Array.from({ length: total }, (_, i) => ({ isComplete: i < done }));
+
+  it("scores a finished checklist above an untouched one", () => {
+    const none = scoreSession({ ...base, tasks: tasks(0, 4) });
+    const all = scoreSession({ ...base, tasks: tasks(4, 4) });
+
+    assert.ok(
+      all.focusScore > none.focusScore,
+      `all-done ${all.focusScore} should beat none-done ${none.focusScore}`,
+    );
+    assert.equal(all.taskCompletion, 1);
+    assert.equal(none.taskCompletion, 0);
+  });
+
+  it("moves the score by the task weight, and no more", () => {
+    // The whole point of the balance: finishing a checklist is worth something
+    // real, but it cannot carry a session on its own.
+    const none = scoreSession({ ...base, tasks: tasks(0, 2) });
+    const all = scoreSession({ ...base, tasks: tasks(2, 2) });
+
+    const spread = all.focusScore - none.focusScore;
+    const expected = Math.round(TASK_WEIGHT * 100);
+    assert.ok(
+      Math.abs(spread - expected) <= 1,
+      `a full checklist should be worth about ${expected} points, got ${spread}`,
+    );
+  });
+
+  it("leaves a session without tasks exactly where it was", () => {
+    // Redistribution, not a zero: adding the feature must not quietly lower
+    // the score of every user who does not use it.
+    const withoutKey = scoreSession(base);
+    const withEmpty = scoreSession({ ...base, tasks: [] });
+    assert.equal(withEmpty.focusScore, withoutKey.focusScore);
+    assert.equal(withEmpty.taskCompletion, null);
+  });
+
+  it("reports the counts the leaderboard stores", () => {
+    const result = scoreSession({ ...base, tasks: tasks(3, 5) });
+    assert.equal(result.tasksTotal, 5);
+    assert.equal(result.tasksCompleted, 3);
+    closeTo(result.taskCompletion, 0.6);
+  });
+
+  it("cannot carry a bad session on its own", () => {
+    const distracted = [
+      { timestamp: START, motionVariance: 1e6, inApp: false },
+      { timestamp: at(60), motionVariance: 1e6, inApp: false },
+    ];
+    const result = scoreSession({
+      samples: distracted,
+      startedAt: START,
+      endedAt: at(60),
+      tasks: tasks(4, 4),
+    });
+    assert.ok(
+      result.focusScore < 50,
+      `a distracted session with a full checklist should still be poor, got ${result.focusScore}`,
+    );
   });
 });

@@ -38,16 +38,26 @@ export const SIGNAL_WEIGHTS = Object.freeze({
 });
 
 /**
- * How much of the final score comes from the samples themselves, with the
- * remainder coming from session completion.
+ * How the final score is split between what was measured and what was achieved.
  *
- * Completion is a MODEST term on purpose. It is a blunt signal - it says
- * something about commitment but nothing about attention - so it nudges the
- * estimate rather than driving it. Weighting it heavily would let a user score
- * well by simply letting a timer run.
+ * SAMPLES DOMINATE, and should: they are the only evidence about attention
+ * itself. The other two describe the session's shape, not the mind in it.
+ *
+ * Completion and tasks are MODEST on purpose, and roughly equal to each other.
+ * Completion says something about commitment but nothing about attention -
+ * weight it heavily and a user scores well by letting a timer run. Tasks are
+ * the better of the two, being the only signal the user defines themselves,
+ * but they are also the easiest to game: nothing stops someone writing one
+ * trivial item and ticking it. Together they are 30% of the score, which is
+ * enough to reward finishing what you set out to do and not enough to buy a
+ * good score without doing it.
+ *
+ * These are a deliberate guess, like every other constant here, and they are
+ * answerable to the accuracy report once enough sessions are rated.
  */
-export const SAMPLE_WEIGHT = 0.85;
-export const COMPLETION_WEIGHT = 1 - SAMPLE_WEIGHT;
+export const SAMPLE_WEIGHT = 0.7;
+export const COMPLETION_WEIGHT = 0.15;
+export const TASK_WEIGHT = 0.15;
 
 /**
  * Samples a user must have contributed for a signal before their own baseline
@@ -307,6 +317,22 @@ export const computeAwayFraction = (interruptions, elapsedMs) => {
 };
 
 /**
+ * How much of the checklist got ticked, 0-1.
+ *
+ * Returns null, not zero, when the session had no checklist. A session nobody
+ * wrote tasks for has not failed at them, and scoring it as if it had would
+ * punish every user who does not use the feature.
+ *
+ * @param {{ isComplete?: boolean }[]} tasks
+ * @returns {number|null}
+ */
+export const computeTaskCompletion = (tasks) => {
+  const list = Array.isArray(tasks) ? tasks : [];
+  if (list.length === 0) return null;
+  return clamp01(list.filter((t) => t?.isComplete).length / list.length);
+};
+
+/**
  * Turns a session's samples into the four values stored on the Session row.
  *
  * Returns nulls - never zeros - when there is nothing to score. "We did not
@@ -321,6 +347,7 @@ export const computeAwayFraction = (interruptions, elapsedMs) => {
  *   baselines?: object,
  *   plannedMinutes?: number|null,
  *   interruptions?: Array<{ durationSec: number }>,
+ *   tasks?: Array<{ isComplete?: boolean }>,
  * }} args
  * @returns {{
  *   focusScore: number|null,
@@ -337,6 +364,7 @@ export const scoreSession = ({
   baselines = {},
   plannedMinutes = null,
   interruptions = [],
+  tasks = [],
 }) => {
   const list = Array.isArray(samples) ? samples : [];
 
@@ -375,8 +403,22 @@ export const scoreSession = ({
     plannedMinutes,
   });
 
+  const taskCompletion = computeTaskCompletion(tasks);
+
+  /**
+   * The task term is DROPPED and its weight redistributed when the session had
+   * no checklist, exactly as a missing heart rate is handled in scoreSample.
+   * Counting an absent checklist as zero would mean every user who ignores the
+   * feature is scored as though they failed at it.
+   */
+  const terms = [
+    [SAMPLE_WEIGHT, presentFocus],
+    [COMPLETION_WEIGHT, completionFactor],
+    ...(taskCompletion === null ? [] : [[TASK_WEIGHT, taskCompletion]]),
+  ];
+  const totalWeight = terms.reduce((sum, [w]) => sum + w, 0);
   const blended = clamp01(
-    SAMPLE_WEIGHT * presentFocus + COMPLETION_WEIGHT * completionFactor,
+    terms.reduce((sum, [w, v]) => sum + w * v, 0) / totalWeight,
   );
 
   const focusScore = Math.round(blended * 100);
@@ -395,6 +437,10 @@ export const scoreSession = ({
     hadWatch,
     sampleCount: list.length,
     awayFraction,
+    taskCompletion,
+    tasksTotal: Array.isArray(tasks) ? tasks.length : 0,
+    tasksCompleted: (Array.isArray(tasks) ? tasks : []).filter((t) => t?.isComplete)
+      .length,
   };
 };
 

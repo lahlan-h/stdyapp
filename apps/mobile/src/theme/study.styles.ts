@@ -16,6 +16,17 @@ const TICK_HEIGHT = 14;
 
 export const STUDY_ICON_SIZE = 18;
 
+/** Icon size inside a checklist row. One token, not a per-call guess. */
+export const TASK_ICON_SIZE = 16;
+
+/**
+ * Minimum size of anything tappable.
+ *
+ * Apple's floor is 44pt and Material's is 48dp; 44 is the value every row,
+ * button and input on this screen is measured against.
+ */
+export const TOUCH_MIN = 44;
+
 /** Row height of the duration wheels, and the distance they snap by. */
 export const WHEEL_ITEM_HEIGHT = 44;
 
@@ -170,6 +181,100 @@ export const createStudyStyles = (colors: ColorScheme) => {
 
     helpText: { fontSize: 12, color: colors.textMuted, lineHeight: 17 },
 
+    // ---- checklist -------------------------------------------------------
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 16,
+      gap: 8,
+    },
+    cardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    cardTitle: {
+      fontSize: 13,
+      fontWeight: "600",
+      letterSpacing: 0.6,
+      textTransform: "uppercase",
+      color: colors.textMuted,
+    },
+    cardCount: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.textMuted,
+      fontVariant: ["tabular-nums"],
+    },
+    emptyText: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
+
+    /**
+     * The WHOLE ROW is the hit target, not the little box: 44pt tall and
+     * full width, so ticking something off needs no aim at all. Anything that
+     * makes ticking feel fiddly costs us the signal it produces.
+     */
+    taskRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: TOUCH_MIN,
+      paddingVertical: 6,
+    },
+    /** Pressed feedback. Opacity rather than scale, so no layout moves. */
+    rowPressed: { opacity: 0.6 },
+    checkbox: {
+      width: 24,
+      height: 24,
+      borderRadius: 8,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.bg,
+    },
+    checkboxChecked: {
+      backgroundColor: colors.success,
+      borderColor: colors.success,
+    },
+    taskTitle: { flex: 1, fontSize: 15, color: colors.text, lineHeight: 20 },
+    /**
+     * Struck through AND dimmed. Colour alone would be the only thing marking
+     * an item done, which fails anyone who cannot distinguish it.
+     */
+    taskTitleDone: {
+      color: colors.textMuted,
+      textDecorationLine: "line-through",
+    },
+    taskRemove: {
+      width: 32,
+      height: 32,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    taskAddRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 2 },
+    taskInput: {
+      flex: 1,
+      minHeight: TOUCH_MIN,
+      paddingHorizontal: 14,
+      borderRadius: 11,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.backgrounds.input,
+      color: colors.text,
+      fontSize: 15,
+    },
+    taskAddButton: {
+      width: TOUCH_MIN,
+      height: TOUCH_MIN,
+      borderRadius: 11,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.primary,
+    },
+
     /** The chosen length, read back under the dial now the dial holds a wheel. */
     plannedCaption: {
       fontSize: 15,
@@ -179,8 +284,24 @@ export const createStudyStyles = (colors: ColorScheme) => {
       fontVariant: ["tabular-nums"],
     },
 
-    /** The 🎉 at the top of the recap. Carries the celebration on its own. */
-    heroEmoji: { fontSize: 40, textAlign: "center" },
+    /**
+     * The mark at the top of the recap.
+     *
+     * A vector icon rather than an emoji: emoji render differently on every
+     * platform, cannot take a palette colour, and drift from the rest of the
+     * icon set.
+     */
+    heroBadge: {
+      width: 62,
+      height: 62,
+      borderRadius: 20,
+      alignSelf: "center",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.successTint,
+      borderWidth: 1,
+      borderColor: colors.successEdge,
+    },
 
     recapHeader: { alignItems: "center", gap: 3 },
     recapTitle: {
@@ -244,7 +365,6 @@ export const createStudyStyles = (colors: ColorScheme) => {
       borderColor: colors.border,
     },
     rewardTop: { flexDirection: "row", alignItems: "center", gap: 7 },
-    rewardEmoji: { fontSize: 17 },
     rewardValue: { fontSize: 17, fontWeight: "700", fontVariant: ["tabular-nums"] },
     rewardCaption: { fontSize: 12, color: colors.textMuted },
 

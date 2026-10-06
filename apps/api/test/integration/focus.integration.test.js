@@ -245,6 +245,51 @@ describe("focus feature against a real database", { skip }, () => {
     }
   });
 
+  it("scores a finished checklist above an untouched one, and stores the counts", async () => {
+    const run = async (done) => {
+      const id = await openSession(userId, { minutes: 30 });
+      await focusService.addTasks(id, userId, ["read", "notes", "practice", "recap"]);
+      const tasks = await focusRepo.findTasksBySession(id);
+      for (const t of tasks.slice(0, done)) {
+        await focusService.setTaskComplete(id, userId, t.id, true);
+      }
+      await focusService.ingestSamples(id, userId, [
+        { motionVariance: 0.1, inApp: true },
+        { motionVariance: 0.1, inApp: true },
+      ]);
+      await sessionService.endSession(id, userId);
+      return prisma.session.findUnique({
+        where: { id },
+        select: { focusScore: true, tasksTotal: true, tasksCompleted: true },
+      });
+    };
+
+    const none = await run(0);
+    const all = await run(4);
+
+    assert.ok(
+      all.focusScore > none.focusScore,
+      `all-done ${all.focusScore} should beat none-done ${none.focusScore}`,
+    );
+    // Denormalised onto the row, which is what the leaderboard sums.
+    assert.equal(all.tasksTotal, 4);
+    assert.equal(all.tasksCompleted, 4);
+    assert.equal(none.tasksCompleted, 0);
+  });
+
+  it("refuses checklist changes once the session has ended", async () => {
+    // The score is already written, so a task ticked afterwards would claim
+    // credit the score never counted.
+    const id = await openSession(userId, { minutes: 10 });
+    await focusService.addTasks(id, userId, ["one"]);
+    await sessionService.endSession(id, userId);
+
+    await assert.rejects(
+      () => focusService.addTasks(id, userId, ["late"]),
+      (err) => err.status === 409,
+    );
+  });
+
   it("moves the calibration offset towards the user's own verdicts", async () => {
     const learner = await makeUser("calibrate");
     try {

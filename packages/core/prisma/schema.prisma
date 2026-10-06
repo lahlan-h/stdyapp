@@ -231,6 +231,17 @@ model Session {
   /// inputs to the estimate, kept so a score can be explained after the fact.
   completionFactor     Float?
 
+  /// How many tasks this session's checklist had, and how many were ticked,
+  /// copied onto the row when the session ends.
+  ///
+  /// DENORMALISED on purpose. The tasks themselves live in session_tasks, but
+  /// the leaderboard sums "tasks completed" across a week for every user, and
+  /// doing that through a join on the task table means counting rows for every
+  /// session anyone has ever run. Two integers here make it the same groupBy
+  /// the weighted-minutes board already does.
+  tasksTotal     Int?
+  tasksCompleted Int?
+
   /// Whether heart-rate data was available. Without it the scorer redistributes
   /// weight over the remaining signals, so this records WHICH scoring path ran
   /// and stops a watch-assisted score being compared with one that is not.
@@ -240,6 +251,7 @@ model Session {
   posts         Post[]
   focusSamples  FocusSample[]
   focusRating   FocusRating?
+  tasks         SessionTask[]
 
   @@map("sessions")
 }
@@ -989,6 +1001,41 @@ model Report {
   @@index([targetPostId])
 
   @@map("reports")
+}
+
+/// One item on a session's checklist - what the user meant to get done.
+///
+/// SEPARATE FROM TodoItem, which belongs to a StudyRoutine. A routine's todos
+/// are a reusable plan ("my revision routine"); these are what this ONE
+/// sitting was for, and they are scored. Folding them together would mean a
+/// routine's checklist silently affecting the focus score of every session
+/// that used it, and ticking an item in one place changing history in the
+/// other.
+///
+/// A later "start a session from my routine" feature would COPY a routine's
+/// todos into these rows rather than point at them, for the same reason.
+model SessionTask {
+  id          String    @id @default(uuid())
+  sessionId   String
+  session     Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  title       String
+
+  isComplete  Boolean   @default(false)
+  /// When it was ticked. Kept beyond the boolean so a later view can show the
+  /// order things actually got done in, which is not the order they were
+  /// written in.
+  completedAt DateTime?
+
+  /// Display order. Explicit rather than relying on createdAt, so the list can
+  /// be reordered later without rewriting timestamps.
+  position    Int       @default(0)
+
+  createdAt   DateTime  @default(now())
+
+  /// Every read is "this session's checklist, in order".
+  @@index([sessionId, position])
+  @@map("session_tasks")
 }
 
 /// One row per sampling interval of a study session — the raw signal history

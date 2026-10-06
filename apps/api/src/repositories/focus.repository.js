@@ -88,6 +88,8 @@ export const updateSessionFocus = (sessionId, focus) => {
       focusWeightedMinutes: true,
       completionFactor: true,
       hadWatch: true,
+      tasksTotal: true,
+      tasksCompleted: true,
       // Returned so a caller can see both numbers side by side and never has to
       // guess which is which.
       focusPoints: true,
@@ -188,7 +190,10 @@ export const sumWeightedMinutesByUser = async ({ since, excludeUserIds = [], tak
       focusWeightedMinutes: { not: null },
       ...(excludeUserIds.length ? { userId: { notIn: excludeUserIds } } : {}),
     },
-    _sum: { focusWeightedMinutes: true },
+    // Tasks ride along on the same groupBy rather than a second query: the
+    // board already scans these rows, and a "tasks completed" column is a
+    // second metric the team wants from the same week of sessions.
+    _sum: { focusWeightedMinutes: true, tasksCompleted: true },
     _count: { _all: true },
     orderBy: { _sum: { focusWeightedMinutes: "desc" } },
     take,
@@ -210,6 +215,7 @@ export const sumWeightedMinutesByUser = async ({ since, excludeUserIds = [], tak
     username: byId.get(g.userId)?.username ?? null,
     avatarUrl: byId.get(g.userId)?.avatarUrl ?? null,
     weightedMinutes: g._sum.focusWeightedMinutes ?? 0,
+    tasksCompleted: g._sum.tasksCompleted ?? 0,
     sessions: g._count._all,
   }));
 };
@@ -223,12 +229,13 @@ export const sumWeightedMinutesByUser = async ({ since, excludeUserIds = [], tak
 export const sumWeightedMinutesForUser = async ({ userId, since }) => {
   const agg = await prisma.session.aggregate({
     where: { userId, endedAt: { gte: since }, focusWeightedMinutes: { not: null } },
-    _sum: { focusWeightedMinutes: true },
+    _sum: { focusWeightedMinutes: true, tasksCompleted: true },
     _count: { _all: true },
   });
 
   return {
     weightedMinutes: agg._sum.focusWeightedMinutes ?? 0,
+    tasksCompleted: agg._sum.tasksCompleted ?? 0,
     sessions: agg._count._all,
   };
 };
@@ -271,4 +278,75 @@ export const upsertCalibration = ({ userId, offset, ratingCount }) => {
     create: { userId, ...stats },
     update: stats,
   });
+};
+
+// ---------------------------------------------------------------------------
+// Session checklist
+// ---------------------------------------------------------------------------
+
+const TASK_SELECT = {
+  id: true,
+  title: true,
+  isComplete: true,
+  completedAt: true,
+  position: true,
+};
+
+/** @param {string} sessionId */
+export const findTasksBySession = (sessionId) => {
+  return prisma.sessionTask.findMany({
+    where: { sessionId },
+    orderBy: { position: "asc" },
+    select: TASK_SELECT,
+  });
+};
+
+/**
+ * Appends items to a session's checklist.
+ *
+ * Positions continue from whatever is already there rather than restarting at
+ * zero, so adding mid-session does not interleave new items with old ones.
+ *
+ * @param {{ sessionId: string, titles: string[], startPosition: number }} args
+ */
+export const createTasks = ({ sessionId, titles, startPosition }) => {
+  return prisma.sessionTask.createMany({
+    data: titles.map((title, i) => ({
+      sessionId,
+      title,
+      position: startPosition + i,
+    })),
+  });
+};
+
+/** @param {string} sessionId */
+export const countTasks = (sessionId) => {
+  return prisma.sessionTask.count({ where: { sessionId } });
+};
+
+/**
+ * Ticks or un-ticks one item.
+ *
+ * Scoped by sessionId as well as id, so a task id from someone else's session
+ * cannot be toggled by guessing it - the ownership check upstream covers the
+ * session, and this makes the task belong to it.
+ *
+ * @param {{ sessionId: string, taskId: string, isComplete: boolean }} args
+ */
+export const setTaskComplete = async ({ sessionId, taskId, isComplete }) => {
+  const result = await prisma.sessionTask.updateMany({
+    where: { id: taskId, sessionId },
+    // completedAt is cleared on un-tick: a timestamp left behind would claim
+    // the item was finished when the boolean says it was not.
+    data: { isComplete, completedAt: isComplete ? new Date() : null },
+  });
+  return result.count > 0;
+};
+
+/** @param {{ sessionId: string, taskId: string }} args */
+export const deleteTask = async ({ sessionId, taskId }) => {
+  const result = await prisma.sessionTask.deleteMany({
+    where: { id: taskId, sessionId },
+  });
+  return result.count > 0;
 };

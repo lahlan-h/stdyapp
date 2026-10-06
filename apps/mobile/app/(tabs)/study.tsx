@@ -18,6 +18,7 @@ import DurationPicker from "@components/DurationPicker";
 import FocusDial from "@components/FocusDial";
 import FocusTrace from "@components/FocusTrace";
 import RatingSheet from "@components/RatingSheet";
+import TaskChecklist from "@components/TaskChecklist";
 
 /**
  * The focus session screen: set up, run, recap.
@@ -81,6 +82,13 @@ const Study = () => {
     result,
     rating,
     streakDays,
+    tasks,
+    draftTasks,
+    addDraftTask,
+    removeDraftTask,
+    addTask,
+    toggleTask,
+    removeTask,
     error,
     busy,
     start,
@@ -214,6 +222,12 @@ const Study = () => {
                   there is no separate "no limit" control. */}
               <DurationPicker seconds={plannedSec} onChange={setPlannedSec} />
 
+              <TaskChecklist
+                drafts={draftTasks}
+                onAdd={addDraftTask}
+                onRemoveDraft={removeDraftTask}
+              />
+
               <Pressable
                 style={[styles.action, busy && styles.actionDisabled]}
                 disabled={busy}
@@ -260,6 +274,13 @@ const Study = () => {
                 </View>
               ) : null}
 
+              <TaskChecklist
+                tasks={tasks}
+                onAdd={addTask}
+                onToggle={toggleTask}
+                onRemoveTask={removeTask}
+              />
+
               <Pressable
                 style={[styles.action, styles.actionDanger, busy && styles.actionDisabled]}
                 disabled={busy}
@@ -276,7 +297,14 @@ const Study = () => {
           {/* ---------------- recap: no dial, cards only ---------------- */}
           {phase === "recap" && result ? (
             <>
-              <Text style={styles.heroEmoji}>🎉</Text>
+              {/*
+                A vector mark, not an emoji: emoji render differently on every
+                platform and cannot take a palette colour, so they drift from
+                the rest of the icon set.
+              */}
+              <View style={styles.heroBadge}>
+                <Feather name="award" size={28} color={colors.success} />
+              </View>
               <View style={styles.recapHeader}>
                 <Text style={styles.recapTitle}>Session complete</Text>
                 <Text style={styles.recapSubtitle}>Nice work, keep it up.</Text>
@@ -306,6 +334,25 @@ const Study = () => {
                 </Text>
               </Metric>
 
+              {result.tasksTotal > 0 ? (
+                <Metric
+                  icon="check-square"
+                  tint={colors.primary}
+                  label="Tasks done"
+                >
+                  <Text
+                    style={[
+                      styles.metricValue,
+                      result.tasksCompleted === result.tasksTotal
+                        ? { color: colors.success }
+                        : null,
+                    ]}
+                  >
+                    {result.tasksCompleted}/{result.tasksTotal}
+                  </Text>
+                </Metric>
+              ) : null}
+
               <Metric icon="zap-off" tint={colors.danger} label="Distractions">
                 <Text style={styles.metricValue}>
                   {result.interruptionCount}
@@ -318,7 +365,7 @@ const Study = () => {
               <View style={styles.rewardRow}>
                 <View style={styles.rewardCard}>
                   <View style={styles.rewardTop}>
-                    <Text style={styles.rewardEmoji}>⭐</Text>
+                    <Feather name="star" size={16} color={colors.primary} />
                     <Text style={[styles.rewardValue, { color: colors.primary }]}>
                       +{result.focusPoints} XP
                     </Text>
@@ -328,7 +375,7 @@ const Study = () => {
 
                 <View style={styles.rewardCard}>
                   <View style={styles.rewardTop}>
-                    <Text style={styles.rewardEmoji}>🔥</Text>
+                    <Feather name="trending-up" size={16} color={colors.warning} />
                     <Text style={[styles.rewardValue, { color: colors.warning }]}>
                       {streakDays} {streakDays === 1 ? "day" : "days"}
                     </Text>
@@ -361,10 +408,10 @@ const Study = () => {
                 style={styles.actionSecondary}
                 onPress={finish}
                 accessibilityRole="button"
-                accessibilityLabel="Save privately and start again"
+                accessibilityLabel="Done"
               >
                 <Feather name="check" size={STUDY_ICON_SIZE} color={colors.text} />
-                <Text style={styles.actionSecondaryText}>Save privately</Text>
+                <Text style={styles.actionSecondaryText}>Done</Text>
               </Pressable>
             </>
           ) : null}

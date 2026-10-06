@@ -107,3 +107,45 @@ export const getLeaderboard = async (req, res) => {
   const board = await focusService.getLeaderboard(req.user.id, req.validated.query);
   res.status(200).json({ data: board });
 };
+
+/** GET /api/sessions/:id/tasks - the session's checklist, in order. */
+export const listTasks = async (req, res) => {
+  const tasks = await focusService.listTasks(req.validated.params.id, req.user.id);
+  res.status(200).json({ data: tasks });
+};
+
+/**
+ * POST /api/sessions/:id/tasks - appends items.
+ *
+ * Answers the WHOLE list rather than just what was created, so a client never
+ * has to merge two shapes to know the current checklist.
+ */
+export const createTasks = async (req, res) => {
+  const tasks = await focusService.addTasks(
+    req.validated.params.id,
+    req.user.id,
+    req.validated.body.titles,
+  );
+  res.status(201).json({ data: tasks });
+};
+
+/** PATCH /api/sessions/:id/tasks/:taskId - ticks or un-ticks one item. */
+export const updateTask = async (req, res) => {
+  const tasks = await focusService.setTaskComplete(
+    req.validated.params.id,
+    req.user.id,
+    req.validated.params.taskId,
+    req.validated.body.isComplete,
+  );
+  res.status(200).json({ data: tasks });
+};
+
+/** DELETE /api/sessions/:id/tasks/:taskId. */
+export const deleteTask = async (req, res) => {
+  const tasks = await focusService.removeTask(
+    req.validated.params.id,
+    req.user.id,
+    req.validated.params.taskId,
+  );
+  res.status(200).json({ data: tasks });
+};

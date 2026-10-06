@@ -8,6 +8,10 @@ import {
   getBaselines,
   getAccuracy,
   getLeaderboard,
+  listTasks,
+  createTasks,
+  updateTask,
+  deleteTask,
 } from "../controllers/focus.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { validate } from "../middleware/validate.js";
@@ -18,6 +22,9 @@ import {
   focusRatingSchema,
   listSamplesQuerySchema,
   leaderboardQuerySchema,
+  createTasksSchema,
+  updateTaskSchema,
+  taskParamsSchema,
 } from "../validation/focus.validation.js";
 
 /**
@@ -63,6 +70,32 @@ sessionFocusRouter.put(
   "/:id/focus-rating",
   validate({ params: sessionIdParamSchema, body: focusRatingSchema }),
   asyncHandler(rateSession),
+);
+
+// The checklist. Scored at finalise, so it belongs to this feature rather
+// than beside StudyRoutine's todos - see the note in focus.service.js.
+sessionFocusRouter.get(
+  "/:id/tasks",
+  validate({ params: sessionIdParamSchema }),
+  asyncHandler(listTasks),
+);
+
+sessionFocusRouter.post(
+  "/:id/tasks",
+  validate({ params: sessionIdParamSchema, body: createTasksSchema }),
+  asyncHandler(createTasks),
+);
+
+sessionFocusRouter.patch(
+  "/:id/tasks/:taskId",
+  validate({ params: taskParamsSchema, body: updateTaskSchema }),
+  asyncHandler(updateTask),
+);
+
+sessionFocusRouter.delete(
+  "/:id/tasks/:taskId",
+  validate({ params: taskParamsSchema }),
+  asyncHandler(deleteTask),
 );
 
 export const focusRouter = Router();

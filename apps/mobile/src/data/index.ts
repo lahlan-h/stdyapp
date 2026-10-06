@@ -34,6 +34,7 @@ export {
   type FocusSessionState,
   type FocusResult,
   type FocusPhase,
+  type SessionTask,
 } from "./useFocusSession";
 export { usePost } from "./usePost";
 // The store's own setter, for a screen that shows ONE post and so has no feed

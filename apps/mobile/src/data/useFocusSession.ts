@@ -47,6 +47,8 @@ interface EndedSession {
   focusWeightedMinutes: number | null;
   completionFactor: number | null;
   hadWatch: boolean;
+  tasksTotal: number | null;
+  tasksCompleted: number | null;
 }
 
 interface StartedSession {
@@ -55,6 +57,17 @@ interface StartedSession {
 
 interface SamplePage {
   data: { computedFocus: number }[];
+}
+
+/** One item on the session checklist. */
+export interface SessionTask {
+  id: string;
+  title: string;
+  isComplete: boolean;
+}
+
+interface TaskList {
+  data: SessionTask[];
 }
 
 /** What GET /api/streaks/me answers - a bare row, not wrapped in `data`. */
@@ -68,6 +81,8 @@ interface FocusSummary {
     awaySeconds: number;
     interruptionCount: number;
     sampleCount: number;
+    tasksTotal: number;
+    tasksCompleted: number;
     selfRating: number | null;
   };
 }
@@ -89,6 +104,8 @@ export interface FocusResult {
   hadWatch: boolean;
   awaySeconds: number;
   interruptionCount: number;
+  tasksTotal: number;
+  tasksCompleted: number;
   /** How long the session actually ran, for the recap's total-time row. */
   totalSec: number;
 }
@@ -124,6 +141,23 @@ export interface FocusSessionState {
   hasMotionSensor: boolean;
   /** Days in a row, for the recap's reward card. 0 until the streak loads. */
   streakDays: number;
+
+  /**
+   * The checklist.
+   *
+   * Before a session exists these are DRAFTS held on the client: tasks hang
+   * off a session row, and there is no session to hang them off until Start is
+   * pressed. start() posts them in one call, so planning never writes rows for
+   * a session the user then abandons.
+   */
+  tasks: SessionTask[];
+  draftTasks: string[];
+  addDraftTask: (title: string) => void;
+  removeDraftTask: (index: number) => void;
+  /** Adds a task mid-session. A plan that cannot change is not how studying works. */
+  addTask: (title: string) => void;
+  toggleTask: (task: SessionTask) => void;
+  removeTask: (taskId: string) => void;
   error?: string;
   busy: boolean;
   start: () => void;
@@ -142,6 +176,8 @@ export const useFocusSession = (): FocusSessionState => {
   const [result, setResult] = useState<FocusResult | null>(null);
   const [trace, setTrace] = useState<number[]>([]);
   const [streakDays, setStreakDays] = useState(0);
+  const [tasks, setTasks] = useState<SessionTask[]>([]);
+  const [draftTasks, setDraftTasks] = useState<string[]>([]);
   const [rating, setRating] = useState<number | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -301,6 +337,27 @@ export const useFocusSession = (): FocusSessionState => {
         );
 
         sessionIdRef.current = session.id;
+
+        // Drafts become real rows now there is a session to attach them to.
+        // Failure here is not fatal: the session has started, and losing the
+        // checklist is better than losing the session over it.
+        if (draftTasks.length > 0) {
+          try {
+            const created = await withAuth((token) =>
+              request<TaskList>(`/api/sessions/${session.id}/tasks`, {
+                method: "POST",
+                token,
+                body: { titles: draftTasks },
+              }),
+            );
+            setTasks(created.data);
+          } catch (err) {
+            if (__DEV__) console.warn("[focus] checklist not saved:", describe(err));
+          }
+        } else {
+          setTasks([]);
+        }
+
         startedAtRef.current = Date.now();
         sampleCountRef.current = 0;
         awaySinceRef.current = null;
@@ -320,7 +377,7 @@ export const useFocusSession = (): FocusSessionState => {
         setBusy(false);
       }
     })();
-  }, [busy, phase, plannedSec, startTimers]);
+  }, [busy, phase, plannedSec, draftTasks, startTimers]);
 
   const end = useCallback(() => {
     const sessionId = sessionIdRef.current;
@@ -368,6 +425,8 @@ export const useFocusSession = (): FocusSessionState => {
           hadWatch: ended.hadWatch,
           awaySeconds: summary?.awaySeconds ?? 0,
           interruptionCount: summary?.interruptionCount ?? 0,
+          tasksTotal: ended.tasksTotal ?? summary?.tasksTotal ?? 0,
+          tasksCompleted: ended.tasksCompleted ?? summary?.tasksCompleted ?? 0,
           totalSec: startedAtRef.current
             ? Math.round((Date.now() - startedAtRef.current) / 1000)
             : 0,
@@ -436,6 +495,70 @@ export const useFocusSession = (): FocusSessionState => {
     [rating],
   );
 
+  // ---- checklist ----------------------------------------------------------
+
+  const addDraftTask = useCallback((title: string) => {
+    const clean = title.trim();
+    if (clean) setDraftTasks((prev) => [...prev, clean]);
+  }, []);
+
+  const removeDraftTask = useCallback((index: number) => {
+    setDraftTasks((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  /**
+   * Every checklist write answers with the WHOLE list, so the server's order
+   * and ids are the ones held here - no merging two shapes, and no local list
+   * drifting from the one being scored.
+   */
+  const mutateTasks = useCallback(
+    (path: string, method: string, body?: unknown) => {
+      const sessionId = sessionIdRef.current;
+      if (!sessionId) return;
+
+      void (async () => {
+        try {
+          const res = await withAuth((token) =>
+            request<TaskList>(`/api/sessions/${sessionId}${path}`, {
+              method,
+              token,
+              body,
+            }),
+          );
+          setTasks(res.data);
+        } catch (err) {
+          setError(describe(err));
+        }
+      })();
+    },
+    [],
+  );
+
+  const addTask = useCallback(
+    (title: string) => {
+      const clean = title.trim();
+      if (clean) mutateTasks("/tasks", "POST", { titles: [clean] });
+    },
+    [mutateTasks],
+  );
+
+  const toggleTask = useCallback(
+    (task: SessionTask) => {
+      // Applied locally first: ticking a box is one tap and the request is a
+      // detail. The server's answer replaces this a moment later either way.
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, isComplete: !t.isComplete } : t)),
+      );
+      mutateTasks(`/tasks/${task.id}`, "PATCH", { isComplete: !task.isComplete });
+    },
+    [mutateTasks],
+  );
+
+  const removeTask = useCallback(
+    (taskId: string) => mutateTasks(`/tasks/${taskId}`, "DELETE"),
+    [mutateTasks],
+  );
+
   const reset = useCallback(() => {
     stopTimers.current();
     sessionIdRef.current = null;
@@ -450,6 +573,9 @@ export const useFocusSession = (): FocusSessionState => {
     setResult(null);
     setRating(null);
     setTrace([]);
+    setTasks([]);
+    // Drafts survive a reset on purpose: someone who studies the same list
+    // twice should not have to retype it.
     setError(undefined);
   }, []);
 
@@ -466,6 +592,13 @@ export const useFocusSession = (): FocusSessionState => {
     trace,
     remainingSec,
     streakDays,
+    tasks,
+    draftTasks,
+    addDraftTask,
+    removeDraftTask,
+    addTask,
+    toggleTask,
+    removeTask,
     hasMotionSensor: hasSensor(),
     plannedSec,
     setPlannedSec,

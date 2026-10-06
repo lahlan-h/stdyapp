@@ -25,6 +25,8 @@ export {
   WHEEL_ITEM_HEIGHT,
   WHEEL_VISIBLE_ITEMS,
   STUDY_ICON_SIZE,
+  TASK_ICON_SIZE,
+  TOUCH_MIN,
   STUDY_FOOTER_ROOM,
 } from "./study.styles";
 export {

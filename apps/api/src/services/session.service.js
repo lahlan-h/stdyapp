@@ -242,6 +242,8 @@ export const endSession = async (sessionId, userId) => {
         focusWeightedMinutes: focus.focusWeightedMinutes,
         completionFactor: focus.completionFactor,
         hadWatch: focus.hadWatch,
+        tasksTotal: focus.tasksTotal,
+        tasksCompleted: focus.tasksCompleted,
       }
     : updated;
 };
