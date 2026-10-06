@@ -5,6 +5,9 @@ import { getFreshAccessToken, isSignedIn, subscribeAuth } from "./auth";
 import { toNotification, type RawNotification } from "./notificationMapping";
 import { loadNotifications } from "./notificationApi";
 import * as notificationStore from "./notificationStore";
+import { loadConversations, loadHistory } from "./messageApi";
+import * as messageStore from "./messageStore";
+import type { MessageCreatedEvent } from "./messageStore";
 
 /** The API's socket path - NOTIFICATION_SOCKET_PATH in apps/api/src/realtime. */
 const SOCKET_URL = `${API_BASE_URL.replace(/^http/, "ws")}/api/notifications/ws`;
@@ -35,14 +38,20 @@ const NativeWebSocket = WebSocket as unknown as new (
   options: { headers: Record<string, string> },
 ) => WebSocket;
 
-/** Everything the server sends. */
+/**
+ * Everything the server sends. Notification events use bare names; message
+ * events are namespaced (`message:`, `conversation:`), so neither family can be
+ * routed into the other's store.
+ */
 type SocketEvent =
-  | { type: "ready"; unread: number }
+  | { type: "ready"; unread: number; messagesUnread?: number }
   | { type: "created"; notification: RawNotification }
   | { type: "deleted"; id: string }
   | { type: "cleared" }
   | { type: "read"; id: string }
-  | { type: "read-all" };
+  | { type: "read-all" }
+  | ({ type: "message:created" } & MessageCreatedEvent)
+  | { type: "conversation:read"; userId: string };
 
 let socket: WebSocket | null = null;
 /** Whether a socket SHOULD be open: signed in, and the app in the foreground. */
@@ -53,13 +62,28 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
 const apply = (event: SocketEvent): void => {
   switch (event.type) {
-    case "ready":
-      // Connected and authenticated: the backoff starts over, and the list is
-      // re-read to cover whatever happened while there was no socket.
+    case "ready": {
+      // Connected and authenticated: the backoff starts over, and both lists
+      // are re-read to cover whatever happened while there was no socket - and
+      // so is the chat on screen, if any, so a reply sent while the phone was
+      // in a pocket is there when it comes out.
       attempt = 0;
       quickReauths = 0;
       notificationStore.setUnread(event.unread);
       loadNotifications().catch(() => {});
+      if (typeof event.messagesUnread === "number") {
+        messageStore.setUnread(event.messagesUnread);
+      }
+      loadConversations().catch(() => {});
+      const openChat = messageStore.getActiveChat();
+      if (openChat) loadHistory(openChat).catch(() => {});
+      return;
+    }
+    case "message:created":
+      messageStore.receive(event);
+      return;
+    case "conversation:read":
+      messageStore.markReadLocal(event.userId);
       return;
     case "created":
       notificationStore.add(toNotification(event.notification));

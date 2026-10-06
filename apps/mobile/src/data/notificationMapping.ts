@@ -1,4 +1,4 @@
-import { toUserSummary, type RawUser, type UserSummary } from "./useUserSearch";
+import { toUserSummary, type RawUser, type UserSummary } from "./userSummary";
 
 /**
  * The kinds of notification the API raises - NotificationType in schema.prisma.

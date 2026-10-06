@@ -5,6 +5,7 @@ import { ApiError, request } from "./api";
 import { resetPosts } from "./postStore";
 import { clearRecentSearches } from "./recentSearches";
 import { resetNotifications } from "./notificationStore";
+import { resetMessages } from "./messageStore";
 import {
   clearRefreshToken,
   loadRefreshToken,
@@ -406,6 +407,8 @@ export const logout = async (): Promise<void> => {
   clearRecentSearches();
   // And so is who has been liking and following it.
   resetNotifications();
+  // And, most of all, what it has been saying to people.
+  resetMessages();
   await clearRefreshToken();
 
   if (!refreshToken) return;

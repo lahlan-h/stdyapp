@@ -36,6 +36,7 @@ const SWIPE_CLOSE = 30;
 /** What the close arrow says it closes - keyed by mode, so a new page cannot go unnamed. */
 const CLOSE_LABELS: Record<HomeSheetMode, string> = {
   search: "Close search",
+  messages: "Close messages",
   filter: "Close filters",
   notifications: "Close notifications",
 };
@@ -47,6 +48,17 @@ interface HomeDropSheetProps {
   /** Where it stops: the tab bar's VISIBLE top edge, inset included. */
   bottom: number;
   onClose: () => void;
+  /**
+   * Asked first when Android's back button is pressed; true means the page
+   * handled it - an open chat stepping back to the conversation list - and
+   * the page stays open.
+   *
+   * A prop rather than a BackHandler inside the chat: React runs a child's
+   * effects BEFORE its parent's, so a chat opened together with this page
+   * would register first, and back handlers run last-registered first - this
+   * page would close before the chat ever heard the press.
+   */
+  onBack?: () => boolean;
   /** The page's content for a mode. Called with the last mode while closing. */
   children: (mode: HomeSheetMode) => ReactNode;
 }
@@ -64,7 +76,14 @@ interface HomeDropSheetProps {
  * sliding away before it is removed. Switching between search and filter while
  * open does NOT re-drop the page: it stays put and only its contents cross-fade.
  */
-const HomeDropSheet = ({ mode, top, bottom, onClose, children }: HomeDropSheetProps) => {
+const HomeDropSheet = ({
+  mode,
+  top,
+  bottom,
+  onClose,
+  onBack,
+  children,
+}: HomeDropSheetProps) => {
   const { colors } = useTheme();
   const styles = useStyles("homeSearch");
   const reducedMotion = useReducedMotion();
@@ -162,15 +181,17 @@ const HomeDropSheet = ({ mode, top, bottom, onClose, children }: HomeDropSheetPr
     }).start();
   }, [mode, reducedMotion, content]);
 
-  // Android's back button closes the page before it leaves the screen.
+  // Android's back button steps back inside the page if it can (see onBack),
+  // and otherwise closes the page before it leaves the screen.
   useEffect(() => {
     if (!isOpen) return;
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (onBack?.()) return true;
       onClose();
       return true;
     });
     return () => subscription.remove();
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, onBack]);
 
   // A swipe up on the footer closes the page, matching where the arrow points.
   // Claimed only for a clearly vertical drag, so a tap still reaches the button.

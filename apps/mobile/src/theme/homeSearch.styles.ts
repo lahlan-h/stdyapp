@@ -8,13 +8,16 @@ const CONTROL_HEIGHT = 44;
 const CONTROL_RADIUS = 16;
 
 /**
- * The filter and notification buttons' width. Fixed, so the two read as a pair
- * of equal squares-ish and the search box takes whatever the row has left.
+ * The messages, filter and notification buttons' width. Fixed, so the three
+ * read as a set of equal squares and the search box takes what the row has
+ * left. 48 rather than the 56 two buttons had: three at 56 would squeeze the
+ * search box below its placeholder on a 360pt phone, and 48 is still a full
+ * thumb-sized target.
  */
-const PANEL_BUTTON_WIDTH = 56;
+const PANEL_BUTTON_WIDTH = 48;
 
 /**
- * How far the unread counter breaks past the notification button's corner.
+ * How far an unread counter breaks past its button's corner.
  *
  * Android clips a child to its parent's bounds, so the counter cannot simply be
  * positioned outside the button - the tab bar's add-post circle hit the same
@@ -167,13 +170,13 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
     // See BADGE_OVERHANG: grown up and right by padding, pulled back by margin,
     // so the button lands exactly where a plain one would and the counter has
     // room inside its parent.
-    notificationWrap: {
+    countWrap: {
       marginTop: -BADGE_OVERHANG,
       marginRight: -BADGE_OVERHANG,
       paddingTop: BADGE_OVERHANG,
       paddingRight: BADGE_OVERHANG,
     },
-    notificationBadge: {
+    countBadge: {
       position: "absolute",
       top: 0,
       right: 0,
@@ -190,7 +193,7 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
       borderColor: colors.bg,
     },
     // White in both themes: notificationBadge is the same deep red in both.
-    notificationBadgeLabel: {
+    countBadgeLabel: {
       fontFamily: "PlusJakartaSans_700Bold",
       fontSize: 11,
       lineHeight: 13,

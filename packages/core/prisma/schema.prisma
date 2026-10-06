@@ -129,6 +129,11 @@ model User {
   // Notifications this user CAUSED in someone else's list - a follow, a like.
   // Only there so Prisma can resolve Notification.actor; nothing reads it.
   notificationsCaused Notification[] @relation("NotificationActor")
+  // Direct messages: the chats this user is in, and what they have sent. Both
+  // are single relations to their model, so - like likes and comments - they
+  // need no name.
+  conversationMemberships ConversationMember[]
+  messagesSent            Message[]
   // Both sides of the report graph. Named after the COLUMN they hang off, like
   // the block pair directly above and unlike the follow pair above that — there
   // is no direction left to invert, "ReportReporter" is the relation through
@@ -824,6 +829,94 @@ model Notification {
   @@index([actorId])
 
   @@map("notifications")
+}
+
+/// One direct-message conversation between TWO people.
+///
+/// 1:1 only, and the pair is the identity: `pairKey` is the two user ids,
+/// sorted and joined with ":", and its @unique is what guarantees one
+/// conversation per pair even when both people send their first message in the
+/// same instant. The API therefore addresses a chat by the OTHER person's id -
+/// the app opens one from a profile before any conversation exists, and the
+/// first message creates it.
+///
+/// Membership still lives in its own table rather than as two columns here, so
+/// that each person's read state has somewhere to live, and so a group chat
+/// later is a new pairKey rule rather than a new table.
+model Conversation {
+  id      String @id @default(uuid())
+  pairKey String @unique
+
+  /// When the newest message was sent. NULL until the first one, which is how
+  /// a conversation that was never written to stays out of everyone's list.
+  /// Set on every send, so the list sorts on one column instead of joining
+  /// every conversation's newest message first.
+  lastMessageAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  members  ConversationMember[]
+  messages Message[]
+
+  @@map("conversations")
+}
+
+/// One person's place in one conversation, and their read state there.
+///
+/// `unreadCount` is DENORMALISED on purpose: the badge on the Home panel asks
+/// "how many people have I not read?" on every app foreground, and answering it
+/// from Message would mean comparing every message against lastReadAt. Instead
+/// a send increments the recipient's count and a read resets it, so the badge is
+/// one indexed count.
+model ConversationMember {
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // Cascade, like a follow edge: a membership means nothing once its person is
+  // gone. The conversation outlives them with one member and drops out of the
+  // other person's list - see listConversations.
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  unreadCount Int       @default(0)
+  lastReadAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@id([conversationId, userId])
+
+  /// Both reads that start from a person: "my conversations", and the badge's
+  /// "how many have unread" - the second filters on the second column.
+  @@index([userId, unreadCount])
+
+  @@map("conversation_members")
+}
+
+/// One message in a conversation. Plain text; editing and deleting are not
+/// offered, so there is no updatedAt.
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // Cascade rather than the Restrict that guards posts and comments. A Restrict
+  // here would make deleting any account that had ever sent a message fail with
+  // a foreign-key error - which deleteUser renders as a misleading 409 about
+  // study sessions.
+  senderId String
+  sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  body      String
+  createdAt DateTime @default(now())
+
+  /// The history read: one conversation, newest first, paged backwards with an
+  /// id tiebreak - two messages can share a millisecond.
+  @@index([conversationId, createdAt])
+
+  /// Not for any read: for the Cascade above, which otherwise scans the whole
+  /// table every time an account is deleted.
+  @@index([senderId])
+
+  @@map("messages")
 }
 
 /// One accusation filed by one user, against another USER or against one POST.

@@ -4,6 +4,7 @@ import { createLogger, prisma } from "@stdyapp/core";
 
 import { verifyAccessToken } from "../services/token.service.js";
 import { getUnreadCount } from "../services/notification.service.js";
+import { getUnreadConversationCount } from "../services/conversation.service.js";
 import { subscribeNotificationEvents } from "./notificationBus.js";
 
 const log = createLogger("notification-socket");
@@ -31,13 +32,20 @@ const CLOSE_TOO_MANY = 4029;
 const CLOSE_GOING_AWAY = 1001;
 
 /**
- * Real-time notification delivery over a WebSocket.
+ * Real-time delivery over a WebSocket - notifications, and direct messages.
  *
- * WHAT IT CARRIES: changes, not state. A socket receives `created`, `deleted`,
- * `cleared`, `read` and `read-all` events for its own user, as the services
- * publish them. It is never the source of truth - the client reads the list
- * over REST on every (re)connect and applies events on top - so a dropped
- * socket costs latency, never correctness.
+ * WHAT IT CARRIES: changes, not state. A socket receives, for its own user:
+ *   - notification events - `created`, `deleted`, `cleared`, `read`, `read-all`
+ *     - published by notification.service.js;
+ *   - message events - `message:created`, `conversation:read` - published by
+ *     conversation.service.js, namespaced so a client routing on `type` can
+ *     never mistake one family for the other.
+ * It is never the source of truth - the client reads both lists over REST on
+ * every (re)connect and applies events on top - so a dropped socket costs
+ * latency, never correctness.
+ *
+ * The path still says "notifications" because that is what it first carried;
+ * renaming it would break every installed app for no change in behaviour.
  *
  * AUTHENTICATED BY THE FIRST MESSAGE, not by a header or the URL. A browser
  * WebSocket cannot set headers, and a token in the query string would be
@@ -157,16 +165,21 @@ export const attachNotificationSocket = (server) => {
         Math.max(0, msLeft),
       );
 
-      // The badge's starting value rides on the ready message, so the client
-      // can show the right number before its list read has even gone out.
-      let unread = 0;
-      try {
-        ({ unread } = await getUnreadCount(user.id));
-      } catch {
-        /* the client's list read will correct it */
-      }
+      // Both badges' starting values ride on the ready message, so the client
+      // can show the right numbers before its list reads have even gone out.
+      // Each falls back to 0 on its own: the client's list reads correct it.
+      const [notifications, messages] = await Promise.all([
+        getUnreadCount(user.id).catch(() => ({ unread: 0 })),
+        getUnreadConversationCount(user.id).catch(() => ({ unread: 0 })),
+      ]);
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "ready", unread }));
+        ws.send(
+          JSON.stringify({
+            type: "ready",
+            unread: notifications.unread,
+            messagesUnread: messages.unread,
+          }),
+        );
       }
     });
 

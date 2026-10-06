@@ -51,6 +51,17 @@ export {
   type NotificationsState,
 } from "./useNotifications";
 export type { AppNotification, NotificationType } from "./notificationMapping";
+export { useConversations, type ConversationsState } from "./useConversations";
+export { useChat, type ChatHookState } from "./useChat";
+export { requestChat, consumeChatRequest } from "./chatRequest";
+export {
+  MAX_MESSAGE_LENGTH,
+  type ChatMessage,
+  type ConversationSummary,
+} from "./messageMapping";
+// For turning a profile into the person a chat is with - the same shape a
+// search result has.
+export { toUserSummary } from "./userSummary";
 export { useFollow, type FollowState } from "./useFollow";
 export { usePost } from "./usePost";
 export { useUserPosts, type UserPostsState } from "./useUserPosts";

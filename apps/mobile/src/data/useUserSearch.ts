@@ -2,17 +2,11 @@ import { useEffect, useRef, useState } from "react";
 
 import { ApiError, request } from "./api";
 import { withAuth } from "./auth";
-import { toDisplayName } from "./feedMapping";
-import type { FeedAuthor } from "./types";
+import { toUserSummary, type RawUser, type UserSummary } from "./userSummary";
 
-/**
- * One person in a search result or the recent-searches list.
- *
- * The same shape a post card's author already has, on purpose: both are "a
- * person, named and pictured", and one type means a result row and a card
- * header can never disagree about how someone is shown.
- */
-export type UserSummary = FeedAuthor;
+// Re-exported so existing imports from this module keep working; the
+// definitions live in userSummary.ts - see the note there.
+export { toUserSummary, type RawUser, type UserSummary };
 
 /** How long typing must pause before a search goes out. */
 const DEBOUNCE_MS = 300;
@@ -20,25 +14,9 @@ const DEBOUNCE_MS = 300;
 /** One screenful. The list is a lookup, not a directory, so there is no paging. */
 const RESULT_LIMIT = 20;
 
-/** One user as GET /api/users lists them - USER_SEARCH_SELECT on the API. */
-export interface RawUser {
-  id: string;
-  username: string;
-  firstName: string | null;
-  lastName: string | null;
-  avatarUrl: string | null;
-}
-
 interface SearchResponse {
   data: RawUser[];
 }
-
-export const toUserSummary = (user: RawUser): UserSummary => ({
-  id: user.id,
-  username: user.username,
-  displayName: toDisplayName(user.firstName, user.lastName, user.username),
-  avatarUrl: user.avatarUrl ?? undefined,
-});
 
 export interface UserSearchState {
   results: UserSummary[];

@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef } from "react";
+import { forwardRef, useEffect, useRef, type ReactNode } from "react";
 import { View, Text, TextInput, Pressable, Animated, Easing } from "react-native";
 import { BlurView } from "expo-blur";
 import Feather from "@expo/vector-icons/Feather";
@@ -12,7 +12,7 @@ import {
 } from "@theme";
 
 /** Which drop-down page is open, if any. */
-export type HomeSheetMode = "search" | "filter" | "notifications";
+export type HomeSheetMode = "search" | "messages" | "filter" | "notifications";
 
 /** How strongly an open button is washed in primary. */
 const ACTIVE_TINT_OPACITY = 0.14;
@@ -28,12 +28,15 @@ interface HomeSearchPanelProps {
   onChangeQuery: (query: string) => void;
   /** Focusing the box is what opens search - there is no separate button. */
   onFocusSearch: () => void;
+  onPressMessages: () => void;
   onPressFilter: () => void;
   onPressNotifications: () => void;
   open: HomeSheetMode | null;
+  /** People with unread messages - drives the messages counter. */
+  unreadMessages: number;
   /** Whether any non-default filter is on - drives the dot. */
   hasFilters: boolean;
-  /** Unread notifications - drives the counter. */
+  /** Unread notifications - drives the notifications counter. */
   unread: number;
 }
 
@@ -112,9 +115,76 @@ const useBadgeScale = (unread: number, reducedMotion: boolean) => {
   return scale;
 };
 
+interface CountButtonProps {
+  isOpen: boolean;
+  /** What the red counter shows; 0 hides it. */
+  count: number;
+  onPress: () => void;
+  accessibilityLabel: string;
+  /** Draws the icon in the colour the button's state calls for. */
+  renderIcon: (color: string) => ReactNode;
+}
+
 /**
- * The bar pinned over the top of the feed: user search, the feed filter, and
+ * A panel button with a red counter on its corner - messages and
  * notifications.
+ *
+ * The WRAPPER, not the button, holds the counter: the button clips its tint
+ * to its corners, and would clip the counter with it. See BADGE_OVERHANG in
+ * homeSearch.styles for how the wrapper makes room without moving the button.
+ */
+const CountButton = ({
+  isOpen,
+  count,
+  onPress,
+  accessibilityLabel,
+  renderIcon,
+}: CountButtonProps) => {
+  const { colors } = useTheme();
+  const styles = useStyles("homeSearch");
+  const reducedMotion = useReducedMotion();
+
+  const tint = useActiveTint(isOpen, reducedMotion);
+  const badgeScale = useBadgeScale(count, reducedMotion);
+
+  // While the counter shrinks away it keeps showing the number it had,
+  // rather than blanking to "0" for the length of the animation.
+  const lastCount = useRef(count);
+  if (count > 0) lastCount.current = count;
+  const badgeLabel =
+    lastCount.current > BADGE_MAX ? `${BADGE_MAX}+` : String(lastCount.current);
+
+  return (
+    <View style={styles.countWrap}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityState={{ expanded: isOpen }}
+        style={({ pressed }) => [
+          styles.filterButton,
+          isOpen && styles.filterButtonActive,
+          pressed && { opacity: 0.6 },
+        ]}
+      >
+        <Animated.View pointerEvents="none" style={[styles.filterTint, { opacity: tint }]} />
+        {renderIcon(isOpen ? colors.primary : colors.text)}
+      </Pressable>
+      <Animated.View
+        pointerEvents="none"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={[styles.countBadge, { transform: [{ scale: badgeScale }] }]}
+      >
+        <Text style={styles.countBadgeLabel}>{badgeLabel}</Text>
+      </Animated.View>
+    </View>
+  );
+};
+
+/**
+ * The bar pinned over the top of the feed: user search, messages, the feed
+ * filter, and notifications.
  *
  * Drawn the way the tab bar is - a blur over a translucent floor, edged by a
  * hairline - so the two bars read as one frame around the feed, with the cards
@@ -131,9 +201,11 @@ const HomeSearchPanel = forwardRef<TextInput, HomeSearchPanelProps>(
       query,
       onChangeQuery,
       onFocusSearch,
+      onPressMessages,
       onPressFilter,
       onPressNotifications,
       open,
+      unreadMessages,
       hasFilters,
       unread,
     },
@@ -144,18 +216,8 @@ const HomeSearchPanel = forwardRef<TextInput, HomeSearchPanelProps>(
     const reducedMotion = useReducedMotion();
 
     const filterOpen = open === "filter";
-    const notificationsOpen = open === "notifications";
 
     const tint = useActiveTint(filterOpen, reducedMotion);
-    const notificationTint = useActiveTint(notificationsOpen, reducedMotion);
-    const badgeScale = useBadgeScale(unread, reducedMotion);
-
-    // While the counter shrinks away it keeps showing the number it had,
-    // rather than blanking to "0" for the length of the animation.
-    const lastCount = useRef(unread);
-    if (unread > 0) lastCount.current = unread;
-    const badgeLabel =
-      lastCount.current > BADGE_MAX ? `${BADGE_MAX}+` : String(lastCount.current);
 
     /**
      * The dot pops in on the first non-default filter and shrinks away on reset.
@@ -208,7 +270,9 @@ const HomeSearchPanel = forwardRef<TextInput, HomeSearchPanelProps>(
               value={query}
               onChangeText={onChangeQuery}
               onFocus={onFocusSearch}
-              placeholder="Search for a user..."
+              // Shorter than the mockup's first "Search for a user...": with
+              // four objects in the row, this is what fits a 360pt phone.
+              placeholder="Search users..."
               placeholderTextColor={colors.textMuted}
               autoCapitalize="none"
               autoCorrect={false}
@@ -217,6 +281,20 @@ const HomeSearchPanel = forwardRef<TextInput, HomeSearchPanelProps>(
               accessibilityLabel="Search for a user"
             />
           </View>
+
+          <CountButton
+            isOpen={open === "messages"}
+            count={unreadMessages}
+            onPress={onPressMessages}
+            accessibilityLabel={
+              unreadMessages > 0
+                ? `Messages, ${unreadMessages} unread ${unreadMessages === 1 ? "conversation" : "conversations"}`
+                : "Messages"
+            }
+            renderIcon={(color) => (
+              <Feather name="message-circle" size={HOME_SEARCH_ICON_SIZE} color={color} />
+            )}
+          />
 
           <Pressable
             onPress={onPressFilter}
@@ -244,43 +322,17 @@ const HomeSearchPanel = forwardRef<TextInput, HomeSearchPanelProps>(
             />
           </Pressable>
 
-          {/* The wrapper, not the button, holds the counter: the button clips
-              its tint to its corners, and would clip the counter with it. */}
-          <View style={styles.notificationWrap}>
-            <Pressable
-              onPress={onPressNotifications}
-              accessibilityRole="button"
-              accessibilityLabel={
-                unread > 0 ? `Notifications, ${unread} unread` : "Notifications"
-              }
-              accessibilityState={{ expanded: notificationsOpen }}
-              style={({ pressed }) => [
-                styles.filterButton,
-                notificationsOpen && styles.filterButtonActive,
-                pressed && { opacity: 0.6 },
-              ]}
-            >
-              <Animated.View
-                pointerEvents="none"
-                style={[styles.filterTint, { opacity: notificationTint }]}
-              />
-              {/* Ionicons, not Feather like its neighbours: Feather has no
-                  lightbulb, and the outline weight matches closely. */}
-              <Ionicons
-                name="bulb-outline"
-                size={HOME_SEARCH_ICON_SIZE + 2}
-                color={notificationsOpen ? colors.primary : colors.text}
-              />
-            </Pressable>
-            <Animated.View
-              pointerEvents="none"
-              accessibilityElementsHidden
-              importantForAccessibility="no-hide-descendants"
-              style={[styles.notificationBadge, { transform: [{ scale: badgeScale }] }]}
-            >
-              <Text style={styles.notificationBadgeLabel}>{badgeLabel}</Text>
-            </Animated.View>
-          </View>
+          <CountButton
+            isOpen={open === "notifications"}
+            count={unread}
+            onPress={onPressNotifications}
+            accessibilityLabel={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+            // Ionicons, not Feather like its neighbours: Feather has no
+            // lightbulb, and the outline weight matches closely.
+            renderIcon={(color) => (
+              <Ionicons name="bulb-outline" size={HOME_SEARCH_ICON_SIZE + 2} color={color} />
+            )}
+          />
         </View>
       </View>
     );

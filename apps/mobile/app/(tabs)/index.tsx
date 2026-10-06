@@ -31,6 +31,8 @@ import {
   isDefaultFilters,
   useNotifications,
   useRecentSearches,
+  useConversations,
+  consumeChatRequest,
   type FeedFilters,
   type FeedPost,
   type UserSummary,
@@ -45,6 +47,7 @@ import HomeDropSheet from "@components/HomeDropSheet";
 import UserSearchList from "@components/UserSearchList";
 import FeedFilterPanel from "@components/FeedFilterPanel";
 import NotificationList from "@components/NotificationList";
+import MessagesPage from "@components/MessagesPage";
 
 /** Space between the panel's lower edge and the first card. Matches the old list padding. */
 const FEED_TOP_GAP = 8;
@@ -163,6 +166,62 @@ const Index = () => {
     },
     [closeSheet],
   );
+
+  // ---- Messages --------------------------------------------------------------
+
+  /**
+   * The chat open on the messages page, or null for the conversation list.
+   *
+   * Deliberately NOT cleared when the page closes - the chat would blank out
+   * while the page is still sliding away. It is reset when the page is next
+   * opened from the button instead, which always starts on the list.
+   */
+  const [chatUser, setChatUser] = useState<UserSummary | null>(null);
+
+  // Live, like notifications: the socket writes into the store this reads.
+  const { unread: unreadMessages } = useConversations();
+
+  /** The message button toggles its page, and always opens it on the list. */
+  const pressMessages = useCallback(() => {
+    if (sheet === "messages") {
+      closeSheet();
+      return;
+    }
+    inputRef.current?.blur();
+    Keyboard.dismiss();
+    setQuery("");
+    setChatUser(null);
+    setSheet("messages");
+  }, [sheet, closeSheet]);
+
+  /** Opens the messages page straight into a chat - for a profile's Message button. */
+  const openChat = useCallback((user: UserSummary) => {
+    inputRef.current?.blur();
+    Keyboard.dismiss();
+    setQuery("");
+    setChatUser(user);
+    setSheet("messages");
+  }, []);
+
+  /**
+   * A profile's Message button leaves its request in chatRequest and pops back
+   * here; taking it on focus drops the page straight into that chat.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      const requested = consumeChatRequest();
+      if (requested) openChat(requested);
+    }, [openChat]),
+  );
+
+  /** Android back from a chat steps out to the list before it closes anything. */
+  const sheetBack = useCallback(() => {
+    if (sheet === "messages" && chatUser) {
+      setChatUser(null);
+      return true;
+    }
+    return false;
+  }, [sheet, chatUser]);
 
   // ---- Notifications ---------------------------------------------------------
 
@@ -370,10 +429,17 @@ const Index = () => {
           top={panelBottom}
           bottom={BAR_HEIGHT + insets.bottom}
           onClose={closeSheet}
+          onBack={sheetBack}
         >
           {(mode) =>
             mode === "search" ? (
               <UserSearchList query={query} onOpenUser={openUser} />
+            ) : mode === "messages" ? (
+              <MessagesPage
+                chatUser={chatUser}
+                onOpenChat={setChatUser}
+                onBack={() => setChatUser(null)}
+              />
             ) : mode === "notifications" ? (
               <NotificationList
                 notifications={notifications}
@@ -401,9 +467,11 @@ const Index = () => {
           query={query}
           onChangeQuery={setQuery}
           onFocusSearch={openSearch}
+          onPressMessages={pressMessages}
           onPressFilter={pressFilter}
           onPressNotifications={pressNotifications}
           open={sheet}
+          unreadMessages={unreadMessages}
           hasFilters={hasFilters}
           unread={unread}
         />

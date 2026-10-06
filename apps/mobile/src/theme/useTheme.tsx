@@ -26,6 +26,7 @@ import { createRegisterStyles } from "./register.styles";
 import { createEditProfileStyles } from "./editProfile.styles";
 import { createAnalyticsStyles } from "./analytics.styles";
 import { createHomeSearchStyles } from "./homeSearch.styles";
+import { createMessagesStyles } from "./messages.styles";
 
 const STORAGE_KEY = "themePreference";
 
@@ -79,6 +80,7 @@ const styleMap = {
   editProfile: createEditProfileStyles,
   analytics: createAnalyticsStyles,
   homeSearch: createHomeSearchStyles,
+  messages: createMessagesStyles,
 } as const;
 
 type StyleName = keyof typeof styleMap;

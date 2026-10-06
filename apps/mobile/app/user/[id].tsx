@@ -10,10 +10,12 @@ import {
   useFollowCounts,
   useStreak,
   useFollow,
+  toUserSummary,
 } from "@data";
 
 import ProfileView, { ProfileLoading, ProfileMessage } from "@components/ProfileView";
 import FollowButton from "@components/FollowButton";
+import MessageButton from "@components/MessageButton";
 
 /** Breathing room under the last card, above the home indicator. Matches analytics. */
 const BOTTOM_ROOM = 40;
@@ -23,8 +25,8 @@ const BOTTOM_ROOM = 40;
  *
  * The SAME screen as the Profile tab - ProfileView - fed by reads that take an
  * id instead of the token. Three things differ, all because this is not you:
- *   - no edit or sign-out, which act on the signed-in account; a Follow button
- *     takes their place;
+ *   - no edit or sign-out, which act on the signed-in account; Follow and
+ *     Message take their place, stacked the way your own two actions are;
  *   - no session totals, because GET /api/sessions is self-only by design and
  *     there is no by-user counterpart to ask;
  *   - a back control instead of a tab bar, since this is pushed over the tabs.
@@ -39,6 +41,7 @@ const UserProfile = () => {
   const { summary, reload: reloadCounts } = useFollowCounts(id);
   const { streak } = useStreak(id);
   const follow = useFollow(id, summary, reloadCounts);
+  const styles = useStyles("profile");
 
   const topBar = <BackBar />;
 
@@ -65,7 +68,12 @@ const UserProfile = () => {
       showTotals={false}
       followers={summary?.followers}
       following={summary?.following}
-      actions={<FollowButton {...follow} />}
+      actions={
+        <View style={styles.actions}>
+          <FollowButton {...follow} />
+          <MessageButton user={toUserSummary(profile)} />
+        </View>
+      }
       topBar={topBar}
       bottomPadding={BOTTOM_ROOM + insets.bottom}
     />

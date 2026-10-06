@@ -77,7 +77,13 @@ export {
   FILTER_FIELD_ICON_SIZE,
   NOTIFICATION_ICON_SIZE,
 } from "./homeSearch.styles";
+export {
+  createMessagesStyles,
+  CHAT_BACK_ICON_SIZE,
+  SEND_ICON_SIZE,
+} from "./messages.styles";
 export { useReducedMotion } from "./useReducedMotion";
+export { useKeyboardLift, type KeyboardLift } from "./useKeyboardLift";
 export {
   createAnalyticsStyles,
   ANALYTICS_BACK_ICON_SIZE,
