@@ -34,6 +34,23 @@ export const createNotification = ({ userId, type, message }) => {
 };
 
 /**
+ * Whether this exact notification was already raised recently.
+ *
+ * Exact on the message, which is what makes it a duplicate rather than merely
+ * similar: "Maya liked your post X" twice in an hour is a like, an unlike and a
+ * like again, while Maya liking post Y is news. Served by @@index([userId,
+ * createdAt]) - the type and message are filtered from that narrow window.
+ *
+ * @returns {Promise<{ id: string } | null>}
+ */
+export const findRecentDuplicate = ({ userId, type, message, since }) => {
+  return prisma.notification.findFirst({
+    where: { userId, type, message, createdAt: { gte: since } },
+    select: { id: true },
+  });
+};
+
+/**
  * One page of a user's notifications, newest first, with the total alongside.
  *
  * $transaction rather than two awaits, matching findAllFollows: the rows and

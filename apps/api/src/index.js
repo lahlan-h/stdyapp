@@ -22,6 +22,7 @@ import { assertAuthConfig, isDevAuthEnabled } from "./config/auth.js";
 import { assertStripeConfig } from "./config/stripe.js";
 import { corsOptions, warnIfCorsUnconfigured } from "./config/cors.js";
 import { HttpError } from "./utils/httpError.js";
+import { attachNotificationSocket } from "./realtime/notificationSocket.js";
 
 const log = createLogger("api");
 
@@ -120,6 +121,12 @@ const server = app.listen(PORT, () => {
   log.info(`listening on port ${PORT}`);
 });
 
+// Real-time notifications ride on the same HTTP server, as a WebSocket upgrade
+// on one path - see realtime/notificationSocket.js. Same port, same CORS-free
+// auth story (the socket authenticates with its first message), no second
+// listener to deploy.
+const closeNotificationSocket = attachNotificationSocket(server);
+
 // Guards against re-entry when Ctrl+C is pressed twice.
 let isShuttingDown = false;
 
@@ -142,6 +149,10 @@ const shutdown = async (signal) => {
   }, SHUTDOWN_TIMEOUT_MS);
 
   try {
+    // Sockets first: an open WebSocket holds its HTTP connection, so
+    // server.close() would otherwise wait on every one of them until the force
+    // exit above fired.
+    await closeNotificationSocket().catch(() => {});
     await new Promise((resolve) => server.close(resolve));
     await Promise.allSettled([
       closeRedis(),

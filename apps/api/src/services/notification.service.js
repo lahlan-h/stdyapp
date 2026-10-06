@@ -3,10 +3,29 @@ import { createLogger } from "@stdyapp/core";
 import * as notificationRepo from "../repositories/notification.repository.js";
 import { HttpError } from "../utils/httpError.js";
 import { bumpVersions, notificationUserVersionKey } from "../utils/cache.js";
+import { publishNotificationEvent } from "../realtime/notificationBus.js";
+// The only sanctioned way to reach prisma.user from a service - see post.service.js.
+import { getUserById } from "./user.service.js";
 
 const log = createLogger("notifications");
 
 const notFound = () => new HttpError(404, "Notification not found");
+
+/**
+ * How long an identical activity notification suppresses its repeat.
+ *
+ * Long enough to swallow a like/unlike/like cycle or a follow toggled twice,
+ * short enough that the same person liking the same post next week is news.
+ */
+const DUPLICATE_WINDOW_MS = 60 * 60 * 1000;
+
+/**
+ * How a person is named in a notification: first and last name, or the
+ * username when they have neither - the rule the app's feed and profile use, so
+ * a notification names someone the way their post card does.
+ */
+const displayNameOf = ({ firstName, lastName, username }) =>
+  [firstName, lastName].filter(Boolean).join(" ") || username;
 
 /**
  * Invalidates this module's cached read.
@@ -32,9 +51,12 @@ const invalidateNotifications = async (userId) => {
  *
  * No route reaches this function. It is exported for other SERVICES to call
  * when something notification-worthy happens - streak.service.js and
- * goal.service.js do today, and the follow, like and comment services are the
- * obvious next callers. See the NotificationType comment in schema.prisma for
- * the values already reserved for them.
+ * goal.service.js call it directly, and the follow, like, comment and group
+ * services reach it through notifyActivity below, which adds the guards an
+ * action by one person on another needs.
+ *
+ * The new row is also PUBLISHED, so a recipient with the app open sees it the
+ * moment it exists rather than on their next refresh - see realtime/.
  *
  * ⚠ NEVER THROWS, and that is a deliberate design decision rather than sloppy
  * error handling. This runs on the tail of some other operation that has
@@ -64,6 +86,9 @@ export const emitNotification = async ({ userId, type, message }) => {
     });
 
     await invalidateNotifications(userId);
+    // After the bump, so a client that refetches the badge on hearing this
+    // event cannot read the old count from the cache.
+    await publishNotificationEvent(userId, { type: "created", notification });
 
     return notification;
   } catch (err) {
@@ -73,6 +98,65 @@ export const emitNotification = async ({ userId, type, message }) => {
     log.warn(`failed to emit ${type} notification for ${userId}: ${err?.message}`);
     return null;
   }
+};
+
+/**
+ * Tells someone that another person did something to them - followed them,
+ * liked or commented on their post, joined their group.
+ *
+ * The guards emitNotification cannot apply, because it sees only a recipient:
+ *   - NOT TO YOURSELF. Liking your own post or commenting on your own thread is
+ *     allowed and is not news.
+ *   - NOT TWICE. The same message to the same person within DUPLICATE_WINDOW_MS
+ *     is dropped, so a heart tapped on, off and on again is one notification.
+ *
+ * The message is built here from the actor's current name, through `describe`,
+ * so callers do not each repeat the lookup or the naming rule.
+ *
+ * ⚠ NEVER REJECTS, so callers fire it with `void` and do not wait: the like or
+ * follow has already committed, and the person who tapped should not wait on a
+ * name lookup and an insert for somebody else's benefit.
+ *
+ * @param {{
+ *   recipientId: string,
+ *   actorId: string,
+ *   type: "FOLLOW" | "POST_LIKE" | "POST_COMMENT" | "GROUP_JOIN",
+ *   describe: (actorName: string) => string,
+ * }} input
+ * @returns {Promise<object | null>} the row, or null when skipped or failed
+ */
+export const notifyActivity = async ({ recipientId, actorId, type, describe }) => {
+  if (!recipientId || recipientId === actorId) return null;
+
+  try {
+    const actor = await getUserById(actorId);
+    const message = describe(displayNameOf(actor));
+
+    const duplicate = await notificationRepo.findRecentDuplicate({
+      userId: recipientId,
+      type,
+      message,
+      since: new Date(Date.now() - DUPLICATE_WINDOW_MS),
+    });
+    if (duplicate) return null;
+
+    return await emitNotification({ userId: recipientId, type, message });
+  } catch (err) {
+    log.warn(`failed to raise ${type} for ${recipientId}: ${err?.message}`);
+    return null;
+  }
+};
+
+/**
+ * Shortens free text for quoting inside a notification - a comment body, say -
+ * on a word boundary where there is one, so the excerpt does not end mid-word.
+ */
+export const excerpt = (text, max = 80) => {
+  const flat = String(text).replace(/\s+/g, " ").trim();
+  if (flat.length <= max) return flat;
+  const cut = flat.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 };
 
 /**
@@ -129,6 +213,8 @@ export const markRead = async (id, userId) => {
   if (result.count === 0) throw notFound();
 
   await invalidateNotifications(userId);
+  // The caller's OTHER devices: the one that sent this already knows.
+  await publishNotificationEvent(userId, { type: "read", id });
 
   return { id, isRead: true };
 };
@@ -147,6 +233,7 @@ export const markAllRead = async (userId) => {
   if (result.count === 0) return result;
 
   await invalidateNotifications(userId);
+  await publishNotificationEvent(userId, { type: "read-all" });
 
   return result;
 };
@@ -163,6 +250,7 @@ export const dismissNotification = async (id, userId) => {
   if (result.count === 0) throw notFound();
 
   await invalidateNotifications(userId);
+  await publishNotificationEvent(userId, { type: "deleted", id });
 
   return result;
 };
@@ -182,6 +270,7 @@ export const clearMyNotifications = async (userId) => {
   if (result.count === 0) return result;
 
   await invalidateNotifications(userId);
+  await publishNotificationEvent(userId, { type: "cleared" });
 
   return result;
 };

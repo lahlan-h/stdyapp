@@ -6,6 +6,7 @@ import * as commentRepo from "../repositories/comment.repository.js";
 import { findPostById } from "../repositories/post.repository.js";
 // The only sanctioned way to reach prisma.user from here — see post.service.js.
 import { getUserById } from "./user.service.js";
+import { notifyActivity, excerpt } from "./notification.service.js";
 // The shared duck-typing helper; toHttpError from the same module is not reused,
 // for the reasons spelled out in like.service.js.
 import { isPrismaError } from "../utils/prismaError.js";
@@ -163,7 +164,7 @@ const invalidateComment = async (comment) => {
  * tell an accidental resubmit from someone genuinely saying "this" twice.
  */
 export const createComment = async ({ userId, postId, body }) => {
-  await assertPostExists(postId);
+  const post = await assertPostExists(postId);
 
   let comment;
   try {
@@ -176,6 +177,16 @@ export const createComment = async ({ userId, postId, body }) => {
   }
 
   await invalidateComment(comment);
+  // To the post's author, quoting the start of what was said so the
+  // notification is worth reading on its own. Not awaited - see notifyActivity,
+  // which also skips a reply on your own post.
+  void notifyActivity({
+    recipientId: post.userId,
+    actorId: userId,
+    type: "POST_COMMENT",
+    describe: (name) =>
+      `${name} commented on your post “${post.title}”: “${excerpt(body)}”`,
+  });
   return comment;
 };
 

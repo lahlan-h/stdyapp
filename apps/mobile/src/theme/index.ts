@@ -75,6 +75,7 @@ export {
   SEARCH_ROW_ICON_SIZE,
   SHEET_CLOSE_ICON_SIZE,
   FILTER_FIELD_ICON_SIZE,
+  NOTIFICATION_ICON_SIZE,
 } from "./homeSearch.styles";
 export { useReducedMotion } from "./useReducedMotion";
 export {

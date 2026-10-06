@@ -29,6 +29,7 @@ import {
   consumeFeedStale,
   defaultFeedFilters,
   isDefaultFilters,
+  useNotifications,
   type FeedFilters,
   type FeedPost,
   type UserSummary,
@@ -42,9 +43,19 @@ import HomeSearchPanel, { type HomeSheetMode } from "@components/HomeSearchPanel
 import HomeDropSheet from "@components/HomeDropSheet";
 import UserSearchList from "@components/UserSearchList";
 import FeedFilterPanel from "@components/FeedFilterPanel";
+import NotificationList from "@components/NotificationList";
 
 /** Space between the panel's lower edge and the first card. Matches the old list padding. */
 const FEED_TOP_GAP = 8;
+
+/**
+ * How long the notifications page is open before its contents count as read.
+ * Roughly the drop animation: the counter clears as the page lands, not while
+ * it is still falling, so the two read as cause and effect.
+ */
+const MARK_READ_DELAY_MS = 400;
+
+const NO_IDS: ReadonlySet<string> = new Set();
 
 /** How far the feed dims while a changed filter is being read. */
 const REFRESHING_OPACITY = 0.45;
@@ -151,6 +162,58 @@ const Index = () => {
     },
     [closeSheet],
   );
+
+  // ---- Notifications ---------------------------------------------------------
+
+  // Live: the socket the tab layout keeps open writes straight into the store
+  // this reads, so the counter moves the moment something arrives.
+  const {
+    notifications,
+    unread,
+    isLoading: notificationsLoading,
+    error: notificationsError,
+    remove: removeNotification,
+    clearAll: clearNotifications,
+    markAllRead,
+    reload: reloadNotifications,
+  } = useNotifications();
+
+  /** The lightbulb toggles its own page, exactly as the filter button does. */
+  const pressNotifications = useCallback(() => {
+    if (sheet === "notifications") {
+      closeSheet();
+      return;
+    }
+    inputRef.current?.blur();
+    Keyboard.dismiss();
+    setQuery("");
+    setSheet("notifications");
+  }, [sheet, closeSheet]);
+
+  /**
+   * Opening the page is reading it: once it has landed, everything in it is
+   * marked read and the counter clears. That includes anything that arrives
+   * while it is open - someone looking at the list has seen the new row.
+   *
+   * What WAS unread is remembered for as long as the page stays open, so those
+   * rows keep their "new" look - see NotificationList's freshIds. Forgotten when
+   * the page closes, so the next visit shows only what is new since this one.
+   */
+  const [freshIds, setFreshIds] = useState<ReadonlySet<string>>(NO_IDS);
+  useEffect(() => {
+    if (sheet !== "notifications") {
+      setFreshIds(NO_IDS);
+      return;
+    }
+    const unreadIds = notifications.filter((item) => !item.isRead).map((item) => item.id);
+    if (unreadIds.length === 0 && unread === 0) return;
+
+    const timer = setTimeout(() => {
+      setFreshIds((previous) => new Set([...previous, ...unreadIds]));
+      markAllRead();
+    }, MARK_READ_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [sheet, notifications, unread, markAllRead]);
 
   /**
    * Home pressed while already on Home: close the page if one is open,
@@ -296,6 +359,16 @@ const Index = () => {
           {(mode) =>
             mode === "search" ? (
               <UserSearchList query={query} onOpenUser={openUser} />
+            ) : mode === "notifications" ? (
+              <NotificationList
+                notifications={notifications}
+                isLoading={notificationsLoading}
+                error={notificationsError}
+                remove={removeNotification}
+                clearAll={clearNotifications}
+                reload={reloadNotifications}
+                freshIds={freshIds}
+              />
             ) : (
               <FeedFilterPanel
                 filters={filters}
@@ -313,8 +386,10 @@ const Index = () => {
           onChangeQuery={setQuery}
           onFocusSearch={openSearch}
           onPressFilter={pressFilter}
+          onPressNotifications={pressNotifications}
           open={sheet}
           hasFilters={hasFilters}
+          unread={unread}
         />
 
         {/* ONE dialog for the whole list, outside the FlatList. Inside a row it

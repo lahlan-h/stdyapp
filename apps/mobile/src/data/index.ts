@@ -45,6 +45,12 @@ export {
 } from "./useUserSearch";
 export { useRecentSearches, type RecentSearchesState } from "./recentSearches";
 export { useUser, type UserState } from "./useUser";
+export {
+  useNotifications,
+  useNotificationStream,
+  type NotificationsState,
+} from "./useNotifications";
+export type { AppNotification, NotificationType } from "./notificationMapping";
 export { useFollow, type FollowState } from "./useFollow";
 export { usePost } from "./usePost";
 export { useUserPosts, type UserPostsState } from "./useUserPosts";

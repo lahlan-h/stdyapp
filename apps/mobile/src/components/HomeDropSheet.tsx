@@ -33,6 +33,13 @@ const NUDGE_DELAY_MS = 450;
 /** An upward drag on the footer past this many points closes the page. */
 const SWIPE_CLOSE = 30;
 
+/** What the close arrow says it closes - keyed by mode, so a new page cannot go unnamed. */
+const CLOSE_LABELS: Record<HomeSheetMode, string> = {
+  search: "Close search",
+  filter: "Close filters",
+  notifications: "Close notifications",
+};
+
 interface HomeDropSheetProps {
   mode: HomeSheetMode | null;
   /** Where the page hangs from: the pinned panel's bottom edge. */
@@ -232,7 +239,7 @@ const HomeDropSheet = ({ mode, top, bottom, onClose, children }: HomeDropSheetPr
               <Pressable
                 onPress={onClose}
                 accessibilityRole="button"
-                accessibilityLabel={shownMode === "search" ? "Close search" : "Close filters"}
+                accessibilityLabel={CLOSE_LABELS[shownMode]}
                 style={({ pressed }) => [styles.closeButton, pressed && { opacity: 0.6 }]}
               >
                 <Feather name="chevron-up" size={SHEET_CLOSE_ICON_SIZE} color={colors.text} />

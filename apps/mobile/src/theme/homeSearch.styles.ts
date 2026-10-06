@@ -3,9 +3,29 @@ import { StyleSheet } from "react-native";
 
 import { FAB_OVERHANG } from "./tabBar.styles";
 
-/** The search box and filter button share one height and one corner. */
+/** The search box and the panel's buttons share one height and one corner. */
 const CONTROL_HEIGHT = 44;
 const CONTROL_RADIUS = 16;
+
+/**
+ * The filter and notification buttons' width. Fixed, so the two read as a pair
+ * of equal squares-ish and the search box takes whatever the row has left.
+ */
+const PANEL_BUTTON_WIDTH = 56;
+
+/**
+ * How far the unread counter breaks past the notification button's corner.
+ *
+ * Android clips a child to its parent's bounds, so the counter cannot simply be
+ * positioned outside the button - the tab bar's add-post circle hit the same
+ * wall. Instead the button's wrapper is grown by this much up and to the right
+ * with padding, pulled back into place with matching negative margins, and the
+ * counter sits in that grown corner: inside its parent, drawn over the button.
+ */
+const BADGE_OVERHANG = 6;
+const BADGE_SIZE = 20;
+const NOTIFICATION_ICON_SIZE = 20;
+const NOTIFICATION_CIRCLE_SIZE = 44;
 const PANEL_PADDING_TOP = 8;
 const PANEL_PADDING_BOTTOM = 12;
 
@@ -78,9 +98,11 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
       paddingTop: PANEL_PADDING_TOP,
       paddingBottom: PANEL_PADDING_BOTTOM,
     },
-    // 4 : 1 with the filter button - the 80% the design gives the search box.
+    // Whatever the two fixed-width buttons leave - the design's 80% split no
+    // longer fits three objects, and the search box is the one that can give.
     searchBox: {
-      flex: 4,
+      flex: 1,
+      minWidth: 0,
       height: CONTROL_HEIGHT,
       flexDirection: "row",
       alignItems: "center",
@@ -105,7 +127,7 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
       color: colors.text,
     },
     filterButton: {
-      flex: 1,
+      width: PANEL_BUTTON_WIDTH,
       height: CONTROL_HEIGHT,
       alignItems: "center",
       justifyContent: "center",
@@ -141,6 +163,39 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
       // button rather than bleeding into the icon beside it.
       borderWidth: 2,
       borderColor: colors.backgrounds.input,
+    },
+    // See BADGE_OVERHANG: grown up and right by padding, pulled back by margin,
+    // so the button lands exactly where a plain one would and the counter has
+    // room inside its parent.
+    notificationWrap: {
+      marginTop: -BADGE_OVERHANG,
+      marginRight: -BADGE_OVERHANG,
+      paddingTop: BADGE_OVERHANG,
+      paddingRight: BADGE_OVERHANG,
+    },
+    notificationBadge: {
+      position: "absolute",
+      top: 0,
+      right: 0,
+      minWidth: BADGE_SIZE,
+      height: BADGE_SIZE,
+      paddingHorizontal: 5,
+      borderRadius: BADGE_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.notificationBadge,
+      // A ring of the page colour, so the counter reads as sitting ON the
+      // button's corner rather than as part of its border.
+      borderWidth: 2,
+      borderColor: colors.bg,
+    },
+    // White in both themes: notificationBadge is the same deep red in both.
+    notificationBadgeLabel: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 11,
+      lineHeight: 13,
+      color: "#ffffff",
+      fontVariant: ["tabular-nums"],
     },
 
     // ---- Drop-down page -----------------------------------------------------
@@ -276,6 +331,58 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
       fontSize: 13,
       color: colors.textMuted,
       textAlign: "center",
+    },
+
+    // ---- Notifications page -------------------------------------------------
+    // Rows reuse userRow and removeButton, so the page reads as a sibling of
+    // recent searches; only what is different about a notification is here.
+    notificationMain: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    // The type icon stands where a search row has an avatar: a notification
+    // records what happened, not who did it, so there is no face to show.
+    notificationIcon: {
+      width: NOTIFICATION_CIRCLE_SIZE,
+      height: NOTIFICATION_CIRCLE_SIZE,
+      borderRadius: NOTIFICATION_CIRCLE_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
+    },
+    // primary at low strength behind the icon, by opacity for the same reason
+    // filterTint uses it - there is no primary-tint token to reach for.
+    notificationIconTint: {
+      ...FILL,
+      backgroundColor: colors.primary,
+      opacity: 0.12,
+    },
+    notificationText: {
+      flex: 1,
+      minWidth: 0,
+      gap: 2,
+    },
+    notificationMessage: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 14,
+      lineHeight: 19,
+      color: colors.text,
+    },
+    notificationMessageUnread: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+    },
+    notificationMeta: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    notificationUnreadDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 3.5,
+      backgroundColor: colors.primary,
     },
 
     // ---- Filter page --------------------------------------------------------
@@ -442,4 +549,5 @@ export {
   SEARCH_ROW_ICON_SIZE,
   SHEET_CLOSE_ICON_SIZE,
   FILTER_FIELD_ICON_SIZE,
+  NOTIFICATION_ICON_SIZE,
 };

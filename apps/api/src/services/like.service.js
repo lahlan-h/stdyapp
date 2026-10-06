@@ -5,6 +5,7 @@ import * as likeRepo from "../repositories/like.repository.js";
 import { findPostById } from "../repositories/post.repository.js";
 // The only sanctioned way to reach prisma.user from here — see post.service.js.
 import { getUserById } from "./user.service.js";
+import { notifyActivity } from "./notification.service.js";
 // The shared duck-typing helper. toHttpError from the same module is
 // deliberately NOT reused: it returns HttpError, which belongs to the
 // users/auth half of this API; its P2002 message would read "That value is
@@ -111,7 +112,7 @@ const invalidateLike = async ({ postId, userId }) => {
  * @returns {Promise<{ like: object, created: boolean }>}
  */
 export const likePost = async ({ userId, postId }) => {
-  await assertPostExists(postId);
+  const post = await assertPostExists(postId);
 
   const existing = await likeRepo.findLikeByUserAndPost(userId, postId);
   // Nothing changed, so nothing to invalidate — the cheap path stays cheap.
@@ -120,6 +121,16 @@ export const likePost = async ({ userId, postId }) => {
   try {
     const like = await likeRepo.createLike({ userId, postId });
     await invalidateLike(like);
+    // Only for a like this request actually created — a repeat tap or the
+    // losing side of the race below is not news. Not awaited: see
+    // notifyActivity, which also skips a like on your own post and swallows a
+    // like/unlike/like cycle.
+    void notifyActivity({
+      recipientId: post.userId,
+      actorId: userId,
+      type: "POST_LIKE",
+      describe: (name) => `${name} liked your post “${post.title}”.`,
+    });
     return { like, created: true };
   } catch (err) {
     // Two taps landing between the read above and this insert. The unique
