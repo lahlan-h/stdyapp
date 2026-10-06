@@ -30,6 +30,7 @@ import {
   defaultFeedFilters,
   isDefaultFilters,
   useNotifications,
+  useRecentSearches,
   type FeedFilters,
   type FeedPost,
   type UserSummary,
@@ -177,6 +178,20 @@ const Index = () => {
     markAllRead,
     reload: reloadNotifications,
   } = useNotifications();
+
+  /**
+   * A name tapped in a notification opens that person exactly as a search
+   * result does - and, like one, puts them at the top of recent searches, so
+   * someone just met through a notification is a tap away next time.
+   */
+  const { add: addRecentSearch } = useRecentSearches();
+  const openUserFromNotification = useCallback(
+    (user: UserSummary) => {
+      addRecentSearch(user);
+      openUser(user);
+    },
+    [addRecentSearch, openUser],
+  );
 
   /** The lightbulb toggles its own page, exactly as the filter button does. */
   const pressNotifications = useCallback(() => {
@@ -368,6 +383,7 @@ const Index = () => {
                 clearAll={clearNotifications}
                 reload={reloadNotifications}
                 freshIds={freshIds}
+                onOpenUser={openUserFromNotification}
               />
             ) : (
               <FeedFilterPanel

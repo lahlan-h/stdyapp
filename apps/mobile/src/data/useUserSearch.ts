@@ -21,7 +21,7 @@ const DEBOUNCE_MS = 300;
 const RESULT_LIMIT = 20;
 
 /** One user as GET /api/users lists them - USER_SEARCH_SELECT on the API. */
-interface RawUser {
+export interface RawUser {
   id: string;
   username: string;
   firstName: string | null;

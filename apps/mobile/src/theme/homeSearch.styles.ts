@@ -373,6 +373,12 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
     notificationMessageUnread: {
       fontFamily: "PlusJakartaSans_600SemiBold",
     },
+    // The actor's name inside the message - in the accent colour, the way a
+    // search match is, so it reads as the one part of the sentence to tap.
+    notificationLink: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      color: colors.primary,
+    },
     notificationMeta: {
       flexDirection: "row",
       alignItems: "center",

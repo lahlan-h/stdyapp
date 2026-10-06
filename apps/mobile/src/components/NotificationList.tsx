@@ -17,7 +17,33 @@ import {
   NOTIFICATION_ICON_SIZE,
 } from "@theme";
 import { formatRelativeTime } from "@stdyapp/shared";
-import type { AppNotification, NotificationType, NotificationsState } from "@data";
+import type {
+  AppNotification,
+  NotificationType,
+  NotificationsState,
+  UserSummary,
+} from "@data";
+
+/**
+ * Where the actor's name sits in the message, if it is there at all.
+ *
+ * The API wrote the message with the actor's name as it was THEN; `actor` is
+ * who they are NOW. When the two still match, the name in the text becomes the
+ * link. When they do not - the person has renamed since - nothing is linked,
+ * rather than linking a name that no longer belongs to anyone.
+ */
+const splitOnActor = (notification: AppNotification) => {
+  const actor = notification.actor;
+  if (!actor) return null;
+  const at = notification.message.indexOf(actor.displayName);
+  if (at === -1) return null;
+  return {
+    actor,
+    before: notification.message.slice(0, at),
+    name: actor.displayName,
+    after: notification.message.slice(at + actor.displayName.length),
+  };
+};
 
 /**
  * One icon per kind of notification. Keyed by the type, so a kind added to the
@@ -44,6 +70,8 @@ type NotificationListProps = Pick<
    * ones they came here for.
    */
   freshIds: ReadonlySet<string>;
+  /** Called with the person whose name was tapped. The screen opens their profile. */
+  onOpenUser: (user: UserSummary) => void;
 };
 
 /**
@@ -52,8 +80,8 @@ type NotificationListProps = Pick<
  *
  * Built as a sibling of the recent-searches page - the same header, the same
  * row rhythm, the same × - so the two drop-down lists read as one family. Where
- * a search row shows a face, this shows the KIND of thing that happened: the
- * API records what happened, not who did it.
+ * a search row shows a face, this shows the KIND of thing that happened. When a
+ * person caused it, their name in the message is a link to their profile.
  *
  * Takes the notifications rather than reading them, so the screen that opens
  * this page is also the one that marks them read when it does.
@@ -66,6 +94,7 @@ const NotificationList = ({
   clearAll,
   reload,
   freshIds,
+  onOpenUser,
 }: NotificationListProps) => {
   const { colors } = useTheme();
   const styles = useStyles("homeSearch");
@@ -119,12 +148,20 @@ const NotificationList = ({
 
   const renderItem = ({ item }: { item: AppNotification }) => {
     const isNew = !item.isRead || freshIds.has(item.id);
+    const linked = splitOnActor(item);
     return (
     <View style={styles.userRow}>
       <View
         style={styles.notificationMain}
-        accessible
-        accessibilityLabel={`${isNew ? "New. " : ""}${item.message} ${formatRelativeTime(item.createdAt)}`}
+        // Grouped into one spoken label only when there is nothing inside to
+        // press: grouping a row with a link would hide the link from VoiceOver
+        // and TalkBack, which then reach it as its own element instead.
+        accessible={!linked}
+        accessibilityLabel={
+          linked
+            ? undefined
+            : `${isNew ? "New. " : ""}${item.message} ${formatRelativeTime(item.createdAt)}`
+        }
       >
         <View style={styles.notificationIcon}>
           <View style={styles.notificationIconTint} />
@@ -135,7 +172,25 @@ const NotificationList = ({
             style={[styles.notificationMessage, isNew && styles.notificationMessageUnread]}
             numberOfLines={2}
           >
-            {item.message}
+            {linked ? (
+              <>
+                {linked.before}
+                {/* A nested Text, so the link wraps with the sentence instead of
+                    breaking it into a separate block. */}
+                <Text
+                  style={styles.notificationLink}
+                  onPress={() => onOpenUser(linked.actor)}
+                  suppressHighlighting={false}
+                  accessibilityRole="link"
+                  accessibilityLabel={`Open ${linked.name}'s profile`}
+                >
+                  {linked.name}
+                </Text>
+                {linked.after}
+              </>
+            ) : (
+              item.message
+            )}
           </Text>
           <View style={styles.notificationMeta}>
             {isNew ? <View style={styles.notificationUnreadDot} /> : null}

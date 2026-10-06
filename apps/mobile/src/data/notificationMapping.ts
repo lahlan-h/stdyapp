@@ -1,3 +1,5 @@
+import { toUserSummary, type RawUser, type UserSummary } from "./useUserSearch";
+
 /**
  * The kinds of notification the API raises - NotificationType in schema.prisma.
  *
@@ -26,6 +28,13 @@ export interface AppNotification {
   isRead: boolean;
   /** Epoch ms, like FeedPost.createdAt. */
   createdAt: number;
+  /**
+   * Who caused it, when a person did - the follower, the liker. Absent for a
+   * streak or a goal, and for anything raised before the API recorded actors.
+   * Named the way user search names people, which is also how the API wrote
+   * the message, so the name can be found in the text and linked.
+   */
+  actor?: UserSummary;
 }
 
 /** One row as GET /api/notifications and the socket's `created` event carry it. */
@@ -35,6 +44,7 @@ export interface RawNotification {
   message: string;
   isRead: boolean;
   createdAt: string;
+  actor?: RawUser | null;
 }
 
 /**
@@ -48,4 +58,5 @@ export const toNotification = (row: RawNotification): AppNotification => ({
   message: row.message,
   isRead: row.isRead,
   createdAt: new Date(row.createdAt).getTime(),
+  actor: row.actor ? toUserSummary(row.actor) : undefined,
 });

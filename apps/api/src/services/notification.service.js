@@ -74,15 +74,17 @@ const invalidateNotifications = async (userId) => {
  * responsible for not telling someone that they liked their own post - see the
  * guard in the follow/like/comment services when they are wired up.
  *
- * @param {{ userId: string, type: string, message: string }} input
+ * @param {{ userId: string, type: string, message: string, actorId?: string }} input
  * @returns {Promise<object | null>} the row, or null if it could not be written
  */
-export const emitNotification = async ({ userId, type, message }) => {
+export const emitNotification = async ({ userId, type, message, actorId }) => {
   try {
     const notification = await notificationRepo.createNotification({
       userId,
       type,
       message,
+      // Optional: streak and goal notifications have nobody behind them.
+      actorId,
     });
 
     await invalidateNotifications(userId);
@@ -140,7 +142,8 @@ export const notifyActivity = async ({ recipientId, actorId, type, describe }) =
     });
     if (duplicate) return null;
 
-    return await emitNotification({ userId: recipientId, type, message });
+    // The actor travels with the row, so the app can link their name to them.
+    return await emitNotification({ userId: recipientId, type, message, actorId });
   } catch (err) {
     log.warn(`failed to raise ${type} for ${recipientId}: ${err?.message}`);
     return null;

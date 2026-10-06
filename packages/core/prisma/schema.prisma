@@ -125,7 +125,10 @@ model User {
   goals         Goal[]
   streak        Streak?
   subscription  Subscription?
-  notifications Notification[]
+  notifications Notification[] @relation("NotificationRecipient")
+  // Notifications this user CAUSED in someone else's list - a follow, a like.
+  // Only there so Prisma can resolve Notification.actor; nothing reads it.
+  notificationsCaused Notification[] @relation("NotificationActor")
   // Both sides of the report graph. Named after the COLUMN they hang off, like
   // the block pair directly above and unlike the follow pair above that — there
   // is no direction left to invert, "ReportReporter" is the relation through
@@ -753,10 +756,9 @@ model Subscription {
 /// with a second job: the client renders a different icon and deep link per
 /// type, so this is an API contract rather than a label.
 ///
-/// FOLLOW, POST_LIKE and POST_COMMENT have no emitter yet - the services that
-/// would raise them live in the follow, like and comment routers, which this
-/// change deliberately does not touch. They are declared here so that wiring
-/// them up later is a one-line call rather than a migration.
+/// FOLLOW, POST_LIKE, POST_COMMENT and GROUP_JOIN are raised through
+/// notifyActivity() in notification.service.js, which also records the actor.
+/// STREAK_MILESTONE and GOAL_REACHED are raised directly and have none.
 enum NotificationType {
   FOLLOW
   POST_LIKE
@@ -780,10 +782,22 @@ enum NotificationType {
 /// your post"), and rewriting history when Sam changes their username would be
 /// wrong rather than fresh. It also means this table needs no fanout
 /// invalidation, because it embeds no row any counter tracks.
+///
+/// The ACTOR is kept alongside the text, though, as a link rather than as part
+/// of the message: the app turns the actor's name in the message into a way to
+/// open their profile. The text still records the moment; the link goes to the
+/// person as they are now.
 model Notification {
   id        String           @id @default(uuid())
   userId    String
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User             @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Who caused it - the follower, the liker - when a person did. NULL for
+  /// system events (a streak, a goal) and for rows raised before this column
+  /// existed. SetNull rather than Cascade: someone deleting their account must
+  /// not delete other people's notifications, only stop them linking anywhere.
+  actorId   String?
+  actor     User?            @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   type      NotificationType
   message   String
@@ -804,6 +818,10 @@ model Notification {
   /// (userId, createdAt) would mean reading every row this user has ever
   /// received to discard the read ones.
   @@index([userId, isRead])
+
+  /// Not for any read: for the SetNull above, which otherwise scans the whole
+  /// table every time an account is deleted.
+  @@index([actorId])
 
   @@map("notifications")
 }
