@@ -62,6 +62,12 @@ export default function RootLayout() {
           <Stack.Screen name="edit-profile" />
           {/* A push, for the same reason. */}
           <Stack.Screen name="analytics" />
+          {/*
+            Someone else's profile, opened from the home screen's search. A
+            push over the tabs, so the way back returns to the feed exactly as
+            it was left.
+          */}
+          <Stack.Screen name="user/[id]" />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

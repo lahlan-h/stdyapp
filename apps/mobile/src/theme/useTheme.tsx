@@ -25,6 +25,7 @@ import { createLoginStyles } from "./login.styles";
 import { createRegisterStyles } from "./register.styles";
 import { createEditProfileStyles } from "./editProfile.styles";
 import { createAnalyticsStyles } from "./analytics.styles";
+import { createHomeSearchStyles } from "./homeSearch.styles";
 
 const STORAGE_KEY = "themePreference";
 
@@ -77,6 +78,7 @@ const styleMap = {
   register: createRegisterStyles,
   editProfile: createEditProfileStyles,
   analytics: createAnalyticsStyles,
+  homeSearch: createHomeSearchStyles,
 } as const;
 
 type StyleName = keyof typeof styleMap;

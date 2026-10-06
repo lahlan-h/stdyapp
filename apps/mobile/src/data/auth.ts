@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { ApiError, request } from "./api";
 import { resetPosts } from "./postStore";
+import { clearRecentSearches } from "./recentSearches";
 import {
   clearRefreshToken,
   loadRefreshToken,
@@ -340,6 +341,8 @@ export const logout = async (): Promise<void> => {
 
   setSession(null);
   resetPosts();
+  // Who this account looked up is as personal as what it liked.
+  clearRecentSearches();
   await clearRefreshToken();
 
   if (!refreshToken) return;

@@ -23,7 +23,8 @@
       ],
       "expo-font",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "@react-native-community/datetimepicker"
     ],
     "android": {
       "package": "com.stdyapp.mobile"

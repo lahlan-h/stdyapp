@@ -15,6 +15,12 @@ interface ProfileStudyBubbleProps {
    * user rather than the viewer's own under someone else's name.
    */
   totals?: StudyTotals;
+  /**
+   * False on someone else's profile, where the totals are not "still loading"
+   * but never coming - so their two figures are left out rather than held at an
+   * em dash forever, which would read as a number that failed to load.
+   */
+  showTotals?: boolean;
 }
 
 interface Figure {
@@ -40,6 +46,7 @@ const show = (value?: string): string => value ?? "—";
 export const studyFigures = (
   streak?: Streak,
   totals?: StudyTotals,
+  showTotals = true,
 ): Figure[] => [
   {
     icon: "zap",
@@ -49,16 +56,20 @@ export const studyFigures = (
     // DEVICE's timezone and disagree with the server for several hours a day.
     isLit: streak?.isActiveToday,
   },
-  {
-    icon: "check-circle",
-    value: show(totals && String(totals.completed)),
-    label: "Sessions",
-  },
-  {
-    icon: "clock",
-    value: show(totals && formatDuration(totals.minutes)),
-    label: "Studied",
-  },
+  ...(showTotals
+    ? ([
+        {
+          icon: "check-circle",
+          value: show(totals && String(totals.completed)),
+          label: "Sessions",
+        },
+        {
+          icon: "clock",
+          value: show(totals && formatDuration(totals.minutes)),
+          label: "Studied",
+        },
+      ] satisfies Figure[])
+    : []),
 ];
 
 /**
@@ -77,12 +88,16 @@ export const studyFigures = (
  * full-screen backdrop to catch a tap elsewhere, which inside a list header
  * would have to live at screen level the way ReportDialog does.
  */
-const ProfileStudyBubble = ({ streak, totals }: ProfileStudyBubbleProps) => {
+const ProfileStudyBubble = ({
+  streak,
+  totals,
+  showTotals = true,
+}: ProfileStudyBubbleProps) => {
   const { colors } = useTheme();
   const styles = useStyles("profile");
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const figures = studyFigures(streak, totals);
+  const figures = studyFigures(streak, totals, showTotals);
   const toggle = () => setIsExpanded((current) => !current);
 
   if (isExpanded) {

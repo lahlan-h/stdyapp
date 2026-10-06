@@ -123,5 +123,12 @@ export const createTabBarStyles = (colors: ColorScheme) => {
   return styles;
 };
 
-/** Re-exported so components can size their icons to match the stylesheet. */
-export { TAB_ICON_SIZE, FAB_ICON_SIZE, TAB_BAR_HEIGHT };
+/**
+ * Re-exported so components can size their icons to match the stylesheet.
+ *
+ * BAR_HEIGHT and FAB_OVERHANG go out separately for the home screen's drop-down
+ * page, which has to stop at the bar's VISIBLE top edge - TAB_BAR_HEIGHT would
+ * stop it 22px short, leaving a strip of feed showing either side of the circle
+ * - and then keep its own close control out from under the circle's overhang.
+ */
+export { TAB_ICON_SIZE, FAB_ICON_SIZE, TAB_BAR_HEIGHT, BAR_HEIGHT, FAB_OVERHANG };

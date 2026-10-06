@@ -28,6 +28,24 @@ export {
   type RegistrationResults,
 } from "./registrationChecks";
 export { usePosts, type FeedState, type SetLiked } from "./usePosts";
+export {
+  defaultFeedFilters,
+  isDefaultFilters,
+  isRangeInvalid,
+  toDayKey,
+  fromDayKey,
+  type FeedFilters,
+  type FeedSort,
+  type FeedDateMode,
+} from "./feedFilters";
+export {
+  useUserSearch,
+  type UserSummary,
+  type UserSearchState,
+} from "./useUserSearch";
+export { useRecentSearches, type RecentSearchesState } from "./recentSearches";
+export { useUser, type UserState } from "./useUser";
+export { useFollow, type FollowState } from "./useFollow";
 export { usePost } from "./usePost";
 export { useUserPosts, type UserPostsState } from "./useUserPosts";
 export {
@@ -83,6 +101,7 @@ export {
   MIN_USERNAME_LENGTH,
   USERNAME_PATTERN,
   type Profile,
+  type PublicProfile,
   type ProfileEdit,
   type ProfileState,
 } from "./useProfile";

@@ -99,21 +99,46 @@ export const findPostsByUser = (userId, viewerId) => {
 };
 
 /**
- * One page of the GLOBAL feed, newest first, with the totals a pager needs.
+ * The feed's orders, keyed by FEED_SORTS in validation/post.validation.js.
  *
- * Served by @@index([createdAt]) on posts. The per-user composite index cannot
- * help here: createdAt is its second column, so without an equality predicate
- * on the leading userId there is no usable ordering.
+ * EVERY entry ends in a unique column, and that is load-bearing rather than
+ * decoration. Neither createdAt nor a like count is unique, so two posts that tie
+ * have no defined relative order, and under OFFSET pagination that is a
+ * correctness bug rather than an aesthetic one: the planner may break the tie
+ * differently between two requests, and the row then appears on both page 1 and
+ * page 2, or on neither. The count sorts fall back to newest-first before the id,
+ * so a tie reads in the order the default feed would show it.
  *
- * The `id` tiebreaker is load-bearing, not decoration. createdAt is not unique,
- * so two posts sharing a timestamp have no defined relative order, and under
- * OFFSET pagination that is a correctness bug rather than an aesthetic one: the
- * planner may break the tie differently between two requests, and the row then
- * appears on both page 1 and page 2, or on neither.
+ * A count sort can still shift between pages in a way no tiebreaker fixes: a
+ * like landing between page 1 and page 2 moves that post across the boundary.
+ * Accepted - the alternative is a cursor over a moving aggregate.
+ */
+const FEED_ORDER = {
+  recent: [{ createdAt: "desc" }, { id: "asc" }],
+  oldest: [{ createdAt: "asc" }, { id: "asc" }],
+  most_liked: [{ likes: { _count: "desc" } }, { createdAt: "desc" }, { id: "asc" }],
+  least_liked: [{ likes: { _count: "asc" } }, { createdAt: "desc" }, { id: "asc" }],
+  most_commented: [{ comments: { _count: "desc" } }, { createdAt: "desc" }, { id: "asc" }],
+  least_commented: [{ comments: { _count: "asc" } }, { createdAt: "desc" }, { id: "asc" }],
+};
+
+/**
+ * One page of the GLOBAL feed, with the totals a pager needs.
+ *
+ * Newest first by default, served by @@index([createdAt]) on posts. The
+ * per-user composite index cannot help here: createdAt is its second column, so
+ * without an equality predicate on the leading userId there is no usable
+ * ordering. The count sorts have no index of their own - Postgres aggregates
+ * likes or comments by postId (both indexed) and sorts the result.
+ *
+ * The date window is half-open, [from, to), and either end may be absent. See
+ * listAllPostsQuerySchema for why the bounds arrive as instants.
  *
  * The findMany and the count run in one transaction so the page and its total
  * are read from the same snapshot — otherwise a post inserted between the two
- * queries makes totalPages disagree with the page just returned.
+ * queries makes totalPages disagree with the page just returned. They share ONE
+ * `where`, too: a count over every post would report pages a filtered feed does
+ * not have, and the app would keep asking for them.
  *
  * The user select is the allowlist already used by findLikesByPost and
  * listMembers. It is what keeps passwordHash and email out of a public feed, so
@@ -133,19 +158,23 @@ export const findPostsByUser = (userId, viewerId) => {
  * the pair reads the same way at all three layers - listAll passes
  * (query, req.user.id), listAllPosts passes ({ skip, take }, viewerId).
  *
- * @param {{ skip: number, take: number }} page
+ * @param {{ skip: number, take: number, sort?: string, from?: Date, to?: Date }} page
  * @param {string} viewerId - the caller's own id; guaranteed by requireAuth
  * @returns {Promise<[object[], number]>} the page, and the total row count
  */
-export const findAllPosts = ({ skip, take }, viewerId) => {
+export const findAllPosts = ({ skip, take, sort = "recent", from, to }, viewerId) => {
+  // Undefined bounds are skipped by Prisma, so an absent end is no bound at all.
+  const where = from || to ? { createdAt: { gte: from, lt: to } } : undefined;
+
   return prisma.$transaction([
     prisma.post.findMany({
+      where,
       include: postInclude(viewerId),
-      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      orderBy: FEED_ORDER[sort],
       skip,
       take,
     }),
-    prisma.post.count(),
+    prisma.post.count({ where }),
   ]);
 };
 

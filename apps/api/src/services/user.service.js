@@ -251,25 +251,50 @@ export const createUser = async (input) => {
 };
 
 /**
+ * What a user LIST may show about each person: who they are and their face.
+ *
+ * Narrower than USER_PUBLIC_SELECT on purpose. That select serves single-user
+ * reads; this one serves a search box any signed-in account can type into, and
+ * every extra column here is one more fact about every user that a loop over
+ * ?q=a, ?q=b … can harvest. email in particular has no business in a directory
+ * listing - the same enumeration worry that keeps it out of the `where` below -
+ * and isSuspended would tell strangers which accounts have been actioned.
+ */
+const USER_SEARCH_SELECT = {
+  id: true,
+  username: true,
+  firstName: true,
+  lastName: true,
+  avatarUrl: true,
+};
+
+/**
  * Returns one page of users plus the total, so the controller can compute
  * pagination without a second round trip.
  *
+ * The caller is never in their own results. The same `where` goes to the
+ * count, so the total agrees with the pages.
+ *
  * @param {{ page: number, limit: number, q?: string }} query - validated
+ * @param {string} viewerId - the caller's own id; guaranteed by requireAuth
  * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
  */
-export const listUsers = async ({ page, limit, q }) => {
-  // Deliberately NOT searching email: matching on it would turn this
-  // unauthenticated endpoint into an account-enumeration oracle
-  // ("is alice@uts.edu.au registered here?").
-  const where = q
-    ? {
-        OR: [
-          { username: { contains: q, mode: "insensitive" } },
-          { firstName: { contains: q, mode: "insensitive" } },
-          { lastName: { contains: q, mode: "insensitive" } },
-        ],
-      }
-    : undefined;
+export const listUsers = async ({ page, limit, q }, viewerId) => {
+  // Deliberately NOT searching email: matching on it would turn this endpoint
+  // into an account-enumeration oracle ("is alice@uts.edu.au registered
+  // here?") for anyone holding any account at all.
+  const where = {
+    NOT: { id: viewerId },
+    ...(q
+      ? {
+          OR: [
+            { username: { contains: q, mode: "insensitive" } },
+            { firstName: { contains: q, mode: "insensitive" } },
+            { lastName: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
 
   // One transaction so the page and the total agree even under concurrent
   // writes. A batch $transaction([...]) is safe through PgBouncer's transaction
@@ -278,7 +303,7 @@ export const listUsers = async ({ page, limit, q }) => {
   const [items, total] = await prisma.$transaction([
     prisma.user.findMany({
       where,
-      select: USER_PUBLIC_SELECT,
+      select: USER_SEARCH_SELECT,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * limit,
       take: limit,

@@ -1,26 +1,92 @@
-import { useCallback, useState } from "react";
-import { FlatList, StatusBar, View, Text } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  FlatList,
+  StatusBar,
+  View,
+  Text,
+  Pressable,
+  Animated,
+  Easing,
+  Keyboard,
+  type TextInput,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { router, useFocusEffect, useNavigation } from "expo-router";
+import type { BottomTabNavigationProp } from "expo-router/js-tabs";
 
-import { useTheme, useStyles, useTabBarClearance } from "@theme";
-import { usePosts, useLikePost, consumeFeedStale, type FeedPost } from "@data";
+import {
+  useTheme,
+  useStyles,
+  useTabBarClearance,
+  useReducedMotion,
+  HOME_PANEL_HEIGHT,
+  BAR_HEIGHT,
+} from "@theme";
+import {
+  usePosts,
+  useLikePost,
+  consumeFeedStale,
+  defaultFeedFilters,
+  isDefaultFilters,
+  type FeedFilters,
+  type FeedPost,
+  type UserSummary,
+} from "@data";
 
 import PostCard from "@components/PostCard";
 import LoadingSpinner from "@components/LoadingSpinner";
 import EmptyFeed from "@components/EmptyFeed";
 import ReportDialog from "@components/ReportDialog";
+import HomeSearchPanel, { type HomeSheetMode } from "@components/HomeSearchPanel";
+import HomeDropSheet from "@components/HomeDropSheet";
+import UserSearchList from "@components/UserSearchList";
+import FeedFilterPanel from "@components/FeedFilterPanel";
+
+/** Space between the panel's lower edge and the first card. Matches the old list padding. */
+const FEED_TOP_GAP = 8;
+
+/** How far the feed dims while a changed filter is being read. */
+const REFRESHING_OPACITY = 0.45;
+const DIM_MS = 120;
+const REVEAL_MS = 180;
+
+type TabNavigation = BottomTabNavigationProp<Record<string, object | undefined>>;
 
 const Index = () => {
   const { colors } = useTheme();
   const homeStyles = useStyles("home");
+  const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
+  const navigation = useNavigation<TabNavigation>();
   // What the floating tab bar covers, inset included. Without it the last
   // card's like, comment and report buttons sit behind the bar, drawn but
   // untappable, with nothing on screen explaining why.
   const tabBarClearance = useTabBarClearance();
-  const { posts, isLoading, canLoadMore, loadMore, error, refresh, setLiked } =
-    usePosts();
+
+  /**
+   * The feed's filter. Screen state rather than module state: the tab stays
+   * mounted while another tab is showing, so it survives a trip to Settings,
+   * and a fresh launch starts unfiltered - which is what someone opening the
+   * app expects to see.
+   */
+  const [filters, setFilters] = useState<FeedFilters>(defaultFeedFilters);
+  const [sheet, setSheet] = useState<HomeSheetMode | null>(null);
+  const [query, setQuery] = useState("");
+
+  const inputRef = useRef<TextInput>(null);
+  const listRef = useRef<FlatList<FeedPost>>(null);
+
+  const {
+    posts,
+    isLoading,
+    isRefreshing,
+    canLoadMore,
+    loadMore,
+    error,
+    refresh,
+    setLiked,
+  } = usePosts(filters);
   // usePosts owns the array, so the optimistic update is handed back to it
   // rather than kept a second time over there - see SetLiked.
   const { toggleLike, error: likeError } = useLikePost(setLiked);
@@ -45,6 +111,119 @@ const Index = () => {
     }, [refresh]),
   );
 
+  // ---- The drop-down page ----------------------------------------------------
+
+  /**
+   * Closing always leaves search clean: the box empties and gives up the
+   * keyboard, so the next open starts at recent searches rather than a stale
+   * query nobody remembers typing.
+   */
+  const closeSheet = useCallback(() => {
+    setSheet(null);
+    setQuery("");
+    inputRef.current?.blur();
+    Keyboard.dismiss();
+  }, []);
+
+  // Focusing the box IS opening search - including straight from the filter
+  // page, which then swaps its contents rather than closing and re-dropping.
+  const openSearch = useCallback(() => setSheet("search"), []);
+
+  /**
+   * The filter button toggles its own page. From the search page it switches
+   * over instead, letting go of the keyboard and the half-typed query on the way.
+   */
+  const pressFilter = useCallback(() => {
+    if (sheet === "filter") {
+      closeSheet();
+      return;
+    }
+    inputRef.current?.blur();
+    Keyboard.dismiss();
+    setQuery("");
+    setSheet("filter");
+  }, [sheet, closeSheet]);
+
+  const openUser = useCallback(
+    (user: UserSummary) => {
+      closeSheet();
+      router.push(`/user/${user.id}`);
+    },
+    [closeSheet],
+  );
+
+  /**
+   * Home pressed while already on Home: close the page if one is open,
+   * otherwise go back to the top - the usual meaning of tapping the tab you are
+   * on. TabBar emits tabPress for exactly this.
+   *
+   * Read through a ref so the listener is attached once rather than re-attached
+   * every time a page opens or closes.
+   */
+  const sheetRef = useRef(sheet);
+  sheetRef.current = sheet;
+  useEffect(
+    () =>
+      navigation.addListener("tabPress", () => {
+        if (!navigation.isFocused()) return;
+        if (sheetRef.current) closeSheet();
+        else listRef.current?.scrollToOffset({ offset: 0, animated: !reducedMotion });
+      }),
+    [navigation, closeSheet, reducedMotion],
+  );
+
+  // ---- The feed under a changing filter ----------------------------------------
+
+  /**
+   * Dims the posts while a changed filter is read, then brings the new page up.
+   *
+   * Dimmed, not swapped for a spinner: a chip tap that blanked the feed would
+   * read as the app losing everything, when all it is doing is reordering.
+   */
+  const feedOpacity = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.timing(feedOpacity, {
+      toValue: isRefreshing && !isLoading ? REFRESHING_OPACITY : 1,
+      duration: reducedMotion ? 0 : isRefreshing ? DIM_MS : REVEAL_MS,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+  }, [isRefreshing, isLoading, reducedMotion, feedOpacity]);
+
+  // A new filter starts at the top of its results, not wherever the old ones
+  // happened to be scrolled to.
+  const filterKey = JSON.stringify(filters);
+  useEffect(() => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [filterKey]);
+
+  const hasFilters = !isDefaultFilters(filters);
+
+  // Everything below the panel starts here: the panel is drawn over the status
+  // bar and owns the top inset itself.
+  const panelBottom = insets.top + HOME_PANEL_HEIGHT;
+
+  /**
+   * An empty feed means different things filtered and unfiltered. With no
+   * filter it is a new app - EmptyFeed's "log a session". With one, posts exist
+   * and the filter ruled them out, so it says that and offers the way back.
+   */
+  const emptyFeed = hasFilters ? (
+    <View style={homeStyles.emptyContainer}>
+      <Text style={homeStyles.bold}>No posts match these filters</Text>
+      <Text style={homeStyles.soft}>Try a wider date range, or clear the filters.</Text>
+      <Pressable
+        onPress={() => setFilters(defaultFeedFilters())}
+        accessibilityRole="button"
+        hitSlop={8}
+      >
+        <Text style={[homeStyles.bold, { color: colors.primary }]}>Clear filters</Text>
+      </Pressable>
+    </View>
+  ) : (
+    <EmptyFeed />
+  );
+
   return (
     <LinearGradient colors={colors.gradients.background} style={homeStyles.container}>
       <StatusBar
@@ -52,48 +231,91 @@ const Index = () => {
         translucent
         backgroundColor="transparent"
       />
-      <SafeAreaView style={homeStyles.safeArea} edges={["top", "left", "right"]}>
+      {/* No top edge: the pinned panel sits under the status bar and pads
+          itself by the inset, so the feed can scroll up behind both. */}
+      <SafeAreaView style={homeStyles.safeArea} edges={["left", "right"]}>
         {isLoading ? (
           <LoadingSpinner />
         ) : error && posts.length === 0 ? (
           // Only when there is nothing to show. An error while more pages load
           // must not blank a feed the user is already reading.
-          <View style={homeStyles.emptyContainer}>
+          <View style={[homeStyles.emptyContainer, { paddingTop: panelBottom }]}>
             <Text style={homeStyles.bold}>Can&apos;t load the feed</Text>
             <Text style={homeStyles.soft}>{error}</Text>
           </View>
         ) : (
-          <FlatList
-            data={posts}
-            keyExtractor={(post: FeedPost) => post.id}
-            renderItem={({ item }: { item: FeedPost }) => (
-              <PostCard
-                post={item}
-                onToggleLike={() => toggleLike(item)}
-                onReport={() => setReportingId(item.id)}
-              />
-            )}
-            style={homeStyles.postCardList}
-            contentContainerStyle={[
-              homeStyles.postCardListContent,
-              { paddingBottom: tabBarClearance },
-            ]}
-            // A rolled-back like says so above the feed rather than in an
-            // alert: the heart has already snapped back, so this only explains
-            // a change the user can already see undone.
-            ListHeaderComponent={
-              likeError ? (
-                <Text style={homeStyles.soft}>{likeError}</Text>
-              ) : null
-            }
-            ListEmptyComponent={EmptyFeed}
-            showsVerticalScrollIndicator={false}
-            onRefresh={refresh}
-            refreshing={false}
-            onEndReached={canLoadMore ? loadMore : undefined}
-            onEndReachedThreshold={0.5}
-          />
+          <Animated.View style={[homeStyles.postCardList, { opacity: feedOpacity }]}>
+            <FlatList
+              ref={listRef}
+              data={posts}
+              keyExtractor={(post: FeedPost) => post.id}
+              renderItem={({ item }: { item: FeedPost }) => (
+                <PostCard
+                  post={item}
+                  onToggleLike={() => toggleLike(item)}
+                  onReport={() => setReportingId(item.id)}
+                />
+              )}
+              style={homeStyles.postCardList}
+              contentContainerStyle={[
+                homeStyles.postCardListContent,
+                // The first card starts below the panel rather than under it;
+                // later cards scroll up behind the blur.
+                { paddingTop: panelBottom + FEED_TOP_GAP, paddingBottom: tabBarClearance },
+                posts.length === 0 && { flexGrow: 1 },
+              ]}
+              // A rolled-back like says so above the feed rather than in an
+              // alert: the heart has already snapped back, so this only explains
+              // a change the user can already see undone.
+              ListHeaderComponent={
+                likeError ? (
+                  <Text style={homeStyles.soft}>{likeError}</Text>
+                ) : null
+              }
+              ListEmptyComponent={emptyFeed}
+              showsVerticalScrollIndicator={false}
+              onRefresh={refresh}
+              refreshing={false}
+              // Without this Android draws the pull-to-refresh spinner under
+              // the panel, where nobody can see it.
+              progressViewOffset={panelBottom}
+              onEndReached={canLoadMore ? loadMore : undefined}
+              onEndReachedThreshold={0.5}
+            />
+          </Animated.View>
         )}
+
+        {/* Drawn AFTER the feed and BEFORE the panel: over the posts, but
+            dropping out from behind the panel's edge. */}
+        <HomeDropSheet
+          mode={sheet}
+          top={panelBottom}
+          bottom={BAR_HEIGHT + insets.bottom}
+          onClose={closeSheet}
+        >
+          {(mode) =>
+            mode === "search" ? (
+              <UserSearchList query={query} onOpenUser={openUser} />
+            ) : (
+              <FeedFilterPanel
+                filters={filters}
+                onChange={setFilters}
+                matchCount={isRefreshing ? undefined : posts.length}
+              />
+            )
+          }
+        </HomeDropSheet>
+
+        <HomeSearchPanel
+          ref={inputRef}
+          topInset={insets.top}
+          query={query}
+          onChangeQuery={setQuery}
+          onFocusSearch={openSearch}
+          onPressFilter={pressFilter}
+          open={sheet}
+          hasFilters={hasFilters}
+        />
 
         {/* ONE dialog for the whole list, outside the FlatList. Inside a row it
             would be unmounted the moment that row scrolled out of the window. */}
