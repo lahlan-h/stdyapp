@@ -652,14 +652,33 @@ export const reportStatusKey = (viewerId, targetKind, targetId, version) =>
 export const postKey = (postId, viewerId, version) =>
   `${POST_EPOCH}:post:one:${postId}:${viewerId}:p${version}`;
 
-// Shared by GET / (listMine) and GET /user/:userId, exactly as userListKey and
-// likeUserListKey are. Both resolve to findPostsByUser(id) and return
-// byte-identical data — listMyPosts merely skips the existence check — so
-// separate keys would cache the same array twice and halve the hit rate. If
-// those two response shapes ever diverge, they must stop sharing this key.
-/** @param {string} userId @param {number} version */
-export const postUserListKey = (userId, version) =>
-  `${POST_EPOCH}:post:byuser:${userId}:u${version}`;
+/**
+ * One user's posts, AS ONE VIEWER SEES THEM.
+ *
+ * ⚠ THE VIEWER IS LOAD-BEARING HERE, the same way it is in postKey above and
+ * deliberately unlike userKey below.
+ *
+ * These rows used to be bare Post records — viewer-independent, so the author
+ * alone was the whole key. They now carry isLiked, isReported, reportId,
+ * reportReason and isMine, every one of which is a fact about WHO IS ASKING.
+ * Keyed on the author alone, the first reader's flags would be served to every
+ * subsequent reader of that profile: a viewer would see someone else's likes as
+ * their own and, far worse, someone else's REPORTS.
+ *
+ * Still shared by GET / (listMine) and GET /user/:userId, which is safe because
+ * both now compose the same pair — listMine's author and viewer are both the
+ * caller, and GET /user/me resolves to exactly that.
+ *
+ * The cost is real and was accepted knowingly: one entry per (author, viewer)
+ * pair rather than per author, so a widely-read profile now occupies as many
+ * entries as it has readers within the TTL.
+ *
+ * @param {string} userId - whose posts these are
+ * @param {string} viewerId - who is reading them
+ * @param {number} version
+ */
+export const postUserListKey = (userId, viewerId, version) =>
+  `${POST_EPOCH}:post:byuser:${userId}:${viewerId}:u${version}`;
 
 /**
  * User key builders.

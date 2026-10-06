@@ -114,7 +114,12 @@ export const resolveTargetUserId = (req) =>
 
 export const listByUser = async (req, res, next) => {
   try {
-    const posts = await postService.listPostsByUser(resolveTargetUserId(req));
+    // req.user.id is the VIEWER, not the author: the same profile answers
+    // differently depending on who is reading it.
+    const posts = await postService.listPostsByUser(
+      resolveTargetUserId(req),
+      req.user.id,
+    );
     res.status(200).json(posts);
   } catch (err) {
     next(err);

@@ -1,6 +1,4 @@
 import {
-  Alert,
-  Platform,
   ScrollView,
   StatusBar,
   Switch,
@@ -20,10 +18,11 @@ import {
   SETTINGS_FOOTER_ROOM,
   ROW_ICON_SIZE,
 } from "@theme";
-import { useNotificationPreferences, logout } from "@data";
+import { useNotificationPreferences } from "@data";
 
 import SettingsSection from "@components/SettingsSection";
 import SettingsRow from "@components/SettingsRow";
+import { confirmSignOut } from "@components/confirmSignOut";
 import ThemeSegmentedControl from "@components/ThemeSegmentedControl";
 
 /**
@@ -44,26 +43,6 @@ const Settings = () => {
    * white against both track colours already.
    */
   const switchTrack = { false: colors.border, true: colors.primary };
-
-  /**
-   * Confirmed first: it is one tap from the bottom of a scroll, and undoing it
-   * means signing in again. No navigation here: logout flips the session and
-   * the root layout's guard returns to login. It also forgets a remembered
-   * session, so the next launch starts at login too.
-   */
-  const confirmSignOut = () => {
-    // react-native-web's Alert.alert is a no-op, so web asks the browser.
-    if (Platform.OS === "web") {
-      if (window.confirm("Sign out? You will need to sign in again to use stdy.")) {
-        void logout();
-      }
-      return;
-    }
-    Alert.alert("Sign out?", "You will need to sign in again to use stdy.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Sign out", style: "destructive", onPress: () => void logout() },
-    ]);
-  };
 
   return (
     <LinearGradient colors={colors.gradients.background} style={settingsStyles.container}>
