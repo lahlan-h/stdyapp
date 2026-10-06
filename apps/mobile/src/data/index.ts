@@ -28,6 +28,14 @@ export {
   type RegistrationResults,
 } from "./registrationChecks";
 export { usePosts, type FeedState, type SetLiked } from "./usePosts";
+export { useMotionVariance, type MotionSource } from "./useMotionVariance";
+export {
+  useFocusSession,
+  type FocusSessionState,
+  type FocusResult,
+  type FocusPhase,
+  type SessionTask,
+} from "./useFocusSession";
 export { usePost } from "./usePost";
 // The store's own setter, for a screen that shows ONE post and so has no feed
 // hook to take it from. Same function usePosts hands back - there is one array.
