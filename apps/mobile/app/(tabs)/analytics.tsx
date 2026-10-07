@@ -9,14 +9,13 @@ import {
   RefreshControl,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Feather from "@expo/vector-icons/Feather";
 
 import {
   useTheme,
   useAnalyticsStyles,
-  ANALYTICS_BACK_ICON_SIZE,
+  useTabBarClearance,
   ANALYTICS_ICON_SIZE,
   DAILY_CHART_HEIGHT,
   HOURLY_CHART_HEIGHT,
@@ -100,11 +99,8 @@ const HOURLY_AXIS = [0, 6, 12, 18, 23].map(formatHour);
 // --- Screen -------------------------------------------------------------------
 
 /**
- * Personal study analytics.
- *
- * A pushed screen rather than a tab, for edit-profile's reason - you go there
- * and come back - and because the tab bar is two tabs either side of the
- * post button, and a fifth tab would push that button off centre.
+ * Personal study analytics. A tab: the add-post circle moved from the tab bar
+ * to the Feed, which freed the slot.
  *
  * Every number comes from GET /api/analytics/me; nothing is computed here
  * beyond formatting. Keeping the arithmetic on the server is what lets the
@@ -113,7 +109,8 @@ const HOURLY_AXIS = [0, 6, 12, 18, 23].map(formatHour);
 const AnalyticsScreen = () => {
   const { colors } = useTheme();
   const styles = useAnalyticsStyles();
-  const insets = useSafeAreaInsets();
+  // What the floating tab bar covers, inset included - see useTabBarClearance.
+  const tabBarClearance = useTabBarClearance();
   const [range, setRange] = useState<AnalyticsRange>("7d");
   const { analytics, isLoading, loadError, reload } = useAnalytics(range);
 
@@ -122,7 +119,7 @@ const AnalyticsScreen = () => {
       <StatusBar barStyle={colors.statusBarStyle} translucent backgroundColor="transparent" />
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 + insets.bottom }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarClearance + 24 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
@@ -134,15 +131,8 @@ const AnalyticsScreen = () => {
             />
           }
         >
+          {/* No back button: a tab is somewhere you are, not somewhere you went. */}
           <View style={styles.header}>
-            <Pressable
-              style={styles.back}
-              onPress={() => router.back()}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-            >
-              <Feather name="chevron-left" size={ANALYTICS_BACK_ICON_SIZE} color={colors.text} />
-            </Pressable>
             <Text style={styles.screenTitle}>Analytics</Text>
           </View>
 

@@ -19,6 +19,7 @@ import notificationRoutes from "./notification.routes.js"
 import conversationRoutes from "./conversation.routes.js"
 import analyticsRoutes from "./analytics.routes.js"
 import devAuthRoutes from "./devAuth.routes.js"
+import { sessionFocusRouter, focusRouter } from "./focus.routes.js";
 import { isDevAuthEnabled } from "../config/auth.js";
 
 const router = Router();
@@ -42,6 +43,14 @@ router.use("/subscriptions", subscriptionRoutes);
 router.use("/notifications", notificationRoutes);
 router.use("/conversations", conversationRoutes);
 router.use("/analytics", analyticsRoutes);
+
+// Mounted on the same path as sessionRoutes above, and deliberately so. Express
+// tries each matching router in order, so a request for /sessions/:id/focus
+// falls through the session router — which has no such route — and lands here.
+// That is what lets the focus feature add routes under /sessions without
+// editing another feature's route table.
+router.use("/sessions", sessionFocusRouter);
+router.use("/focus", focusRouter);
 
 // DEVELOPMENT ONLY. POST /api/auth/dev-token mints an access token with no
 // credentials, so it must be ABSENT rather than merely guarded anywhere else:

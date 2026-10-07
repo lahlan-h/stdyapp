@@ -2,6 +2,7 @@ import { createLogger } from "@stdyapp/core";
 
 import * as sessionRepo from "../repositories/session.repository.js";
 import { findMembership } from "../repositories/studyGroup.repository.js";
+import * as focusService from "./focus.service.js";
 // Gamification, hung off the end of endSession. Service imports rather than
 // repository ones, unlike the cross-domain reads elsewhere in this file: these
 // carry real rules - the consecutive-day test, the goal-crossing test - and
@@ -100,7 +101,7 @@ export const invalidateDetachedSessions = async (refs) => {
   });
 };
 
-export const startSession = async ({ userId, groupId }) => {
+export const startSession = async ({ userId, groupId, plannedMinutes = null }) => {
   // A group session counts towards that group - its stats, and later its
   // leaderboard - so only a member may start one. Without this, anyone who
   // knew a group's id could attach sessions to it.
@@ -119,7 +120,12 @@ export const startSession = async ({ userId, groupId }) => {
     ? Math.random().toString(36).slice(2, 8).toUpperCase()
     : null;
 
-  const session = await sessionRepo.createSession({ userId, groupId, inviteCode });
+  const session = await sessionRepo.createSession({
+    userId,
+    groupId,
+    inviteCode,
+    plannedMinutes,
+  });
 
   // Only the OWNER scope. A brand new session has no cached single-session
   // payload to orphan — nobody can have read an id that did not exist — but it
@@ -164,6 +170,26 @@ export const endSession = async (sessionId, userId) => {
 
   const updated = await sessionRepo.updateSession(sessionId, { endedAt, focusPoints });
 
+  /**
+   * The focus ESTIMATE: a separate, calibrated 0-100 score derived from this
+   * session's focus samples. It writes only the focus* columns and never
+   * touches focusPoints above — the two numbers answer different questions.
+   *
+   * BEFORE invalidateSession, so the single invalidation below covers this
+   * write too rather than leaving a cached row without its score.
+   *
+   * NON-FATAL, for exactly the reason the gamification block gives: the session
+   * has ended and the points are banked, so a failure here must not turn a
+   * successful request into a 500 that tells the user their session did not
+   * save.
+   */
+  let focus = null;
+  try {
+    focus = await focusService.finaliseSessionFocus(sessionId, userId);
+  } catch (err) {
+    log.warn(`focus estimate failed for session ${sessionId}: ${err?.message}`);
+  }
+
   // AFTER the write resolves, never before or concurrently — bumping first lets
   // a reader observe the new version, query the not-yet-committed row, and cache
   // the OLD body under the NEW key, where it would sit for the full TTL.
@@ -205,7 +231,21 @@ export const endSession = async (sessionId, userId) => {
     log.warn(`gamification failed for session ${sessionId}: ${err?.message}`);
   }
 
-  return updated;
+  // Merged in rather than left for a second request: `updated` was read before
+  // the focus columns were written and would otherwise report a stale null
+  // score on the very request that produced one. Falls back to `updated`
+  // untouched when scoring failed above.
+  return focus
+    ? {
+        ...updated,
+        focusScore: focus.focusScore,
+        focusWeightedMinutes: focus.focusWeightedMinutes,
+        completionFactor: focus.completionFactor,
+        hadWatch: focus.hadWatch,
+        tasksTotal: focus.tasksTotal,
+        tasksCompleted: focus.tasksCompleted,
+      }
+    : updated;
 };
 
 export const deleteSession = async (sessionId, userId) => {
@@ -226,7 +266,7 @@ export const deleteSession = async (sessionId, userId) => {
   return result;
 };
 
-export const logInterruption = async (sessionId, userId, { durationSec }) => {
+export const logInterruption = async (sessionId, userId, { durationSec, type = null }) => {
   const session = await getOwnedSessionOrThrow(sessionId, userId);
 
   if (session.endedAt) {
@@ -241,6 +281,7 @@ export const logInterruption = async (sessionId, userId, { durationSec }) => {
     sessionId,
     durationSec,
     penaltyApplied,
+    type,
   });
 
   // CONTENT scope only, and the asymmetry is deliberate. findSessionById

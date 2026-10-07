@@ -3,6 +3,7 @@ export {
   useStyles,
   ThemeProvider,
   useHomeStyles,
+  useStudyStyles,
   useSettingsStyles,
   useTabBarStyles,
   useNewPostStyles,
@@ -12,10 +13,28 @@ export {
   useRegisterStyles,
   useEditProfileStyles,
   useAnalyticsStyles,
+  useRoutinesStyles,
   type ThemePreference,
 } from "./useTheme";
 export { lightColors, darkColors, type ColorScheme } from "./colors";
-export { createHomeStyles } from "./home.styles";
+export {
+  createHomeStyles,
+  FEED_FAB_ICON_SIZE,
+  FEED_FAB_MARGIN,
+  FEED_FAB_CLEARANCE,
+} from "./home.styles";
+export {
+  createStudyStyles,
+  DIAL_SIZE,
+  DIAL_TICKS,
+  TRACE_GRID_LINES,
+  WHEEL_ITEM_HEIGHT,
+  WHEEL_VISIBLE_ITEMS,
+  STUDY_ICON_SIZE,
+  TASK_ICON_SIZE,
+  TOUCH_MIN,
+  STUDY_FOOTER_ROOM,
+} from "./study.styles";
 export {
   createSettingsStyles,
   ROW_ICON_SIZE,
@@ -25,10 +44,8 @@ export { useTabBarClearance } from "./useTabBarClearance";
 export {
   createTabBarStyles,
   TAB_ICON_SIZE,
-  FAB_ICON_SIZE,
   TAB_BAR_HEIGHT,
   BAR_HEIGHT,
-  FAB_OVERHANG,
 } from "./tabBar.styles";
 export {
   createNewPostStyles,
@@ -86,9 +103,13 @@ export { useReducedMotion } from "./useReducedMotion";
 export { useKeyboardLift, type KeyboardLift } from "./useKeyboardLift";
 export {
   createAnalyticsStyles,
-  ANALYTICS_BACK_ICON_SIZE,
   ANALYTICS_ICON_SIZE,
   DAILY_CHART_HEIGHT,
   HOURLY_CHART_HEIGHT,
   MIN_VISIBLE_BAR,
 } from "./analytics.styles";
+export {
+  createRoutinesStyles,
+  ROUTINES_HEADER_ICON_SIZE,
+  ROUTINES_ICON_SIZE,
+} from "./routines.styles";

@@ -1,7 +1,6 @@
 import type { ColorScheme } from "./colors";
 import { StyleSheet } from "react-native";
 
-import { FAB_OVERHANG } from "./tabBar.styles";
 
 /** The search box and the panel's buttons share one height and one corner. */
 const CONTROL_HEIGHT = 44;
@@ -232,16 +231,13 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
       paddingTop: 18,
       paddingBottom: 8,
     },
-    /**
-     * Bottom padding clears the add-post circle, which overhangs the bar by
-     * FAB_OVERHANG and so sits over this page's lower edge, dead centre - exactly
-     * where the close arrow is.
-     */
+    // Nothing overhangs the tab bar any more - the add-post button moved onto
+    // the feed - so the foot needs only its own breathing room above the bar.
     sheetFoot: {
       alignItems: "center",
       gap: 4,
       paddingTop: 6,
-      paddingBottom: FAB_OVERHANG + 14,
+      paddingBottom: 14,
     },
     closeButton: {
       width: SHEET_CLOSE_SIZE,

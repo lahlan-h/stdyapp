@@ -27,6 +27,7 @@ import { createEditProfileStyles } from "./editProfile.styles";
 import { createAnalyticsStyles } from "./analytics.styles";
 import { createHomeSearchStyles } from "./homeSearch.styles";
 import { createMessagesStyles } from "./messages.styles";
+import { createRoutinesStyles } from "./routines.styles";
 
 const STORAGE_KEY = "themePreference";
 
@@ -81,6 +82,7 @@ const styleMap = {
   analytics: createAnalyticsStyles,
   homeSearch: createHomeSearchStyles,
   messages: createMessagesStyles,
+  routines: createRoutinesStyles,
 } as const;
 
 type StyleName = keyof typeof styleMap;
@@ -225,6 +227,9 @@ export const useStyles = <K extends StyleName>(name: K): BuiltStyles[K] => {
 /** The home stylesheet for the active theme. Never rebuilds. */
 export const useHomeStyles = () => useStyles("home");
 
+/** @see useStyles */
+export const useStudyStyles = () => useStyles("study");
+
 /** The settings stylesheet for the active theme. Never rebuilds. */
 export const useSettingsStyles = () => useStyles("settings");
 
@@ -254,3 +259,6 @@ export const useEditProfileStyles = () => useStyles("editProfile");
 
 /** The analytics stylesheet for the active theme. Never rebuilds. */
 export const useAnalyticsStyles = () => useStyles("analytics");
+
+/** The routines stylesheet for the active theme. Never rebuilds. */
+export const useRoutinesStyles = () => useStyles("routines");

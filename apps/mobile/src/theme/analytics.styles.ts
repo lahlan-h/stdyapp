@@ -1,10 +1,6 @@
 import type { ColorScheme } from "./colors";
 import { StyleSheet } from "react-native";
 
-/** Diameter of the back button, and its glyph - the same as edit-profile's. */
-const BACK_SIZE = 40;
-const ANALYTICS_BACK_ICON_SIZE = 18;
-
 /** Icons inside stat tiles and the trend line. */
 const ANALYTICS_ICON_SIZE = 16;
 
@@ -54,16 +50,6 @@ export const createAnalyticsStyles = (colors: ColorScheme) => {
       alignItems: "center",
       gap: 12,
       paddingTop: 8,
-    },
-    back: {
-      width: BACK_SIZE,
-      height: BACK_SIZE,
-      borderRadius: BACK_SIZE / 2,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
     },
     screenTitle: {
       fontFamily: "PlusJakartaSans_700Bold",
@@ -304,7 +290,6 @@ export const createAnalyticsStyles = (colors: ColorScheme) => {
 
 /** Re-exported so the screen can size icons and compute bar heights to match. */
 export {
-  ANALYTICS_BACK_ICON_SIZE,
   ANALYTICS_ICON_SIZE,
   DAILY_CHART_HEIGHT,
   HOURLY_CHART_HEIGHT,

@@ -14,6 +14,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect, useNavigation } from "expo-router";
 import type { BottomTabNavigationProp } from "expo-router/js-tabs";
+import Feather from "@expo/vector-icons/Feather";
 
 import {
   useTheme,
@@ -22,6 +23,9 @@ import {
   useReducedMotion,
   HOME_PANEL_HEIGHT,
   BAR_HEIGHT,
+  FEED_FAB_ICON_SIZE,
+  FEED_FAB_MARGIN,
+  FEED_FAB_CLEARANCE,
 } from "@theme";
 import {
   usePosts,
@@ -397,8 +401,13 @@ const Index = () => {
               contentContainerStyle={[
                 homeStyles.postCardListContent,
                 // The first card starts below the panel rather than under it;
-                // later cards scroll up behind the blur.
-                { paddingTop: panelBottom + FEED_TOP_GAP, paddingBottom: tabBarClearance },
+                // later cards scroll up behind the blur. At the bottom, the bar
+                // AND the add-post circle above it: without the second, the
+                // last card's buttons would end up under the circle.
+                {
+                  paddingTop: panelBottom + FEED_TOP_GAP,
+                  paddingBottom: tabBarClearance + FEED_FAB_CLEARANCE,
+                },
                 posts.length === 0 && { flexGrow: 1 },
               ]}
               // A rolled-back like says so above the feed rather than in an
@@ -421,6 +430,35 @@ const Index = () => {
             />
           </Animated.View>
         )}
+
+        {/*
+          The add-post circle. It lived in the middle of the tab bar; it is on
+          the Feed now because the Feed is where posts appear, and the bar
+          slot went to Analytics. Shown in every state, loading and empty
+          included - a first post is the cure for an empty feed. Drawn BEFORE
+          the drop-down page, so an open page covers it.
+        */}
+        <View
+          style={[homeStyles.fabWrap, { bottom: tabBarClearance + FEED_FAB_MARGIN }]}
+          pointerEvents="box-none"
+        >
+          <Pressable
+            style={({ pressed }) => [homeStyles.fabRing, pressed && { opacity: 0.6 }]}
+            onPress={() => router.push("/new-post")}
+            accessibilityRole="button"
+            accessibilityLabel="New post"
+          >
+            <LinearGradient
+              colors={colors.gradients.primary}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={homeStyles.fab}
+            >
+              {/* White in both themes: gradients.primary is the same blue in each. */}
+              <Feather name="plus" size={FEED_FAB_ICON_SIZE} color="#ffffff" />
+            </LinearGradient>
+          </Pressable>
+        </View>
 
         {/* Drawn AFTER the feed and BEFORE the panel: over the posts, but
             dropping out from behind the panel's edge. */}

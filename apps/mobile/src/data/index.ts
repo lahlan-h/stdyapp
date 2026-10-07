@@ -63,6 +63,14 @@ export {
 // search result has.
 export { toUserSummary } from "./userSummary";
 export { useFollow, type FollowState } from "./useFollow";
+export { useMotionVariance, type MotionSource } from "./useMotionVariance";
+export {
+  useFocusSession,
+  type FocusSessionState,
+  type FocusResult,
+  type FocusPhase,
+  type SessionTask,
+} from "./useFocusSession";
 export { usePost } from "./usePost";
 export { useUserPosts, type UserPostsState } from "./useUserPosts";
 export {
@@ -122,6 +130,17 @@ export {
   type ProfileEdit,
   type ProfileState,
 } from "./useProfile";
+export { useRoutines, type RoutinesState } from "./useRoutines";
+export { useRoutine, type RoutineState, type TodoEdit } from "./useRoutine";
+export {
+  MAX_ROUTINE_TITLE_LENGTH,
+  MAX_TODO_TITLE_LENGTH,
+  endOfLocalDay,
+  type Routine,
+  type RoutineSummary,
+  type RoutineDetail,
+  type TodoItem,
+} from "./routineTypes";
 export {
   useAnalytics,
   type Analytics,
