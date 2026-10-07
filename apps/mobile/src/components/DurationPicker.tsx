@@ -77,6 +77,7 @@ const Wheel = ({ values, value, unit, onChange }: WheelProps) => {
   };
 
   const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragging = useRef(false);
 
   /**
    * The web fallback, and not optional: onMomentumScrollEnd and
@@ -84,10 +85,34 @@ const Wheel = ({ values, value, unit, onChange }: WheelProps) => {
    * value never changed. Settling after a pause covers that, and on a device
    * it simply agrees with the momentum handler a moment earlier.
    */
-  const settleWhenIdle = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const y = e.nativeEvent.contentOffset.y;
+  const armIdleSettle = (y: number) => {
     if (idle.current) clearTimeout(idle.current);
-    idle.current = setTimeout(() => apply(y, true), 120);
+    idle.current = setTimeout(() => {
+      // A finger resting on the wheel is not "settled". Snapping here would
+      // yank the list out from under it.
+      if (dragging.current) return;
+      apply(y, true);
+    }, 120);
+  };
+
+  const settleWhenIdle = (e: NativeSyntheticEvent<NativeScrollEvent>) =>
+    armIdleSettle(e.nativeEvent.contentOffset.y);
+
+  /**
+   * Finger lifted. Do NOT snap here.
+   *
+   * On a fast flick the release point is where the finger left the screen,
+   * not where the wheel will stop. Calling scrollTo with that offset fought
+   * the fling: the wheel spun on, then was dragged back to the row under the
+   * finger at release (20 min, flick, wheel spins past 0, lands on 15).
+   *
+   * Instead, re-arm the idle settle from here. If a fling follows, its scroll
+   * events keep pushing the timer back and onMomentumScrollEnd decides the
+   * value. If the release was slow and nothing moves, the timer settles it.
+   */
+  const onDragEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    dragging.current = false;
+    armIdleSettle(e.nativeEvent.contentOffset.y);
   };
 
   useEffect(
@@ -99,8 +124,15 @@ const Wheel = ({ values, value, unit, onChange }: WheelProps) => {
 
   return (
     <View style={[styles.wheel, { height: H * visible }]}>
+      {/*
+        nestedScrollEnabled: the wheel sits inside the Study screen's
+        ScrollView. On Android the outer list takes every vertical drag
+        unless the inner one opts in, so the page moved and the wheel never
+        did. iOS ignores the prop and already behaved.
+      */}
       <ScrollView
         ref={ref}
+        nestedScrollEnabled
         showsVerticalScrollIndicator={false}
         snapToInterval={H}
         decelerationRate="fast"
@@ -108,7 +140,10 @@ const Wheel = ({ values, value, unit, onChange }: WheelProps) => {
         scrollEventThrottle={16}
         onScroll={settleWhenIdle}
         onMomentumScrollEnd={(e) => apply(e.nativeEvent.contentOffset.y, false)}
-        onScrollEndDrag={(e) => apply(e.nativeEvent.contentOffset.y, true)}
+        onScrollBeginDrag={() => {
+          dragging.current = true;
+        }}
+        onScrollEndDrag={onDragEnd}
       >
         {values.map((n) => {
           const selected = n === value;
