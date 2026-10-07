@@ -530,6 +530,23 @@ export const CACHE_TTL_NOTIFICATION_COUNT_SEC = 15;
 export const RATE_LIMIT_NOTIFICATION_WRITE = { max: 60, windowSec: 60 };
 
 /**
+ * Sending direct messages, and marking a conversation read.
+ *
+ * NOT RATE_LIMIT_WRITE, though a message is typed like a comment. A comment is
+ * one considered paragraph; a chat is a burst - "ok", "see you at 10", "L3.12"
+ * - and two people going back and forth can pass twenty sends a minute without
+ * either of them doing anything unusual. 60/min sits at the like tier's
+ * number: comfortably above a fast typist, still far below a script spamming
+ * someone's inbox.
+ *
+ * The routes give sending and marking read separate buckets on this one tier,
+ * so a client marking chats read as messages arrive cannot spend the budget a
+ * person needs to reply. A separate constant from the like and notification
+ * tiers despite the identical number, per the rule this file states throughout.
+ */
+export const RATE_LIMIT_MESSAGE_WRITE = { max: 60, windowSec: 60 };
+
+/**
  * Subscribing and cancelling.
  *
  * THE TIGHTEST TIER IN THIS FILE, and the only one bounding an operation

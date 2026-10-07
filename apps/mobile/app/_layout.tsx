@@ -65,6 +65,12 @@ export default function RootLayout() {
             view. Analytics and the routines list are tabs now, not screens.
           */}
           <Stack.Screen name="routine/[id]" />
+          {/*
+            Someone else's profile, opened from the home screen's search. A
+            push over the tabs, so the way back returns to the feed exactly as
+            it was left.
+          */}
+          <Stack.Screen name="user/[id]" />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

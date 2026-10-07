@@ -4,6 +4,7 @@ import * as groupRepo from "../repositories/studyGroup.repository.js";
 // told. The same shape post.service.js/session.service.js already use for posts.
 import { findSessionRefsByGroup } from "../repositories/session.repository.js";
 import { invalidateDetachedSessions } from "./session.service.js";
+import { notifyActivity } from "./notification.service.js";
 import {
   bumpVersions,
   groupContentVersionKey,
@@ -206,6 +207,16 @@ export const joinGroup = async (groupId, userId, providedCode) => {
   // above invalidateGroup. The group row itself did not change, so bumping
   // content as well would throw away a good cache entry for nothing.
   await invalidateGroup({ groupId, members: true });
+
+  // To the owner only, not every member: a group's owner is the one who wants to
+  // know who arrived, and fanning out to a large group would turn every join
+  // into a broadcast. Not awaited - see notifyActivity.
+  void notifyActivity({
+    recipientId: group.ownerId,
+    actorId: userId,
+    type: "GROUP_JOIN",
+    describe: (name) => `${name} joined your group “${group.name}”.`,
+  });
 
   return membership;
 };

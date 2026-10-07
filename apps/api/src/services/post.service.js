@@ -320,7 +320,9 @@ const toViewerPost = (viewerId) => ({ likes, reports, ...post }) => {
 };
 
 /**
- * One page of the global feed — every post by everyone, newest first.
+ * One page of the global feed — every post by everyone, newest first unless the
+ * caller asked for another order, optionally narrowed to a date window. Both
+ * arrive already validated by listAllPostsQuerySchema.
  *
  * Deliberately has NO ownership gate, for the same reason listPostsByUser has
  * none: this IS the feed, and gating it on authorship would leave it showing
@@ -343,9 +345,9 @@ const toViewerPost = (viewerId) => ({ likes, reports, ...post }) => {
  * vector. Caching this route without a viewer dimension is therefore not a
  * performance trade-off to weigh; it is a privacy bug.
  */
-export const listAllPosts = async ({ page, limit }, viewerId) => {
+export const listAllPosts = async ({ page, limit, sort, from, to }, viewerId) => {
   const [rows, total] = await postRepo.findAllPosts(
-    { skip: (page - 1) * limit, take: limit },
+    { skip: (page - 1) * limit, take: limit, sort, from, to },
     viewerId,
   );
 

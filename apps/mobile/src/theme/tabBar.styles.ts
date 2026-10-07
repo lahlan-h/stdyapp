@@ -73,5 +73,12 @@ export const createTabBarStyles = (colors: ColorScheme) => {
   return styles;
 };
 
-/** Re-exported so components can size their icons to match the stylesheet. */
-export { TAB_ICON_SIZE, TAB_BAR_HEIGHT };
+/**
+ * Re-exported so components can size their icons to match the stylesheet.
+ *
+ * BAR_HEIGHT goes out on its own for the home screen's drop-down page, which
+ * stops at the bar's top edge. It equals TAB_BAR_HEIGHT now that the bar has no
+ * add-post circle overhanging it, but the page means "the bar's visible top",
+ * and that is the name that keeps meaning it if the bar ever grows again.
+ */
+export { TAB_ICON_SIZE, TAB_BAR_HEIGHT, BAR_HEIGHT };

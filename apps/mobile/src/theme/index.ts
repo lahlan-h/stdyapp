@@ -45,6 +45,7 @@ export {
   createTabBarStyles,
   TAB_ICON_SIZE,
   TAB_BAR_HEIGHT,
+  BAR_HEIGHT,
 } from "./tabBar.styles";
 export {
   createNewPostStyles,
@@ -82,7 +83,24 @@ export {
   PROFILE_AVATAR_SIZE,
   PROFILE_ACTION_ICON_SIZE,
   PROFILE_STUDY_ICON_SIZE,
+  PROFILE_BACK_ICON_SIZE,
 } from "./profile.styles";
+export {
+  createHomeSearchStyles,
+  HOME_PANEL_HEIGHT,
+  HOME_SEARCH_ICON_SIZE,
+  SEARCH_ROW_ICON_SIZE,
+  SHEET_CLOSE_ICON_SIZE,
+  FILTER_FIELD_ICON_SIZE,
+  NOTIFICATION_ICON_SIZE,
+} from "./homeSearch.styles";
+export {
+  createMessagesStyles,
+  CHAT_BACK_ICON_SIZE,
+  SEND_ICON_SIZE,
+} from "./messages.styles";
+export { useReducedMotion } from "./useReducedMotion";
+export { useKeyboardLift, type KeyboardLift } from "./useKeyboardLift";
 export {
   createAnalyticsStyles,
   ANALYTICS_ICON_SIZE,

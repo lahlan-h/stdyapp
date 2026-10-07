@@ -16,6 +16,7 @@ import goalRoutes from "./goal.routes.js"
 import streakRoutes from "./streak.routes.js"
 import subscriptionRoutes from "./subscription.routes.js"
 import notificationRoutes from "./notification.routes.js"
+import conversationRoutes from "./conversation.routes.js"
 import analyticsRoutes from "./analytics.routes.js"
 import devAuthRoutes from "./devAuth.routes.js"
 import { sessionFocusRouter, focusRouter } from "./focus.routes.js";
@@ -40,6 +41,7 @@ router.use("/goals", goalRoutes);
 router.use("/streaks", streakRoutes);
 router.use("/subscriptions", subscriptionRoutes);
 router.use("/notifications", notificationRoutes);
+router.use("/conversations", conversationRoutes);
 router.use("/analytics", analyticsRoutes);
 
 // Mounted on the same path as sessionRoutes above, and deliberately so. Express

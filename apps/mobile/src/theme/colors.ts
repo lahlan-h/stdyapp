@@ -37,6 +37,15 @@ export interface ColorScheme {
   successTint: string;
   successEdge: string;
   /**
+   * The unread counter on the notifications button.
+   *
+   * THE SAME DEEP RED IN BOTH THEMES, and not `danger`: the counter carries
+   * white digits, and dark mode's danger is a light coral they all but vanish
+   * on. A count is read at a glance or not at all, so legibility wins over
+   * matching the palette's mood.
+   */
+  notificationBadge: string;
+  /**
    * The wash a modal lays over the screen behind it.
    *
    * THE SAME VALUE IN BOTH THEMES, like gradients.primary, and for a sharper
@@ -119,6 +128,7 @@ export const lightColors: ColorScheme = {
   dangerEdge: "rgba(239,68,68,0.28)",
   successTint: "rgba(16,185,129,0.12)",
   successEdge: "rgba(16,185,129,0.28)",
+  notificationBadge: "#dc2626",
   scrim: "rgba(0,0,0,0.55)",
   brandBanner: "#0f172a",
   google: {
@@ -161,6 +171,7 @@ export const darkColors: ColorScheme = {
   // held its light-theme alpha would all but vanish against the dark surface.
   successTint: "rgba(52,211,153,0.16)",
   successEdge: "rgba(52,211,153,0.34)",
+  notificationBadge: "#dc2626",
   scrim: "rgba(0,0,0,0.55)",
   brandBanner: "transparent",
   google: {

@@ -33,7 +33,9 @@ export const API_BASE_URL = (
  */
 const TUNNEL_KEY = process.env.EXPO_PUBLIC_TUNNEL_KEY;
 
-const tunnelHeaders = (): Record<string, string> => ({
+// Exported for the notification socket, which opens its own connection and
+// needs the same headers to get through a tunnel that request() sends.
+export const tunnelHeaders = (): Record<string, string> => ({
   "ngrok-skip-browser-warning": "true",
   ...(TUNNEL_KEY ? { "x-tunnel-key": TUNNEL_KEY } : {}),
 });

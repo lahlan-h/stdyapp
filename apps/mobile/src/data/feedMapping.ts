@@ -92,6 +92,21 @@ const toSession = (row: RawFeedRow): FeedSession | undefined => {
 };
 
 /**
+ * How a person is named on screen: first and last name, or the username when
+ * they have neither.
+ *
+ * Both names are nullable in the database even though signup demands them, so
+ * an older row can have neither. The username always exists. Shared by the feed
+ * and by user search, so a person reads the same in a result row as on the post
+ * card that row's profile leads to.
+ */
+export const toDisplayName = (
+  firstName: string | null,
+  lastName: string | null,
+  username: string,
+): string => [firstName, lastName].filter(Boolean).join(" ") || username;
+
+/**
  * Lives here rather than inside usePosts because more than one screen needs it
  * now. Duplicating it would duplicate the rules this layer exists to contain -
  * that `_count` becomes a flat count, that a null photoUrl becomes undefined
@@ -99,7 +114,6 @@ const toSession = (row: RawFeedRow): FeedSession | undefined => {
  */
 export const toFeedPost = (row: RawFeedRow): FeedPost => {
   const { firstName, lastName, username } = row.user;
-  const name = [firstName, lastName].filter(Boolean).join(" ");
 
   return {
     id: row.id,
@@ -120,9 +134,7 @@ export const toFeedPost = (row: RawFeedRow): FeedPost => {
     author: {
       id: row.user.id,
       username,
-      // Both names are nullable in the database even though signup demands
-      // them, so an older row can have neither. The username always exists.
-      displayName: name || username,
+      displayName: toDisplayName(firstName, lastName, username),
       avatarUrl: row.user.avatarUrl ?? undefined,
     },
     session: toSession(row),
