@@ -60,8 +60,11 @@ export default function RootLayout() {
           <Stack.Screen name="post/[id]" />
           {/* A push, for post/[id]'s reason: you go there and come back. */}
           <Stack.Screen name="edit-profile" />
-          {/* A push, for the same reason. */}
-          <Stack.Screen name="analytics" />
+          {/*
+            A push, for the same reason - opened from the Study tab's Routines
+            view. Analytics and the routines list are tabs now, not screens.
+          */}
+          <Stack.Screen name="routine/[id]" />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

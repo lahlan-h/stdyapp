@@ -4,6 +4,25 @@ import { StyleSheet } from "react-native";
 /** Diameter of the author avatar on a post card. */
 const AVATAR_SIZE = 65;
 
+/**
+ * The add-post circle, now on the Feed rather than in the tab bar. A little
+ * smaller than the 64 it was in the bar: it floats over posts now, and covers
+ * whatever is under it.
+ */
+const FEED_FAB_SIZE = 58;
+const FEED_FAB_ICON_SIZE = 28;
+const FEED_FAB_RING = 4;
+
+/** Gap between the circle and the screen edge, and between it and the bar. */
+const FEED_FAB_MARGIN = 16;
+
+/**
+ * What the feed must leave clear under its last card so the circle never sits
+ * on top of that card's like and comment buttons. Added to the tab bar
+ * clearance at runtime.
+ */
+const FEED_FAB_CLEARANCE = FEED_FAB_SIZE + FEED_FAB_RING * 2 + FEED_FAB_MARGIN * 2;
+
 export const createHomeStyles = (colors: ColorScheme) => {
   const styles = StyleSheet.create({
     container: {
@@ -125,6 +144,33 @@ export const createHomeStyles = (colors: ColorScheme) => {
       alignItems: "center",
       gap: 8,
     },
+
+    // --- Add-post circle ---
+    // Positioned, not laid out: it floats over the list. `bottom` is set by
+    // the screen, because it sits above the tab bar and that height includes
+    // the runtime safe-area inset.
+    fabWrap: {
+      position: "absolute",
+      right: FEED_FAB_MARGIN,
+    },
+    // Separation from the posts is a ring of surface plus a hairline, never a
+    // shadow - nothing else in this app casts one. The tab bar circle's rule.
+    fabRing: {
+      padding: FEED_FAB_RING,
+      borderRadius: (FEED_FAB_SIZE + FEED_FAB_RING * 2) / 2,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    fab: {
+      width: FEED_FAB_SIZE,
+      height: FEED_FAB_SIZE,
+      borderRadius: FEED_FAB_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
+    },
   });
   return styles;
 };
+
+export { FEED_FAB_ICON_SIZE, FEED_FAB_MARGIN, FEED_FAB_CLEARANCE };

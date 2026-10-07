@@ -554,6 +554,42 @@ export const createStudyStyles = (colors: ColorScheme) => {
       padding: 12,
     },
     errorText: { fontSize: 13, color: colors.danger },
+
+    // ---- Sessions | Routines switch --------------------------------------
+    // The analytics range switch's shape, so the two read as one control.
+    viewSwitch: {
+      flexDirection: "row",
+      gap: 6,
+      padding: 4,
+      borderRadius: 14,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    viewSwitchItem: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      minHeight: 38,
+      borderRadius: 10,
+    },
+    viewSwitchItemSelected: { backgroundColor: colors.primary },
+    viewSwitchLabel: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 13,
+      color: colors.textMuted,
+    },
+    // White in both themes: it sits on colors.primary, a mid blue either way.
+    viewSwitchLabelSelected: { color: "#ffffff" },
+    /** "A session is running" on the Sessions label, seen from Routines. */
+    viewSwitchDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: colors.success,
+    },
   });
 
   return styles;

@@ -1,19 +1,12 @@
 import { View, Text, Pressable } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import AntDesign from "@expo/vector-icons/AntDesign";
 import Feather from "@expo/vector-icons/Feather";
 import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
-import { router } from "expo-router";
 import type { ComponentProps } from "react";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 
-import {
-  useTheme,
-  useTabBarStyles,
-  TAB_ICON_SIZE,
-  FAB_ICON_SIZE,
-} from "@theme";
+import { useTheme, useTabBarStyles, TAB_ICON_SIZE } from "@theme";
 
 interface TabBase {
   name: string;
@@ -42,15 +35,20 @@ type TabConfig =
       icon: ComponentProps<typeof FontAwesome5>["name"];
     });
 
+/**
+ * Five tabs, in bar order. The add-post circle that used to sit in the middle
+ * now lives on the Feed itself, which freed the slot Analytics takes.
+ *
+ * The Feed is still the `index` route - renaming the file would change every
+ * deep link to "/" - so only its label changed.
+ */
 export const TABS: TabConfig[] = [
-  { name: "index", label: "Home", family: "AntDesign", icon: "home" },
+  { name: "index", label: "Feed", family: "AntDesign", icon: "home" },
   { name: "study", label: "Study", family: "Feather", icon: "book" },
+  { name: "analytics", label: "Analytics", family: "Feather", icon: "bar-chart-2" },
   { name: "profile", label: "Profile", family: "FontAwesome5", icon: "user" },
   { name: "settings", label: "Settings", family: "Feather", icon: "settings" },
 ];
-
-/** Where the circle goes: after Home and Study, before Profile and Settings. */
-const FAB_INDEX = 2;
 
 const renderIcon = (tab: TabConfig, color: string) => {
   switch (tab.family) {
@@ -66,15 +64,13 @@ const renderIcon = (tab: TabConfig, color: string) => {
 /**
  * The bottom bar, drawn in JS rather than by the OS.
  *
- * This used to be `NativeTabs`, which renders a real UITabBarController /
- * BottomNavigationView. That bar cannot host the add-post circle - it takes
- * styling tokens only, with no way to place a React view between its icons -
- * so it was replaced wholesale. The costs of the swap were iOS 26's
- * scroll-to-minimize and the native scroll-edge transparency, neither of which
- * has a JS equivalent.
+ * It was moved off `NativeTabs` to host the add-post circle in its centre.
+ * The circle has since moved to the Feed, but the JS bar stays: it carries the
+ * app's own blur, colours and type, and switching back would be churn for no
+ * gain to the user.
  *
  * Rendering is driven by TABS, not by `state.routes`: the router decides its
- * own order, and the circle has to land dead centre.
+ * own order, and the bar's order is a design decision.
  */
 const TabBar = ({ state, navigation, insets }: BottomTabBarProps) => {
   const { colors, isDarkMode } = useTheme();
@@ -131,43 +127,7 @@ const TabBar = ({ state, navigation, insets }: BottomTabBarProps) => {
         style={tabBarStyles.surface}
       />
 
-      <View style={tabBarStyles.row}>
-        {TABS.slice(0, FAB_INDEX).map(renderTab)}
-        {/* The column the circle lines up with. It holds nothing: laid out in
-            the row, the circle would drive the row's height and inflate the
-            bar. */}
-        <View style={tabBarStyles.tab} />
-        {TABS.slice(FAB_INDEX).map(renderTab)}
-      </View>
-
-      {/*
-        box-none, not none: the wrapper spans the full width so the circle can
-        centre itself, and catching touches across it would swallow presses
-        meant for the tabs either side.
-      */}
-      <View style={tabBarStyles.fabWrap} pointerEvents="box-none">
-        <Pressable
-          style={({ pressed }) => [
-            tabBarStyles.fabRing,
-            pressed && { opacity: 0.6 },
-          ]}
-          onPress={() => router.push("/new-post")}
-          accessibilityRole="button"
-          accessibilityLabel="New post"
-        >
-          <LinearGradient
-            colors={colors.gradients.primary}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={tabBarStyles.fab}
-          >
-            {/* Always the light palette's surface, never colors.text: this sits
-                on gradients.primary, which is the same mid blue in both
-                themes. */}
-            <Feather name="plus" size={FAB_ICON_SIZE} color="#ffffff" />
-          </LinearGradient>
-        </Pressable>
-      </View>
+      <View style={tabBarStyles.row}>{TABS.map(renderTab)}</View>
     </View>
   );
 };

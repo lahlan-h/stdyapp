@@ -19,6 +19,15 @@ import FocusDial from "@components/FocusDial";
 import FocusTrace from "@components/FocusTrace";
 import RatingSheet from "@components/RatingSheet";
 import TaskChecklist from "@components/TaskChecklist";
+import RoutineList from "@components/RoutineList";
+
+/** The two views under the Study tab. */
+type StudyView = "sessions" | "routines";
+
+const VIEWS: { key: StudyView; label: string }[] = [
+  { key: "sessions", label: "Sessions" },
+  { key: "routines", label: "Routines" },
+];
 
 /**
  * The focus session screen: set up, run, recap.
@@ -35,6 +44,11 @@ import TaskChecklist from "@components/TaskChecklist";
  * the eye can land on a single figure without reading the rest.
  *
  * Every colour is a palette token; the screen holds no hex of its own.
+ *
+ * TWO VIEWS, ONE SESSION. A switch at the top flips between Sessions and
+ * Routines, but useFocusSession stays mounted in this screen whichever is
+ * showing - so a running session keeps its timer, samples and away-tracking
+ * while the user checks a routine. Only the rendered content swaps.
  */
 
 const clock = (totalSec: number) => {
@@ -98,6 +112,7 @@ const Study = () => {
   } = useFocusSession();
 
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [view, setView] = useState<StudyView>("sessions");
 
   const running = phase === "running";
   const score = running ? liveFocus : (result?.focusScore ?? null);
@@ -131,6 +146,16 @@ const Study = () => {
     if (phase === "recap") setSheetOpen(true);
     else setSheetOpen(false);
   }, [phase]);
+
+  /**
+   * A session that ends while Routines is showing brings Sessions back, so the
+   * recap and its rating sheet are not opened behind the routine list.
+   */
+  useEffect(() => {
+    if (phase === "recap") setView("sessions");
+  }, [phase]);
+
+  const showingSessions = view === "sessions";
 
   const finish = () => {
     setSheetOpen(false);
@@ -198,14 +223,40 @@ const Study = () => {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {error ? (
+          <View style={styles.viewSwitch} accessibilityRole="tablist">
+            {VIEWS.map(({ key, label }) => {
+              const selected = key === view;
+              const live = key === "sessions" && running && !selected;
+              return (
+                <Pressable
+                  key={key}
+                  style={[styles.viewSwitchItem, selected && styles.viewSwitchItemSelected]}
+                  onPress={() => setView(key)}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={live ? `${label}, session running` : label}
+                >
+                  {live ? <View style={styles.viewSwitchDot} /> : null}
+                  <Text
+                    style={[styles.viewSwitchLabel, selected && styles.viewSwitchLabelSelected]}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {!showingSessions ? <RoutineList /> : null}
+
+          {showingSessions && error ? (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
 
           {/* ---------------- set up ---------------- */}
-          {phase === "idle" ? (
+          {showingSessions && phase === "idle" ? (
             <>
               <View style={styles.dialWrap}>
                 <FocusDial progress={0} color={colors.primary}>
@@ -246,7 +297,7 @@ const Study = () => {
           ) : null}
 
           {/* ---------------- running ---------------- */}
-          {running ? (
+          {showingSessions && running ? (
             <>
               <View style={styles.dialWrap}>
                 <FocusDial progress={dialProgress} color={bandColor}>
@@ -295,7 +346,7 @@ const Study = () => {
           ) : null}
 
           {/* ---------------- recap: no dial, cards only ---------------- */}
-          {phase === "recap" && result ? (
+          {showingSessions && phase === "recap" && result ? (
             <>
               {/*
                 A vector mark, not an emoji: emoji render differently on every

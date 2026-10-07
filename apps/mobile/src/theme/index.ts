@@ -13,10 +13,16 @@ export {
   useRegisterStyles,
   useEditProfileStyles,
   useAnalyticsStyles,
+  useRoutinesStyles,
   type ThemePreference,
 } from "./useTheme";
 export { lightColors, darkColors, type ColorScheme } from "./colors";
-export { createHomeStyles } from "./home.styles";
+export {
+  createHomeStyles,
+  FEED_FAB_ICON_SIZE,
+  FEED_FAB_MARGIN,
+  FEED_FAB_CLEARANCE,
+} from "./home.styles";
 export {
   createStudyStyles,
   DIAL_SIZE,
@@ -38,7 +44,6 @@ export { useTabBarClearance } from "./useTabBarClearance";
 export {
   createTabBarStyles,
   TAB_ICON_SIZE,
-  FAB_ICON_SIZE,
   TAB_BAR_HEIGHT,
 } from "./tabBar.styles";
 export {
@@ -80,9 +85,13 @@ export {
 } from "./profile.styles";
 export {
   createAnalyticsStyles,
-  ANALYTICS_BACK_ICON_SIZE,
   ANALYTICS_ICON_SIZE,
   DAILY_CHART_HEIGHT,
   HOURLY_CHART_HEIGHT,
   MIN_VISIBLE_BAR,
 } from "./analytics.styles";
+export {
+  createRoutinesStyles,
+  ROUTINES_HEADER_ICON_SIZE,
+  ROUTINES_ICON_SIZE,
+} from "./routines.styles";

@@ -359,9 +359,18 @@ model TodoItem {
   dueDate     DateTime?
   isComplete  Boolean      @default(false)
 
+  // Where the item sits in its routine, 0 first. Set by the server only: new
+  // items go last, and PUT /api/routines/:id/todos/order rewrites the lot. Not
+  // unique - two items added at the same instant can share a slot, and
+  // createdAt breaks the tie, so a collision costs order stability and never
+  // a failed write.
+  position    Int          @default(0)
+
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
+  // Every read of a routine's items orders by position within one routine.
+  @@index([routineId, position])
   @@map("todo_items")
 }
 
