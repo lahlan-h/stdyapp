@@ -25,6 +25,7 @@ import { createLoginStyles } from "./login.styles";
 import { createRegisterStyles } from "./register.styles";
 import { createEditProfileStyles } from "./editProfile.styles";
 import { createAnalyticsStyles } from "./analytics.styles";
+import { createRoutinesStyles } from "./routines.styles";
 
 const STORAGE_KEY = "themePreference";
 
@@ -77,6 +78,7 @@ const styleMap = {
   register: createRegisterStyles,
   editProfile: createEditProfileStyles,
   analytics: createAnalyticsStyles,
+  routines: createRoutinesStyles,
 } as const;
 
 type StyleName = keyof typeof styleMap;
@@ -253,3 +255,6 @@ export const useEditProfileStyles = () => useStyles("editProfile");
 
 /** The analytics stylesheet for the active theme. Never rebuilds. */
 export const useAnalyticsStyles = () => useStyles("analytics");
+
+/** The routines stylesheet for the active theme. Never rebuilds. */
+export const useRoutinesStyles = () => useStyles("routines");

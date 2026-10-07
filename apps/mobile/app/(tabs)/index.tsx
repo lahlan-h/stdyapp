@@ -1,10 +1,18 @@
 import { useCallback, useState } from "react";
-import { FlatList, StatusBar, View, Text } from "react-native";
+import { FlatList, Pressable, StatusBar, View, Text } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
+import Feather from "@expo/vector-icons/Feather";
 
-import { useTheme, useStyles, useTabBarClearance } from "@theme";
+import {
+  useTheme,
+  useStyles,
+  useTabBarClearance,
+  FEED_FAB_ICON_SIZE,
+  FEED_FAB_MARGIN,
+  FEED_FAB_CLEARANCE,
+} from "@theme";
 import { usePosts, useLikePost, consumeFeedStale, type FeedPost } from "@data";
 
 import PostCard from "@components/PostCard";
@@ -76,7 +84,9 @@ const Index = () => {
             style={homeStyles.postCardList}
             contentContainerStyle={[
               homeStyles.postCardListContent,
-              { paddingBottom: tabBarClearance },
+              // The bar AND the add-post circle above it: without the second,
+              // the last card's buttons would end up under the circle.
+              { paddingBottom: tabBarClearance + FEED_FAB_CLEARANCE },
             ]}
             // A rolled-back like says so above the feed rather than in an
             // alert: the heart has already snapped back, so this only explains
@@ -94,6 +104,34 @@ const Index = () => {
             onEndReachedThreshold={0.5}
           />
         )}
+
+        {/*
+          The add-post circle. It lived in the middle of the tab bar; it is on
+          the Feed now because the Feed is where posts appear, and the bar
+          slot went to Analytics. Shown in every state, loading and empty
+          included - a first post is the cure for an empty feed.
+        */}
+        <View
+          style={[homeStyles.fabWrap, { bottom: tabBarClearance + FEED_FAB_MARGIN }]}
+          pointerEvents="box-none"
+        >
+          <Pressable
+            style={({ pressed }) => [homeStyles.fabRing, pressed && { opacity: 0.6 }]}
+            onPress={() => router.push("/new-post")}
+            accessibilityRole="button"
+            accessibilityLabel="New post"
+          >
+            <LinearGradient
+              colors={colors.gradients.primary}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={homeStyles.fab}
+            >
+              {/* White in both themes: gradients.primary is the same blue in each. */}
+              <Feather name="plus" size={FEED_FAB_ICON_SIZE} color="#ffffff" />
+            </LinearGradient>
+          </Pressable>
+        </View>
 
         {/* ONE dialog for the whole list, outside the FlatList. Inside a row it
             would be unmounted the moment that row scrolled out of the window. */}
