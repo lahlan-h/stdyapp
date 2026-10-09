@@ -134,6 +134,15 @@ export const createMessagesStyles = (colors: ColorScheme) => {
       borderWidth: 1,
       borderColor: colors.border,
     },
+    // Avatar, name and chevron as one tap target - fills the header beside the
+    // back button.
+    chatProfile: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
     chatWho: {
       flex: 1,
       minWidth: 0,
