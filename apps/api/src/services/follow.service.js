@@ -3,6 +3,7 @@ import * as followRepo from "../repositories/follow.repository.js";
 // It throws its own 404, which is exactly the existence check every read below
 // needs, so nothing here re-implements one.
 import { getUserById } from "./user.service.js";
+import { notifyActivity } from "./notification.service.js";
 // The REPOSITORY, never block.service.js. That module imports this one — it calls
 // unfollowUser and removeFollower to sever both edges when a block is created —
 // so a service-level import here would close the loop into a cycle. Reaching for
@@ -168,6 +169,15 @@ export const followUser = async ({ followerId, followingId }) => {
   try {
     const follow = await followRepo.createFollow({ followerId, followingId });
     await invalidateFollow(follow);
+    // Only for a NEW edge - the already-following early return above never
+    // reaches here. Not awaited: see notifyActivity, which also swallows an
+    // unfollow/refollow within the hour.
+    void notifyActivity({
+      recipientId: followingId,
+      actorId: followerId,
+      type: "FOLLOW",
+      describe: (name) => `${name} started following you.`,
+    });
     return { follow, created: true };
   } catch (err) {
     // Two taps landing between the read above and this insert. The unique

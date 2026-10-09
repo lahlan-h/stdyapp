@@ -1,14 +1,16 @@
 import { z } from "zod";
 
+import { paginationQuerySchema } from "./pagination.validation.js";
 
 /**
  * Request schemas for the posts resource.
  *
- * Only the WRITE routes are covered. The reads on this router keep their
- * existing hand-rolled shape, so this file is deliberately not a full migration
- * of post.controller.js to Zod - it exists because the create path was being
- * rewritten anyway, and hand-rolling the same checks a fourth time was the worse
- * of the two options.
+ * The WRITE routes, plus the one read that takes a query string: GET /all, whose
+ * sort and date window are described by listAllPostsQuerySchema at the bottom.
+ * The other reads keep their existing hand-rolled shape, so this file is
+ * deliberately not a full migration of post.controller.js to Zod - it exists
+ * because the create path was being rewritten anyway, and hand-rolling the same
+ * checks a fourth time was the worse of the two options.
  *
  * Conventions follow user.validation.js: strictObject everywhere, so an
  * unrecognised key is a loud 400 rather than a silent no-op.
@@ -146,3 +148,60 @@ export const updatePostSchema = z
 export const postIdParamSchema = z.strictObject({
   id: z.uuid("id must be a UUID"),
 });
+
+/**
+ * The orders the global feed can be read in.
+ *
+ * Exported so the repository's orderBy map is keyed by the same list: a sort
+ * accepted here with no entry there would reach Prisma as `undefined` and
+ * quietly fall back to its default order.
+ *
+ * "most_liked" is all-time likes on each post, not likes received inside the
+ * date window - Like has no timestamp (see the note on the model), so the window
+ * can only ever narrow WHICH posts are ranked, never what they are ranked by.
+ */
+export const FEED_SORTS = [
+  "recent",
+  "oldest",
+  "most_liked",
+  "least_liked",
+  "most_commented",
+  "least_commented",
+];
+
+/**
+ * One end of the date window, as an ISO-8601 instant.
+ *
+ * An INSTANT, not a calendar day, and that is the whole timezone story: the app
+ * turns "6 Oct" into its own local midnight before sending, so the server never
+ * has to know which zone the reader is in - the same reason calendar.js can stay
+ * UTC-only. `offset: true` accepts "+10:00" as well as "Z", since both name one
+ * moment unambiguously.
+ */
+const instantSchema = z.iso
+  .datetime({ offset: true, message: "must be an ISO-8601 date-time" })
+  .transform((value) => new Date(value));
+
+/**
+ * GET /api/posts/all - a page of the feed, in a chosen order, inside an
+ * optional window.
+ *
+ * Extends the shared pagination schema rather than copying it, so the page cap
+ * stays in one place. Still strict: a typo'd ?srot= is a 400, not page one in
+ * the default order.
+ *
+ * The window is HALF-OPEN, [from, to): `from` is inclusive and `to` exclusive.
+ * That is what lets a client ask for "all of the 6th" as midnight-to-midnight
+ * without a post at exactly 00:00 on the 7th landing on both days. Either end
+ * may be given alone.
+ */
+export const listAllPostsQuerySchema = paginationQuerySchema
+  .extend({
+    sort: z.enum(FEED_SORTS).default("recent"),
+    from: instantSchema.optional(),
+    to: instantSchema.optional(),
+  })
+  .refine((query) => !query.from || !query.to || query.from < query.to, {
+    message: "to must be later than from",
+    path: ["to"],
+  });

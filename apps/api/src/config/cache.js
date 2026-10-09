@@ -367,26 +367,41 @@ export const CACHE_TTL_ROUTINE_LIST_SEC = 60;
 
 /**
  * Sessions, groups and routines reuse RATE_LIMIT_READ, RATE_LIMIT_WRITE and
- * RATE_LIMIT_BULK as they stand, and add one tier of their own for the join
- * route below. rateLimit()'s `name` gives each of the three routers its own
- * Redis keyspace, so these budgets are independent of each other and of the
- * comment, like, post and user routers despite sharing the numbers.
+ * RATE_LIMIT_BULK as they stand, and add two tiers of their own: the join
+ * route below, and RATE_LIMIT_TODO_WRITE for ticking routine items.
+ * rateLimit()'s `name` gives each of the three routers its own Redis keyspace,
+ * so these budgets are independent of each other and of the comment, like,
+ * post and user routers despite sharing the numbers.
  *
- * Two placements are worth stating, both on RATE_LIMIT_BULK rather than
- * RATE_LIMIT_WRITE, and neither for row count:
+ * One placement is worth stating, on RATE_LIMIT_BULK rather than
+ * RATE_LIMIT_WRITE, and not for row count:
  *
  *   DELETE /api/groups/:id     - cascades every membership in the group, so one
  *                                call can remove dozens of rows belonging to
  *                                people other than the caller.
- *   DELETE /api/routines/:id   - cascades every todo item, and SetNulls the
- *                                sourceRoutineId of every clone anyone has ever
- *                                taken of it. The blast radius reaches other
- *                                users' rows, which is the property this tier
- *                                exists for.
+ *
+ * DELETE /api/routines/:id USED TO sit here too, and was moved to
+ * RATE_LIMIT_WRITE. Its cascade is real - every todo item goes, and every clone
+ * anyone took loses its sourceRoutineId - but what reaches other users is a
+ * provenance pointer set to NULL, not their rows or their content. Five an hour
+ * was turning tidying up a list of routines into an error, for a cost that
+ * does not need bounding below a normal write.
  *
  * DELETE /api/sessions/:id deliberately stays on RATE_LIMIT_WRITE: it cascades
  * only its own interruptions and detaches the caller's own posts.
  */
+
+/**
+ * Ticking, unticking and reordering routine items - PATCH and PUT under
+ * /api/routines/:id/todos.
+ *
+ * RATE_LIMIT_LIKE_WRITE's number for RATE_LIMIT_LIKE_WRITE's reason: a tick is a
+ * reflexive one-tap action, and working down a checklist is a legitimate burst
+ * that 20/min cut off part way. Moving an item up or down is the same kind of
+ * tap. Adding and deleting items stay on RATE_LIMIT_WRITE - adding is typed,
+ * and nothing about deleting is a burst.
+ */
+export const RATE_LIMIT_TODO_WRITE = { max: 60, windowSec: 60 };
 
 /**
  * Joining a group - POST /api/groups/:id/join.
@@ -453,6 +468,19 @@ export const CACHE_TTL_GOAL_PROGRESS_SEC = 30;
 export const CACHE_TTL_STREAK_SEC = 60;
 
 /**
+ * Personal analytics.
+ *
+ * Every write that changes the answer bumps a counter in the key, and the
+ * caller's day boundary is in the key too, so this TTL is mostly bounding how
+ * long an unread entry sits in Redis. Mostly: the embedded streak still expires
+ * at UTC midnight (see toEffectiveStreak), which is not the caller's midnight,
+ * so for up to this long after it an expired streak can still show. Two minutes
+ * keeps a user flicking between 7d and 30d on cache without that window
+ * mattering.
+ */
+export const CACHE_TTL_ANALYTICS_SEC = 120;
+
+/**
  * A subscription. Matches the single post and the single user profile at 120s -
  * the most static row a user has, and one only they can read.
  *
@@ -500,6 +528,23 @@ export const CACHE_TTL_NOTIFICATION_COUNT_SEC = 15;
  * states throughout - the surfaces differ and must be free to diverge.
  */
 export const RATE_LIMIT_NOTIFICATION_WRITE = { max: 60, windowSec: 60 };
+
+/**
+ * Sending direct messages, and marking a conversation read.
+ *
+ * NOT RATE_LIMIT_WRITE, though a message is typed like a comment. A comment is
+ * one considered paragraph; a chat is a burst - "ok", "see you at 10", "L3.12"
+ * - and two people going back and forth can pass twenty sends a minute without
+ * either of them doing anything unusual. 60/min sits at the like tier's
+ * number: comfortably above a fast typist, still far below a script spamming
+ * someone's inbox.
+ *
+ * The routes give sending and marking read separate buckets on this one tier,
+ * so a client marking chats read as messages arrive cannot spend the budget a
+ * person needs to reply. A separate constant from the like and notification
+ * tiers despite the identical number, per the rule this file states throughout.
+ */
+export const RATE_LIMIT_MESSAGE_WRITE = { max: 60, windowSec: 60 };
 
 /**
  * Subscribing and cancelling.

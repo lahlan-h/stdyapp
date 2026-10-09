@@ -28,6 +28,49 @@ export {
   type RegistrationResults,
 } from "./registrationChecks";
 export { usePosts, type FeedState, type SetLiked } from "./usePosts";
+export {
+  defaultFeedFilters,
+  isDefaultFilters,
+  isRangeInvalid,
+  toDayKey,
+  fromDayKey,
+  type FeedFilters,
+  type FeedSort,
+  type FeedDateMode,
+} from "./feedFilters";
+export {
+  useUserSearch,
+  type UserSummary,
+  type UserSearchState,
+} from "./useUserSearch";
+export { useRecentSearches, type RecentSearchesState } from "./recentSearches";
+export { useUser, type UserState } from "./useUser";
+export {
+  useNotifications,
+  useNotificationStream,
+  type NotificationsState,
+} from "./useNotifications";
+export type { AppNotification, NotificationType } from "./notificationMapping";
+export { useConversations, type ConversationsState } from "./useConversations";
+export { useChat, type ChatHookState } from "./useChat";
+export { requestChat, consumeChatRequest } from "./chatRequest";
+export {
+  MAX_MESSAGE_LENGTH,
+  type ChatMessage,
+  type ConversationSummary,
+} from "./messageMapping";
+// For turning a profile into the person a chat is with - the same shape a
+// search result has.
+export { toUserSummary } from "./userSummary";
+export { useFollow, type FollowState } from "./useFollow";
+export { useMotionVariance, type MotionSource } from "./useMotionVariance";
+export {
+  useFocusSession,
+  type FocusSessionState,
+  type FocusResult,
+  type FocusPhase,
+  type SessionTask,
+} from "./useFocusSession";
 export { usePost } from "./usePost";
 export { useUserPosts, type UserPostsState } from "./useUserPosts";
 export {
@@ -83,6 +126,25 @@ export {
   MIN_USERNAME_LENGTH,
   USERNAME_PATTERN,
   type Profile,
+  type PublicProfile,
   type ProfileEdit,
   type ProfileState,
 } from "./useProfile";
+export { useRoutines, type RoutinesState } from "./useRoutines";
+export { useRoutine, type RoutineState, type TodoEdit } from "./useRoutine";
+export {
+  MAX_ROUTINE_TITLE_LENGTH,
+  MAX_TODO_TITLE_LENGTH,
+  endOfLocalDay,
+  type Routine,
+  type RoutineSummary,
+  type RoutineDetail,
+  type TodoItem,
+} from "./routineTypes";
+export {
+  useAnalytics,
+  type Analytics,
+  type AnalyticsRange,
+  type AnalyticsState,
+  type GoalHitRate,
+} from "./useAnalytics";

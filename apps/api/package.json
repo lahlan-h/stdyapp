@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "build": "echo \"no build step for @stdyapp/api\" && exit 0",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:integration": "./test/integration/run.sh"
   },
   "dependencies": {
     "@stdyapp/core": "*",
@@ -20,6 +22,7 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.3.0",
     "stripe": "^22.6.2",
+    "ws": "^8.22.0",
     "zod": "^4.4.3"
   },
   "license": "Apache-2.0"

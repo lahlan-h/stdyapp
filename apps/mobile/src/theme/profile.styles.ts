@@ -10,6 +10,14 @@ export const PROFILE_ACTION_ICON_SIZE = 16;
 /** Icon in the study card's two figures. */
 export const PROFILE_STUDY_ICON_SIZE = 18;
 
+/**
+ * The back control on someone else's profile - the same 40px circle and 18px
+ * chevron analytics and edit-profile draw, so every pushed screen's way back
+ * looks and sits the same.
+ */
+const BACK_SIZE = 40;
+export const PROFILE_BACK_ICON_SIZE = 18;
+
 export const createProfileStyles = (colors: ColorScheme) => {
   const styles = StyleSheet.create({
     container: {
@@ -95,6 +103,40 @@ export const createProfileStyles = (colors: ColorScheme) => {
     },
     actionLabelDanger: {
       color: colors.danger,
+    },
+    // Follow is the one action on someone else's profile, so it is the filled,
+    // primary pill; once following it drops back to the plain outline, which is
+    // what tells the two states apart at a glance before the label is read.
+    actionButtonPrimary: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    // The page's ground rather than a fixed white - see chipLabelSelected in
+    // homeSearch.styles, the same pale-blue-in-dark-mode problem.
+    actionLabelOnPrimary: {
+      color: colors.bg,
+    },
+    actionError: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.danger,
+      textAlign: "center",
+    },
+
+    // --- Back bar (someone else's profile only) ---
+    topBar: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    back: {
+      width: BACK_SIZE,
+      height: BACK_SIZE,
+      borderRadius: BACK_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
 
     // --- Stats card ---

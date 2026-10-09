@@ -125,7 +125,15 @@ model User {
   goals         Goal[]
   streak        Streak?
   subscription  Subscription?
-  notifications Notification[]
+  notifications Notification[] @relation("NotificationRecipient")
+  // Notifications this user CAUSED in someone else's list - a follow, a like.
+  // Only there so Prisma can resolve Notification.actor; nothing reads it.
+  notificationsCaused Notification[] @relation("NotificationActor")
+  // Direct messages: the chats this user is in, and what they have sent. Both
+  // are single relations to their model, so - like likes and comments - they
+  // need no name.
+  conversationMemberships ConversationMember[]
+  messagesSent            Message[]
   // Both sides of the report graph. Named after the COLUMN they hang off, like
   // the block pair directly above and unlike the follow pair above that — there
   // is no direction left to invert, "ReportReporter" is the relation through
@@ -140,6 +148,10 @@ model User {
   // fact this entity withholds. See the note on the Report model.
   reportsFiled   Report[]           @relation("ReportReporter")
   reportsAgainst Report[]           @relation("ReportTargetUser")
+
+  focusRatings   FocusRating[]
+  focusBaselines FocusBaseline[]
+  focusCalibration FocusCalibration?
 
   @@map("users")
 }
@@ -197,12 +209,70 @@ model Session {
 
   startedAt     DateTime  @default(now())
   endedAt       DateTime?
+
+  /// How long the user MEANT to study, set when the session starts. Nullable: a
+  /// session opened without a plan is still valid, and every session created
+  /// before this column existed has none. When present it drives the focus
+  /// estimate's completion factor; when absent the scorer falls back to sample
+  /// coverage.
+  plannedMinutes Int?
+  /// The gamification score: minutes studied minus interruption penalties.
+  /// Deliberately LEFT ALONE by the focus-estimate feature — focusScore below
+  /// is a different number answering a different question.
   focusPoints   Int       @default(0)
+
+  /// The calibrated 0-100 focus ESTIMATE, computed when the session ends.
+  ///
+  /// Nullable rather than @default(0): a session that was never measured and a
+  /// session the user spent entirely distracted must not collapse to the same
+  /// value. Null means "no estimate"; 0 means "measured, and it was bad".
+  ///
+  /// Always an estimate — never presented as a medical or clinical measurement.
+  focusScore           Int?
+
+  /// Wall-clock minutes scaled by the estimate: 60 minutes at a score of 50 is
+  /// 30. Stored rather than derived on read so the weekly leaderboard can SUM a
+  /// column instead of replaying every session's samples.
+  focusWeightedMinutes Float?
+
+  /// 0-1: how much of the session the user actually saw through. One of the
+  /// inputs to the estimate, kept so a score can be explained after the fact.
+  completionFactor     Float?
+
+  /// How many tasks this session's checklist had, and how many were ticked,
+  /// copied onto the row when the session ends.
+  ///
+  /// DENORMALISED on purpose. The tasks themselves live in session_tasks, but
+  /// the leaderboard sums "tasks completed" across a week for every user, and
+  /// doing that through a join on the task table means counting rows for every
+  /// session anyone has ever run. Two integers here make it the same groupBy
+  /// the weighted-minutes board already does.
+  tasksTotal     Int?
+  tasksCompleted Int?
+
+  /// Whether heart-rate data was available. Without it the scorer redistributes
+  /// weight over the remaining signals, so this records WHICH scoring path ran
+  /// and stops a watch-assisted score being compared with one that is not.
+  hadWatch             Boolean @default(false)
 
   interruptions SessionInterruption[]
   posts         Post[]
+  focusSamples  FocusSample[]
+  focusRating   FocusRating?
+  tasks         SessionTask[]
 
   @@map("sessions")
+}
+
+/// What pulled the user away. An enum rather than free text for the same reason
+/// as GroupRole: the set is small, closed, and queried on.
+enum InterruptionType {
+  /// The user left the app.
+  APP_EXIT
+  /// The device was picked up or moved past the stillness threshold.
+  DEVICE_MOTION
+  /// The user logged a break themselves.
+  MANUAL
 }
 
 model SessionInterruption {
@@ -212,6 +282,13 @@ model SessionInterruption {
   startedAt   DateTime @default(now())
   durationSec Int
   penaltyApplied Boolean @default(false)
+
+  /// Nullable, and deliberately so. Every row written before the focus feature
+  /// existed has no type, and a client that does not classify its interruptions
+  /// is still valid. This is the focus spec's "DistractionEvent" — folded in
+  /// here rather than given its own table, because a distraction event and an
+  /// interruption are the same thing recorded twice.
+  type        InterruptionType?
 
   @@map("session_interruptions")
 }
@@ -290,9 +367,18 @@ model TodoItem {
   dueDate     DateTime?
   isComplete  Boolean      @default(false)
 
+  // Where the item sits in its routine, 0 first. Set by the server only: new
+  // items go last, and PUT /api/routines/:id/todos/order rewrites the lot. Not
+  // unique - two items added at the same instant can share a slot, and
+  // createdAt breaks the tie, so a collision costs order stability and never
+  // a failed write.
+  position    Int          @default(0)
+
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
+  // Every read of a routine's items orders by position within one routine.
+  @@index([routineId, position])
   @@map("todo_items")
 }
 
@@ -753,10 +839,9 @@ model Subscription {
 /// with a second job: the client renders a different icon and deep link per
 /// type, so this is an API contract rather than a label.
 ///
-/// FOLLOW, POST_LIKE and POST_COMMENT have no emitter yet - the services that
-/// would raise them live in the follow, like and comment routers, which this
-/// change deliberately does not touch. They are declared here so that wiring
-/// them up later is a one-line call rather than a migration.
+/// FOLLOW, POST_LIKE, POST_COMMENT and GROUP_JOIN are raised through
+/// notifyActivity() in notification.service.js, which also records the actor.
+/// STREAK_MILESTONE and GOAL_REACHED are raised directly and have none.
 enum NotificationType {
   FOLLOW
   POST_LIKE
@@ -780,10 +865,22 @@ enum NotificationType {
 /// your post"), and rewriting history when Sam changes their username would be
 /// wrong rather than fresh. It also means this table needs no fanout
 /// invalidation, because it embeds no row any counter tracks.
+///
+/// The ACTOR is kept alongside the text, though, as a link rather than as part
+/// of the message: the app turns the actor's name in the message into a way to
+/// open their profile. The text still records the moment; the link goes to the
+/// person as they are now.
 model Notification {
   id        String           @id @default(uuid())
   userId    String
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User             @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Who caused it - the follower, the liker - when a person did. NULL for
+  /// system events (a streak, a goal) and for rows raised before this column
+  /// existed. SetNull rather than Cascade: someone deleting their account must
+  /// not delete other people's notifications, only stop them linking anywhere.
+  actorId   String?
+  actor     User?            @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   type      NotificationType
   message   String
@@ -805,7 +902,99 @@ model Notification {
   /// received to discard the read ones.
   @@index([userId, isRead])
 
+  /// Not for any read: for the SetNull above, which otherwise scans the whole
+  /// table every time an account is deleted.
+  @@index([actorId])
+
   @@map("notifications")
+}
+
+/// One direct-message conversation between TWO people.
+///
+/// 1:1 only, and the pair is the identity: `pairKey` is the two user ids,
+/// sorted and joined with ":", and its @unique is what guarantees one
+/// conversation per pair even when both people send their first message in the
+/// same instant. The API therefore addresses a chat by the OTHER person's id -
+/// the app opens one from a profile before any conversation exists, and the
+/// first message creates it.
+///
+/// Membership still lives in its own table rather than as two columns here, so
+/// that each person's read state has somewhere to live, and so a group chat
+/// later is a new pairKey rule rather than a new table.
+model Conversation {
+  id      String @id @default(uuid())
+  pairKey String @unique
+
+  /// When the newest message was sent. NULL until the first one, which is how
+  /// a conversation that was never written to stays out of everyone's list.
+  /// Set on every send, so the list sorts on one column instead of joining
+  /// every conversation's newest message first.
+  lastMessageAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  members  ConversationMember[]
+  messages Message[]
+
+  @@map("conversations")
+}
+
+/// One person's place in one conversation, and their read state there.
+///
+/// `unreadCount` is DENORMALISED on purpose: the badge on the Home panel asks
+/// "how many people have I not read?" on every app foreground, and answering it
+/// from Message would mean comparing every message against lastReadAt. Instead
+/// a send increments the recipient's count and a read resets it, so the badge is
+/// one indexed count.
+model ConversationMember {
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // Cascade, like a follow edge: a membership means nothing once its person is
+  // gone. The conversation outlives them with one member and drops out of the
+  // other person's list - see listConversations.
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  unreadCount Int       @default(0)
+  lastReadAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@id([conversationId, userId])
+
+  /// Both reads that start from a person: "my conversations", and the badge's
+  /// "how many have unread" - the second filters on the second column.
+  @@index([userId, unreadCount])
+
+  @@map("conversation_members")
+}
+
+/// One message in a conversation. Plain text; editing and deleting are not
+/// offered, so there is no updatedAt.
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // Cascade rather than the Restrict that guards posts and comments. A Restrict
+  // here would make deleting any account that had ever sent a message fail with
+  // a foreign-key error - which deleteUser renders as a misleading 409 about
+  // study sessions.
+  senderId String
+  sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  body      String
+  createdAt DateTime @default(now())
+
+  /// The history read: one conversation, newest first, paged backwards with an
+  /// id tiebreak - two messages can share a millisecond.
+  @@index([conversationId, createdAt])
+
+  /// Not for any read: for the Cascade above, which otherwise scans the whole
+  /// table every time an account is deleted.
+  @@index([senderId])
+
+  @@map("messages")
 }
 
 /// One accusation filed by one user, against another USER or against one POST.
@@ -932,6 +1121,173 @@ model Report {
   @@index([targetPostId])
 
   @@map("reports")
+}
+
+/// One item on a session's checklist - what the user meant to get done.
+///
+/// SEPARATE FROM TodoItem, which belongs to a StudyRoutine. A routine's todos
+/// are a reusable plan ("my revision routine"); these are what this ONE
+/// sitting was for, and they are scored. Folding them together would mean a
+/// routine's checklist silently affecting the focus score of every session
+/// that used it, and ticking an item in one place changing history in the
+/// other.
+///
+/// A later "start a session from my routine" feature would COPY a routine's
+/// todos into these rows rather than point at them, for the same reason.
+model SessionTask {
+  id          String    @id @default(uuid())
+  sessionId   String
+  session     Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  title       String
+
+  isComplete  Boolean   @default(false)
+  /// When it was ticked. Kept beyond the boolean so a later view can show the
+  /// order things actually got done in, which is not the order they were
+  /// written in.
+  completedAt DateTime?
+
+  /// Display order. Explicit rather than relying on createdAt, so the list can
+  /// be reordered later without rewriting timestamps.
+  position    Int       @default(0)
+
+  createdAt   DateTime  @default(now())
+
+  /// Every read is "this session's checklist, in order".
+  @@index([sessionId, position])
+  @@map("session_tasks")
+}
+
+/// One row per sampling interval of a study session — the raw signal history
+/// the estimate is computed from.
+///
+/// The only table here expected to grow quickly: a 2-hour session at one sample
+/// per 30s is 240 rows. Hence the compound index, and the cascade delete —
+/// samples are meaningless without their session.
+model FocusSample {
+  id             String   @id @default(uuid())
+  sessionId      String
+  session        Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  timestamp      DateTime @default(now())
+
+  /// Heart rate in BPM. Nullable — only present when a watch was paired, which
+  /// is the stretch-goal path, not the common one.
+  hr             Int?
+
+  /// Variance of accelerometer magnitude over the interval. Higher means the
+  /// device moved more, which reads as less focus.
+  motionVariance Float
+
+  /// Whether the app was foregrounded for this interval.
+  inApp          Boolean
+
+  /// The per-sample 0-1 score, stored rather than recomputed at read time so a
+  /// past session can still be explained after the user's baseline has moved
+  /// on. Rescoring against today's baseline would rewrite history.
+  computedFocus  Float
+
+  /// Every read of this table is "samples for one session, in time order".
+  @@index([sessionId, timestamp])
+  @@map("focus_samples")
+}
+
+/// The user's own 1-5 verdict on a session — the ground truth the estimate is
+/// validated and calibrated against. Without it there is no way to know whether
+/// the score means anything.
+model FocusRating {
+  id         String   @id @default(uuid())
+
+  /// @unique, not a plain index: one rating per session. A resubmission updates
+  /// this row instead of stacking duplicates that would each pull calibration a
+  /// different way.
+  sessionId  String   @unique
+  session    Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  /// Redundant with session.userId, and kept anyway: "every rating by this user"
+  /// is THE calibration query, and this makes it one indexed read with no join
+  /// back through sessions.
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+
+  /// 1-5, enforced in focus.validation.js. Prisma has no check constraint, so
+  /// the API layer is the only guard.
+  selfRating Int
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@map("focus_ratings")
+}
+
+/// The signals the estimate is built from. HEART_RATE is the stretch goal.
+enum FocusSignal {
+  MOTION
+  PRESENCE
+  HEART_RATE
+}
+
+/// How far this user's focus estimate has to be shifted to match their own
+/// verdicts — the feedback loop that makes the score self-correcting.
+///
+/// SEPARATE FROM FocusBaseline, which normalises each SIGNAL against the user's
+/// own sensor readings. This corrects the FINAL SCORE against the user's own
+/// ratings, which is a different quantity measured against different evidence:
+/// a perfectly baselined user can still be handed scores that read ten points
+/// low across the board.
+///
+/// The offset ACCUMULATES rather than being recomputed from scratch, and that
+/// detail is load-bearing. Stored focusScores already include the correction
+/// applied when they were written, so the bias measured against them later is
+/// the RESIDUAL. Recomputing from it would drive the offset back to zero and
+/// oscillate; adding the residual to the standing offset converges instead.
+model FocusCalibration {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Points ADDED to the raw 0-100 score. Negative when the estimate runs high.
+  /// Clamped when written, so a handful of odd ratings cannot swing the score.
+  offset      Float    @default(0)
+
+  /// How many rated sessions the offset was last measured from. Below the
+  /// threshold in focusScoring.js the offset is ignored entirely.
+  ratingCount Int      @default(0)
+
+  updatedAt   DateTime @updatedAt
+
+  @@map("focus_calibrations")
+}
+
+/// A user's personal normal for one signal — the denominator of the z-score.
+///
+/// Its own table rather than columns on User. The baseline is per-signal, so on
+/// User it would be three columns per signal and would need a migration to the
+/// auth model every time a signal is added.
+model FocusBaseline {
+  id           String      @id @default(uuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signal       FocusSignal
+
+  /// Running mean and variance for this user on this signal, updated
+  /// incrementally as sessions complete (Welford) rather than by re-reading
+  /// every sample the user has ever produced.
+  mean         Float
+  variance     Float
+
+  /// How many readings the numbers above are built from. Drives isCalibrated.
+  sampleCount  Int         @default(0)
+
+  /// False until sampleCount clears the calibration threshold. While false the
+  /// scorer ignores these numbers and uses population defaults — a baseline
+  /// built from three samples is worse than no baseline at all.
+  isCalibrated Boolean     @default(false)
+
+  updatedAt    DateTime    @updatedAt
+
+  /// One baseline per user per signal.
+  @@unique([userId, signal])
+  @@map("focus_baselines")
 }
 
 // TODO: remaining entities from the ERD - discover and analytics, plus the
