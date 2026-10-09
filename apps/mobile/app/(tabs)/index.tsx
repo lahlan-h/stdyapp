@@ -37,6 +37,7 @@ import {
   useRecentSearches,
   useConversations,
   consumeChatRequest,
+  requestChat,
   type FeedFilters,
   type FeedPost,
   type UserSummary,
@@ -199,6 +200,20 @@ const Index = () => {
   }, [sheet, closeSheet]);
 
   /** Opens the messages page straight into a chat - for a profile's Message button. */
+  /**
+   * The chat header's avatar or name: opens that person's profile, and comes
+   * BACK to the chat afterwards. The chat request left first is what does
+   * that - the focus effect below takes it when Home is shown again, exactly
+   * as it takes the one the profile's Message button leaves.
+   */
+  const openProfileFromChat = useCallback(
+    (user: UserSummary) => {
+      requestChat(user);
+      openUser(user);
+    },
+    [openUser],
+  );
+
   const openChat = useCallback((user: UserSummary) => {
     inputRef.current?.blur();
     Keyboard.dismiss();
@@ -476,6 +491,7 @@ const Index = () => {
               <MessagesPage
                 chatUser={chatUser}
                 onOpenChat={setChatUser}
+                onOpenProfile={openProfileFromChat}
                 onBack={() => setChatUser(null)}
               />
             ) : mode === "notifications" ? (

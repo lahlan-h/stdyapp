@@ -18,6 +18,8 @@ interface MessagesPageProps {
   /** The open chat, or null for the conversation list. Owned by the Home screen. */
   chatUser: UserSummary | null;
   onOpenChat: (user: UserSummary) => void;
+  /** The chat header's avatar or name was tapped. */
+  onOpenProfile: (user: UserSummary) => void;
   onBack: () => void;
 }
 
@@ -38,7 +40,7 @@ interface MessagesPageProps {
  * button - it starts in place, because the page dropping down is the
  * transition there.
  */
-const MessagesPage = ({ chatUser, onOpenChat, onBack }: MessagesPageProps) => {
+const MessagesPage = ({ chatUser, onOpenChat, onOpenProfile, onBack }: MessagesPageProps) => {
   const styles = useStyles("messages");
   const reducedMotion = useReducedMotion();
   const { width } = useWindowDimensions();
@@ -118,7 +120,12 @@ const MessagesPage = ({ chatUser, onOpenChat, onBack }: MessagesPageProps) => {
           pointerEvents={chatOpen ? "auto" : "none"}
         >
           {/* Keyed by person, so opening a different chat starts it fresh. */}
-          <ChatView key={shownUser.id} user={shownUser} onBack={onBack} />
+          <ChatView
+            key={shownUser.id}
+            user={shownUser}
+            onBack={onBack}
+            onOpenProfile={onOpenProfile}
+          />
         </Animated.View>
       ) : null}
     </View>

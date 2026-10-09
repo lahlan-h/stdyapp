@@ -33,6 +33,8 @@ const ENTER_MS = 220;
 /** The send button fading between usable and not. */
 const SEND_FADE_MS = 120;
 const SEND_DISABLED_OPACITY = 0.35;
+/** The chevron that marks the header's profile section as tappable. */
+const CHAT_PROFILE_ICON_SIZE = 16;
 /** Space between the message box and the top of the keyboard while typing. */
 const KEYBOARD_GAP = 30;
 
@@ -152,6 +154,8 @@ const ChatRow = ({
 interface ChatViewProps {
   user: UserSummary;
   onBack: () => void;
+  /** Tapping the header's avatar or name - opens this person's profile. */
+  onOpenProfile: (user: UserSummary) => void;
 }
 
 /**
@@ -167,7 +171,7 @@ interface ChatViewProps {
  * entrance; history appears at rest, because animating forty old messages in
  * would be noise rather than news.
  */
-const ChatView = ({ user, onBack }: ChatViewProps) => {
+const ChatView = ({ user, onBack, onOpenProfile }: ChatViewProps) => {
   const { colors } = useTheme();
   const styles = useStyles("messages");
   const reducedMotion = useReducedMotion();
@@ -249,19 +253,29 @@ const ChatView = ({ user, onBack }: ChatViewProps) => {
       >
         <Feather name="chevron-left" size={CHAT_BACK_ICON_SIZE} color={colors.text} />
       </Pressable>
-      <Image
-        source={{ uri: user.avatarUrl ?? defaultAvatar(user.displayName) }}
-        style={styles.chatAvatar}
-        accessibilityIgnoresInvertColors
-      />
-      <View style={styles.chatWho}>
-        <Text style={styles.chatName} numberOfLines={1} accessibilityRole="header">
-          {user.displayName}
-        </Text>
-        <Text style={styles.chatHandle} numberOfLines={1}>
-          @{user.username}
-        </Text>
-      </View>
+      {/* Who this chat is with, and the way to their profile: avatar, name
+          and handle are one target, with a chevron so it reads as tappable. */}
+      <Pressable
+        onPress={() => onOpenProfile(user)}
+        accessibilityRole="button"
+        accessibilityLabel={`View ${user.displayName}'s profile`}
+        style={({ pressed }) => [styles.chatProfile, pressed && { opacity: 0.6 }]}
+      >
+        <Image
+          source={{ uri: user.avatarUrl ?? defaultAvatar(user.displayName) }}
+          style={styles.chatAvatar}
+          accessibilityIgnoresInvertColors
+        />
+        <View style={styles.chatWho}>
+          <Text style={styles.chatName} numberOfLines={1}>
+            {user.displayName}
+          </Text>
+          <Text style={styles.chatHandle} numberOfLines={1}>
+            @{user.username}
+          </Text>
+        </View>
+        <Feather name="chevron-right" size={CHAT_PROFILE_ICON_SIZE} color={colors.textMuted} />
+      </Pressable>
     </View>
   );
 
