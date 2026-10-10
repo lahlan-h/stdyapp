@@ -50,8 +50,9 @@ type WebPressState = PressableStateCallbackType & { hovered?: boolean };
  * The screen the app opens on whenever nobody is signed in - the root layout's
  * guard sends every route here until the session exists. The email/username
  * and password login works, so does Continue with Google, Remember me keeps
- * either kind of session across launches, and Sign up opens the registration
- * screen. Only Forgot password? is static - the API has no password reset.
+ * either kind of session across launches, Sign up opens the registration
+ * screen, and Forgot password? opens the reset screen (its API is still a stub -
+ * see useForgotPassword).
  */
 const Login = () => {
   const { colors } = useTheme();
@@ -282,12 +283,11 @@ const Login = () => {
                 <Text style={styles.rowText}>Remember me</Text>
               </Pressable>
 
-              {/* Static: the API has no password-reset flow to start. */}
               <Pressable
+                onPress={() => router.push("/forgot-password")}
                 hitSlop={8}
                 accessibilityRole="link"
-                accessibilityHint="Not available yet"
-                accessibilityState={{ disabled: true }}
+                accessibilityLabel="Forgot password?"
               >
                 {({ hovered }: WebPressState) => (
                   <Text

@@ -23,6 +23,7 @@ import { createReportDialogStyles } from "./reportDialog.styles";
 import { createTabBarStyles } from "./tabBar.styles";
 import { createLoginStyles } from "./login.styles";
 import { createRegisterStyles } from "./register.styles";
+import { createForgotPasswordStyles } from "./forgotPassword.styles";
 import { createEditProfileStyles } from "./editProfile.styles";
 import { createAnalyticsStyles } from "./analytics.styles";
 import { createHomeSearchStyles } from "./homeSearch.styles";
@@ -78,6 +79,7 @@ const styleMap = {
   tabBar: createTabBarStyles,
   login: createLoginStyles,
   register: createRegisterStyles,
+  forgotPassword: createForgotPasswordStyles,
   editProfile: createEditProfileStyles,
   analytics: createAnalyticsStyles,
   homeSearch: createHomeSearchStyles,
@@ -253,6 +255,12 @@ export const useLoginStyles = () => useStyles("login");
  * Used alongside useLoginStyles, which supplies everything the two share.
  */
 export const useRegisterStyles = () => useStyles("register");
+
+/**
+ * The forgot-password screen's own stylesheet for the active theme. Never
+ * rebuilds. Used alongside useLoginStyles, as register's is.
+ */
+export const useForgotPasswordStyles = () => useStyles("forgotPassword");
 
 /** The edit-profile stylesheet for the active theme. Never rebuilds. */
 export const useEditProfileStyles = () => useStyles("editProfile");

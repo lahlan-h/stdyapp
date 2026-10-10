@@ -12,6 +12,11 @@ import { getRedis, createLogger } from "@stdyapp/core";
  * req.ip instead would be wrong here twice over — index.js does not set
  * "trust proxy", so behind any proxy req.ip is the proxy's address and every
  * user in the world would share one bucket.
+ *
+ * The one exception is a route nobody can be signed in for - forgot password.
+ * Those pass `key` to bucket on something from the VALIDATED body instead (the
+ * normalised email), and so mount after validate() rather than requireAuth.
+ * Still never req.ip, for the reason above.
  */
 
 const log = createLogger("ratelimit");
@@ -76,6 +81,9 @@ const noteSuccess = () => {
   log.info("recovered, enforcing limits again");
 };
 
+/** The default bucket: the signed-in user, set by requireAuth. */
+const byUser = (req) => req.user?.id;
+
 // A mounting mistake, not a runtime condition — logged once rather than per
 // request so it is visible in a busy log without drowning it.
 let hasWarnedAboutMissingUser = false;
@@ -83,17 +91,23 @@ let hasWarnedAboutMissingUser = false;
 /**
  * Builds a rate-limit middleware for one bucket.
  *
- * @param {{ name: string, max: number, windowSec: number }} options
+ * @param {{
+ *   name: string,
+ *   max: number,
+ *   windowSec: number,
+ *   key?: (req: import("express").Request) => string | undefined,
+ * }} options
  *   name      - bucket identifier, part of the Redis key; distinct per tier
  *   max       - requests allowed per window
  *   windowSec - window length in seconds
+ *   key       - who a request counts against; the signed-in user by default
  * @returns {import("express").RequestHandler}
  */
-export const rateLimit = ({ name, max, windowSec }) => {
+export const rateLimit = ({ name, max, windowSec, key = byUser }) => {
   const windowMs = windowSec * MILLISECONDS_PER_SECOND;
 
   return async (req, res, next) => {
-    const identity = req.user?.id;
+    const identity = key(req);
 
     // Fails OPEN rather than closed, unlike requireSelf's 403. A limiter that
     // cannot identify the caller has lost its ability to discriminate, and
@@ -102,7 +116,7 @@ export const rateLimit = ({ name, max, windowSec }) => {
     if (!identity) {
       if (!hasWarnedAboutMissingUser) {
         hasWarnedAboutMissingUser = true;
-        log.warn(`${name} is mounted without requireAuth ahead of it; not enforcing`);
+        log.warn(`${name} cannot identify the caller (requireAuth or validate() missing ahead of it?); not enforcing`);
       }
       return next();
     }
@@ -111,11 +125,11 @@ export const rateLimit = ({ name, max, windowSec }) => {
     // that starts at zero on its own. A TTL that somehow never lands can then
     // only ever poison the one window it belongs to, never the next.
     const windowIndex = Math.floor(Date.now() / windowMs);
-    const key = `rl:${name}:${identity}:${windowIndex}`;
+    const redisKey = `rl:${name}:${identity}:${windowIndex}`;
 
     let count;
     try {
-      count = await getLimiterClient()[COMMAND_NAME](key, windowSec);
+      count = await getLimiterClient()[COMMAND_NAME](redisKey, windowSec);
       noteSuccess();
     } catch (err) {
       // Fail open, per the same reasoning as the cache: Redis is not on the

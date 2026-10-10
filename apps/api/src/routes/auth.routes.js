@@ -8,15 +8,26 @@ import {
   logout,
   logoutAll,
   me,
+  forgotPassword,
+  verifyResetCode,
+  resetPassword,
 } from "../controllers/auth.controller.js";
 import { validate } from "../middleware/validate.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { rateLimit } from "../middleware/rateLimit.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import {
+  RATE_LIMIT_RESET_REQUEST,
+  RATE_LIMIT_RESET_VERIFY,
+} from "../config/cache.js";
 import {
   registerSchema,
   loginSchema,
   googleAuthSchema,
   refreshTokenSchema,
+  forgotPasswordSchema,
+  verifyResetCodeSchema,
+  resetPasswordSchema,
 } from "../validation/auth.validation.js";
 
 const router = Router();
@@ -58,6 +69,37 @@ router.post(
   "/logout",
   validate({ body: refreshTokenSchema }),
   asyncHandler(logout),
+);
+
+/**
+ * Forgot password - public, since the user cannot sign in. See
+ * passwordReset.service.js for the flow.
+ *
+ * The limiters key on the normalised email from the body, so validate() runs
+ * FIRST here, the reverse of the usual requireAuth-then-limit order. Reset has
+ * no limiter of its own: its token is 256 random bits and single use, so there
+ * is nothing to guess.
+ */
+const byEmail = (req) => req.validated?.body?.email;
+
+router.post(
+  "/forgot-password",
+  validate({ body: forgotPasswordSchema }),
+  rateLimit({ name: "reset-request", ...RATE_LIMIT_RESET_REQUEST, key: byEmail }),
+  asyncHandler(forgotPassword),
+);
+
+router.post(
+  "/verify-reset-code",
+  validate({ body: verifyResetCodeSchema }),
+  rateLimit({ name: "reset-verify", ...RATE_LIMIT_RESET_VERIFY, key: byEmail }),
+  asyncHandler(verifyResetCode),
+);
+
+router.post(
+  "/reset-password",
+  validate({ body: resetPasswordSchema }),
+  asyncHandler(resetPassword),
 );
 
 // The two that genuinely need an access token: both act on the caller's own
