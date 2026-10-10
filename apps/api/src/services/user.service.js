@@ -460,3 +460,51 @@ export const setStripeCustomerId = async (userId, stripeCustomerId) => {
     data: { stripeCustomerId },
   });
 };
+/**
+ * The id of the account with this email, or null.
+ *
+ * For forgot-password, which knows only an email. The caller must answer the
+ * same either way - see passwordReset.service.js.
+ *
+ * @param {string} email - already lowercased by emailSchema
+ * @returns {Promise<string | null>}
+ */
+export const findUserIdByEmail = async (email) => {
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+
+  return user?.id ?? null;
+};
+
+/**
+ * Hashes a new password, at the same cost as sign-up - this module is the one
+ * place a password becomes a hash (see buildUserData).
+ *
+ * Kept apart from setPasswordHash so the ~350ms of hashing happens BEFORE a
+ * caller opens a transaction, not while one is holding row locks.
+ *
+ * @param {string} password - already checked by passwordSchema
+ * @returns {Promise<string>}
+ */
+export const hashPassword = (password) =>
+  bcrypt.hash(password, BCRYPT_COST_FACTOR);
+
+/**
+ * Replaces a user's password hash.
+ *
+ * No cache bump, for setStripeCustomerId's reason: passwordHash is not in
+ * USER_PUBLIC_SELECT, so no cached response contains it.
+ *
+ * @param {string} userId
+ * @param {string} passwordHash - from hashPassword
+ * @param {object} [tx] - a Prisma transaction client, to run inside the caller's
+ * @returns {Promise<void>}
+ */
+export const setPasswordHash = async (userId, passwordHash, tx = prisma) => {
+  await tx.user.update({
+    where: { id: userId },
+    data: { passwordHash },
+  });
+};

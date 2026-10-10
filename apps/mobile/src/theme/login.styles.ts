@@ -214,9 +214,9 @@ export const createLoginStyles = (colors: ColorScheme) => {
       textDecorationLine: "underline",
     },
     // Hover, web only. Muted to full text colour and deliberately NOT to
-    // primary, so the live links (Sign up, and Log in on the sign-up screen)
-    // and the inert Forgot password? behave alike - colouring only the live
-    // ones would make the one that goes nowhere look broken.
+    // primary: these links are quiet secondary routes (Sign up, Forgot
+    // password?, and the ways back to login), and should not compete with the
+    // primary submit button.
     linkHovered: {
       color: colors.text,
     },

@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { createUserSchema } from "./user.validation.js";
+import { RESET_CODE_LENGTH } from "../config/mail.js";
+import {
+  createUserSchema,
+  emailSchema,
+  passwordSchema,
+} from "./user.validation.js";
 
 /**
  * Request schemas for the auth resource.
@@ -19,6 +24,8 @@ const MAX_IDENTIFIER_LENGTH = 320;
 // stops something absurd reaching the hash function; the exact length is not
 // worth asserting, since a wrong-length token simply fails to match.
 const MAX_TOKEN_LENGTH = 512;
+
+const RESET_CODE_PATTERN = new RegExp(`^[A-Z0-9]{${RESET_CODE_LENGTH}}$`);
 
 /**
  * POST /api/auth/register
@@ -86,4 +93,53 @@ export const refreshTokenSchema = z.strictObject({
     .string()
     .min(1, "refreshToken is required")
     .max(MAX_TOKEN_LENGTH),
+});
+
+/**
+ * POST /api/auth/forgot-password
+ *
+ * emailSchema, so the address is trimmed and lowercased exactly as sign-up
+ * stored it - and so the rate limiter, which keys on this parsed value, puts
+ * "Ada@x.com" and " ada@x.com" in the same bucket.
+ */
+export const forgotPasswordSchema = z.strictObject({
+  email: emailSchema,
+});
+
+/**
+ * POST /api/auth/verify-reset-code
+ *
+ * The code is trimmed and uppercased before it is checked, so a code typed in
+ * lowercase still verifies. The pattern is the wider A-Z0-9 the app accepts,
+ * not the narrower alphabet codes are drawn from: a 0 typed for an O is simply
+ * a wrong guess, not a malformed request.
+ */
+export const verifyResetCodeSchema = z.strictObject({
+  email: emailSchema,
+  code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .pipe(
+      z
+        .string()
+        .regex(
+          RESET_CODE_PATTERN,
+          `code must be ${RESET_CODE_LENGTH} letters or numbers`,
+        ),
+    ),
+});
+
+/**
+ * POST /api/auth/reset-password
+ *
+ * passwordSchema, the sign-up rule, unlike login: this sets a password rather
+ * than checking one. The token is not trimmed, for refreshTokenSchema's reason.
+ */
+export const resetPasswordSchema = z.strictObject({
+  resetToken: z
+    .string()
+    .min(1, "resetToken is required")
+    .max(MAX_TOKEN_LENGTH),
+  password: passwordSchema,
 });

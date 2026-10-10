@@ -1,5 +1,8 @@
 import * as authService from "../services/auth.service.js";
 import * as userService from "../services/user.service.js";
+import * as passwordResetService from "../services/passwordReset.service.js";
+import { canSendMail } from "../services/mail.service.js";
+import { HttpError } from "../utils/httpError.js";
 
 /**
  * Auth endpoints. Thin, matching users.controller.js: status codes and response
@@ -114,4 +117,50 @@ export const logoutAll = async (req, res) => {
 export const me = async (req, res) => {
   const user = await userService.getUserById(req.user.id);
   res.status(200).json({ data: user });
+};
+
+/**
+ * POST /api/auth/forgot-password - emails a reset code if the email has an
+ * account. 204 either way: the response must not say which.
+ *
+ * 503 when mail is not set up (GMAIL_USER / GMAIL_APP_PASSWORD), the same way
+ * /google answers when Google sign-in is not. In development the code is logged
+ * instead, so this only happens elsewhere.
+ */
+export const forgotPassword = async (req, res) => {
+  if (!canSendMail()) {
+    throw new HttpError(503, "Password reset isn't available right now");
+  }
+
+  await passwordResetService.requestPasswordReset(req.validated.body.email);
+  res.status(204).end();
+};
+
+/**
+ * POST /api/auth/verify-reset-code - 200 with a reset token for the right
+ * code, 400 for anything else.
+ */
+export const verifyResetCode = async (req, res) => {
+  const { email, code } = req.validated.body;
+  const { resetToken, expiresAt } = await passwordResetService.verifyResetCode(
+    email,
+    code,
+  );
+
+  res
+    .status(200)
+    .json({ data: { resetToken, expiresAt: expiresAt.toISOString() } });
+};
+
+/**
+ * POST /api/auth/reset-password - sets the new password and ends every session.
+ * 204; 400 when the reset token is unknown, used or expired.
+ *
+ * Deliberately does NOT sign the caller in. Logging in afterwards with the new
+ * password is the user's proof to themselves that it took.
+ */
+export const resetPassword = async (req, res) => {
+  const { resetToken, password } = req.validated.body;
+  await passwordResetService.resetPassword(resetToken, password);
+  res.status(204).end();
 };

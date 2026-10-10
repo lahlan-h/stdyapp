@@ -155,13 +155,15 @@ export const issueTokenPair = async (user, userAgent) => {
 /**
  * Revokes every live token for a user - "log out everywhere".
  *
- * Also the automatic response to detected token theft, see rotateRefreshToken.
+ * Also the automatic response to detected token theft, see rotateRefreshToken,
+ * and the last step of a password reset, see passwordReset.service.js.
  *
  * @param {string} userId
+ * @param {object} [tx] - a Prisma transaction client, to run inside the caller's
  * @returns {Promise<number>} how many tokens were revoked
  */
-export const revokeAllForUser = async (userId) => {
-  const { count } = await prisma.refreshToken.updateMany({
+export const revokeAllForUser = async (userId, tx = prisma) => {
+  const { count } = await tx.refreshToken.updateMany({
     where: { userId, revokedAt: null },
     data: { revokedAt: new Date() },
   });

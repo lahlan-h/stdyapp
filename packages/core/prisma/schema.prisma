@@ -92,6 +92,7 @@ model User {
   memberships   GroupMembership[]
   routines      StudyRoutine[]
   refreshTokens RefreshToken[]
+  passwordResetCodes PasswordResetCode[]
   posts         Post[]
   likes         Like[]
   comments      Comment[]
@@ -191,6 +192,51 @@ model RefreshToken {
   // @unique on tokenHash already indexes the lookup path used on every refresh.
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+/// One forgot-password attempt: the emailed code, then - once that code is
+/// verified - the short-lived token that lets the user choose a new password.
+///
+/// A table of its own rather than columns on User: a user can have a code in
+/// flight while another is being verified on a second device, attempts and
+/// expiry belong to the code rather than the person, and the rows are
+/// disposable in a way a user is not. It also keeps every reset secret out of
+/// the users table, where USER_PUBLIC_SELECT in user.service.js would be the
+/// only thing between them and an API response.
+model PasswordResetCode {
+  id             String    @id @default(uuid())
+  userId         String
+  // Cascade, for RefreshToken's reason: nothing here is worth keeping once the
+  // user is gone.
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // SHA-256 of "userId:code", never the code - see passwordResetCode.js.
+  codeHash       String
+
+  // Wrong guesses against this code. At RESET_CODE_MAX_ATTEMPTS it is dead even
+  // to the right code - the cap that makes six characters enough.
+  attempts       Int       @default(0)
+
+  // Ten minutes after the code is sent; reset to fifteen minutes from
+  // verification once the code is verified, as the reset token's own expiry.
+  expiresAt      DateTime
+
+  // Set when the code is verified. A verified row no longer accepts the code -
+  // only the reset token below.
+  verifiedAt     DateTime?
+
+  // SHA-256 of the reset token handed out on verification. @unique because it is
+  // the lookup key for POST /api/auth/reset-password.
+  resetTokenHash String?   @unique
+
+  // Set when the password is changed. Single use: a consumed row matches
+  // nothing, so a reset token cannot be replayed.
+  consumedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  // Every lookup by code goes through the user ("this user's newest live code").
+  @@index([userId])
+  @@map("password_reset_codes")
 }
 
 model Session {
