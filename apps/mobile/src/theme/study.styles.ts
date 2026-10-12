@@ -578,6 +578,8 @@ export const createStudyStyles = (colors: ColorScheme) => {
       color: colors.primary,
       fontVariant: ["tabular-nums"],
     },
+    /** A one-line note under a centred control, like the invite chip. */
+    centeredText: { textAlign: "center" },
     groupChipClear: {
       width: 28,
       height: 28,

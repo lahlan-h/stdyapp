@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, Share, StatusBar, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  Share,
+  StatusBar,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
@@ -162,11 +171,55 @@ const Study = () => {
     setInviteDraft("");
   };
 
-  const shareInvite = () => {
+  /** "Invite copied", shown under the chip for a moment after a web copy. */
+  const [inviteNotice, setInviteNotice] = useState<string | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+  }, []);
+
+  const showNotice = (text: string) => {
+    setInviteNotice(text);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setInviteNotice(null), 2500);
+  };
+
+  /**
+   * Shares the invite - the system share sheet on phones.
+   *
+   * The web needs its own path. react-native-web's Share is the browser's
+   * navigator.share, which most DESKTOP browsers lack, and there it rejects
+   * without a word - the chip looked dead. So the web uses the browser's sheet
+   * where it exists (most phone browsers) and otherwise copies the invite and
+   * says so. If even the clipboard is refused, the code is shown to copy by
+   * hand: the chip always does something.
+   */
+  const shareInvite = async () => {
     if (!activeGroup?.inviteCode) return;
-    void Share.share({
-      message: `Study with me in ${activeGroup.name} on stdy - join with code ${activeGroup.inviteCode}`,
-    });
+    const code = activeGroup.inviteCode;
+    const message = `Study with me in ${activeGroup.name} on stdy - join with code ${code}`;
+
+    if (Platform.OS !== "web") {
+      void Share.share({ message });
+      return;
+    }
+
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ text: message });
+        return;
+      } catch (err) {
+        // Dismissing the sheet is a choice, not a failure - no fallback then.
+        if (err instanceof Error && err.name === "AbortError") return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(message);
+      showNotice("Invite copied - paste it to a friend");
+    } catch {
+      showNotice(`Your invite code is ${code}`);
+    }
   };
 
   const running = phase === "running";
@@ -477,6 +530,13 @@ const Study = () => {
                     </>
                   ) : null}
                 </Pressable>
+              ) : null}
+
+              {/* Web only: says what the chip just did when there was no sheet. */}
+              {inviteNotice ? (
+                <Text style={[styles.helpText, styles.centeredText]} accessibilityLiveRegion="polite">
+                  {inviteNotice}
+                </Text>
               ) : null}
 
               {/* Shown only when there is something to say. */}
