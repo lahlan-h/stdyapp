@@ -1,8 +1,14 @@
 import { prisma } from "@stdyapp/core";
 
-export const createSession = ({ userId, groupId, inviteCode, plannedMinutes = null }) => {
+export const createSession = ({
+  userId,
+  groupId,
+  inviteCode,
+  plannedMinutes = null,
+  hostSessionId = null,
+}) => {
   return prisma.session.create({
-    data: { userId, groupId, inviteCode, plannedMinutes },
+    data: { userId, groupId, inviteCode, plannedMinutes, hostSessionId },
   });
 };
 
@@ -13,10 +19,140 @@ export const findSessionById = (id) => {
   });
 };
 
+/**
+ * The caller's history, newest first.
+ *
+ * The group's NAME rides along so a history row can say who it was studied
+ * with. A rename does not bump the session list's cache counter, so a cached
+ * list can show the old name until CACHE_TTL_SESSION_LIST_SEC lapses - a minute
+ * of a stale label, which is not worth a cross-module invalidation.
+ */
 export const findSessionsByUser = (userId) => {
   return prisma.session.findMany({
     where: { userId },
+    include: { group: { select: { id: true, name: true } } },
     orderBy: { startedAt: "desc" },
+  });
+};
+
+/**
+ * The session an invite code belongs to. inviteCode is @unique, so this is an
+ * index hit rather than a scan.
+ */
+export const findSessionByInviteCode = (inviteCode) => {
+  return prisma.session.findUnique({ where: { inviteCode } });
+};
+
+/**
+ * Every session the user has not ended, with the latest sign of life from
+ * each: its newest focus sample and its newest interruption.
+ *
+ * Read before starting or joining a session, to tell one genuinely running on
+ * another device from one an app crash left open - see settleOpenSessions in
+ * session.service.js. A user has at most a handful of these, and take: 1 on
+ * each relation rides the [sessionId, timestamp] index.
+ */
+export const findOpenSessionsByUser = (userId) => {
+  return prisma.session.findMany({
+    where: { userId, endedAt: null },
+    select: {
+      id: true,
+      groupId: true,
+      startedAt: true,
+      focusSamples: {
+        select: { timestamp: true },
+        orderBy: { timestamp: "desc" },
+        take: 1,
+      },
+      interruptions: {
+        select: { startedAt: true },
+        orderBy: { startedAt: "desc" },
+        take: 1,
+      },
+    },
+  });
+};
+
+/**
+ * Everyone still in a room: the room's first session and every session that
+ * joined it, unended and inside the live window - the same floor
+ * findLiveSessionsByGroup uses, so the two lists never disagree.
+ *
+ * The newest sample and interruption ride along so the client can tell
+ * "studying" from "gone quiet" without a request per person.
+ *
+ * @param {string} roomId - the room's first session
+ * @param {Date} since
+ */
+export const findRoomSessions = (roomId, since) => {
+  return prisma.session.findMany({
+    where: {
+      OR: [{ id: roomId }, { hostSessionId: roomId }],
+      endedAt: null,
+      startedAt: { gte: since },
+    },
+    select: {
+      id: true,
+      userId: true,
+      startedAt: true,
+      plannedMinutes: true,
+      user: { select: { id: true, username: true, avatarUrl: true } },
+      focusSamples: {
+        select: { timestamp: true },
+        orderBy: { timestamp: "desc" },
+        take: 1,
+      },
+      interruptions: {
+        select: { startedAt: true },
+        orderBy: { startedAt: "desc" },
+        take: 1,
+      },
+    },
+    orderBy: { startedAt: "asc" },
+  });
+};
+
+/**
+ * Who joined this session, and who owns each of those rows.
+ *
+ * Asked by deleteSession BEFORE deleting a host's session, for
+ * findSessionRefsByGroup's reason: hostSessionId is ON DELETE SET NULL, so the
+ * delete rewrites these rows without passing through the service, and once it
+ * has run they are unfindable.
+ *
+ * @param {string} hostSessionId
+ * @returns {Promise<Array<{ id: string, userId: string }>>}
+ */
+export const findParticipantRefs = (hostSessionId) => {
+  return prisma.session.findMany({
+    where: { hostSessionId },
+    select: { id: true, userId: true },
+  });
+};
+
+/**
+ * Who in a group is studying right now.
+ *
+ * "Right now" is endedAt NULL AND started after `since`. The second half is
+ * what keeps an abandoned session out: an app killed mid-session never sends
+ * PATCH /end, and without a floor that row would sit in the group's live list
+ * forever.
+ *
+ * @param {string} groupId
+ * @param {Date} since
+ */
+export const findLiveSessionsByGroup = (groupId, since) => {
+  return prisma.session.findMany({
+    where: { groupId, endedAt: null, startedAt: { gte: since } },
+    select: {
+      id: true,
+      inviteCode: true,
+      hostSessionId: true,
+      startedAt: true,
+      plannedMinutes: true,
+      user: { select: { id: true, username: true, avatarUrl: true } },
+    },
+    orderBy: { startedAt: "asc" },
   });
 };
 

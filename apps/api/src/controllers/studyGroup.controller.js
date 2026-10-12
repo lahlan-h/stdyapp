@@ -40,10 +40,59 @@ export const getOne = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/groups - one page of groups, newest first, in the user directory's
+ * { data, pagination } envelope (see listUsers in users.controller.js).
+ */
 export const search = async (req, res, next) => {
   try {
-    const groups = await groupService.searchGroups(req.validated.query.q, req.user.id);
+    const { items, total, page, limit } = await groupService.searchGroups(
+      req.validated.query,
+      req.user.id,
+    );
+    res.status(200).json({
+      data: items,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page * limit < total,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const regenerateJoinCode = async (req, res, next) => {
+  try {
+    const group = await groupService.regenerateJoinCode(
+      req.validated.params.id,
+      req.user.id,
+    );
+    res.status(200).json(group);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const mine = async (req, res, next) => {
+  try {
+    const groups = await groupService.listMyGroups(req.user.id);
     res.status(200).json(groups);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const liveSessions = async (req, res, next) => {
+  try {
+    const sessions = await groupService.listLiveSessions(
+      req.validated.params.id,
+      req.user.id,
+    );
+    res.status(200).json(sessions);
   } catch (err) {
     next(err);
   }

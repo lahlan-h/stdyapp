@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import Feather from "@expo/vector-icons/Feather";
 
@@ -30,8 +30,79 @@ import {
   type NewPostPhoto,
 } from "@data";
 
+import {
+  SessionLinkPicker,
+  RoutineLinkPicker,
+  type LinkChoice,
+} from "@components/LinkPicker";
+
 /** What the API's magic-byte sniff will accept. GIF is deliberately not in it. */
 const ACCEPTED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * One link row: tap to choose, x to clear. Says what is linked once something
+ * is, and what linking would add before.
+ */
+const LinkRow = ({
+  icon,
+  label,
+  hint,
+  choice,
+  onPress,
+  onClear,
+  divider = false,
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  hint: string;
+  choice: LinkChoice | null;
+  onPress: () => void;
+  onClear: () => void;
+  divider?: boolean;
+}) => {
+  const { colors } = useTheme();
+  const newPostStyles = useNewPostStyles();
+
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        newPostStyles.row,
+        divider && newPostStyles.rowDivider,
+        pressed && { opacity: 0.6 },
+      ]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={choice ? `${label}: ${choice.label}. Tap to change` : label}
+    >
+      <View style={newPostStyles.rowIconBox}>
+        <Feather
+          name={icon}
+          size={NEW_POST_ROW_ICON_SIZE}
+          color={choice ? colors.primary : colors.textMuted}
+        />
+      </View>
+      <View style={newPostStyles.rowText}>
+        <Text style={newPostStyles.rowLabel}>{label}</Text>
+        <Text style={newPostStyles.rowValue} numberOfLines={1}>
+          {choice ? choice.label : hint}
+        </Text>
+      </View>
+      {choice ? (
+        <Pressable
+          style={newPostStyles.rowClear}
+          onPress={onClear}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove linked ${label.replace("Link a ", "")}`}
+        >
+          <Feather name="x" size={NEW_POST_ROW_ICON_SIZE} color={colors.textMuted} />
+        </Pressable>
+      ) : (
+        <Feather name="chevron-right" size={NEW_POST_ROW_ICON_SIZE} color={colors.textMuted} />
+      )}
+    </Pressable>
+  );
+};
 
 /**
  * Compose a post.
@@ -45,10 +116,18 @@ const NewPost = () => {
   const newPostStyles = useNewPostStyles();
   const insets = useSafeAreaInsets();
   const { createPost, isSubmitting, error, reset } = useCreatePost();
+  // Set when the Study tab's recap opens this screen to share the session it
+  // just finished, so the post arrives already linked.
+  const params = useLocalSearchParams<{ sessionId?: string }>();
 
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
   const [photo, setPhoto] = useState<NewPostPhoto | null>(null);
+  const [session, setSession] = useState<LinkChoice | null>(
+    params.sessionId ? { id: params.sessionId, label: "The session you just finished" } : null,
+  );
+  const [routine, setRoutine] = useState<LinkChoice | null>(null);
+  const [picker, setPicker] = useState<"session" | "routine" | null>(null);
 
   const canSubmit = Boolean(photo) && title.trim().length > 0 && !isSubmitting;
 
@@ -95,7 +174,13 @@ const NewPost = () => {
   const submit = async () => {
     if (!photo) return;
 
-    const created = await createPost({ title, caption, photo });
+    const created = await createPost({
+      title,
+      caption,
+      photo,
+      sessionId: session?.id,
+      routineId: routine?.id,
+    });
     // A null result means the hook has set `error`, which is already on screen.
     if (created) router.back();
   };
@@ -210,10 +295,9 @@ const NewPost = () => {
           </View>
 
           {/*
-            Laid out now so the screen is complete, and marked inert so neither
-            the user nor the next dev mistakes a row for a working control.
-            Linking needs a picker fed by GET /api/sessions, and sending an id
-            you do not own is a 403.
+            Both optional, and either, both or neither may be set. Only the
+            user's own sessions and routines are offered - linking anyone
+            else's is a 403 - and the pickers load only when opened.
           */}
           <View style={newPostStyles.section}>
             <Text style={newPostStyles.sectionTitle}>Links</Text>
@@ -224,46 +308,23 @@ const NewPost = () => {
               start={{ x: 0.5, y: 0 }}
               end={{ x: 0.5, y: 1 }}
             >
-              <View style={[newPostStyles.row, newPostStyles.rowDisabled]}>
-                <View style={newPostStyles.rowIconBox}>
-                  <Feather
-                    name="clock"
-                    size={NEW_POST_ROW_ICON_SIZE}
-                    color={colors.textMuted}
-                  />
-                </View>
-                <View style={newPostStyles.rowText}>
-                  <Text style={newPostStyles.rowLabel}>Link a session</Text>
-                  <Text style={newPostStyles.rowValue}>
-                    Adds time and focus to your post
-                  </Text>
-                </View>
-                <View style={newPostStyles.badge}>
-                  <Text style={newPostStyles.badgeText}>SOON</Text>
-                </View>
-              </View>
-
-              <View
-                style={[
-                  newPostStyles.row,
-                  newPostStyles.rowDivider,
-                  newPostStyles.rowDisabled,
-                ]}
-              >
-                <View style={newPostStyles.rowIconBox}>
-                  <Feather
-                    name="repeat"
-                    size={NEW_POST_ROW_ICON_SIZE}
-                    color={colors.textMuted}
-                  />
-                </View>
-                <View style={newPostStyles.rowText}>
-                  <Text style={newPostStyles.rowLabel}>Link a routine</Text>
-                </View>
-                <View style={newPostStyles.badge}>
-                  <Text style={newPostStyles.badgeText}>SOON</Text>
-                </View>
-              </View>
+              <LinkRow
+                icon="clock"
+                label="Link a session"
+                hint="Adds time and focus to your post"
+                choice={session}
+                onPress={() => setPicker("session")}
+                onClear={() => setSession(null)}
+              />
+              <LinkRow
+                icon="repeat"
+                label="Link a routine"
+                hint="Lets others see what you worked through"
+                choice={routine}
+                onPress={() => setPicker("routine")}
+                onClear={() => setRoutine(null)}
+                divider
+              />
             </LinearGradient>
           </View>
 
@@ -307,6 +368,26 @@ const NewPost = () => {
             </LinearGradient>
           </Pressable>
         </View>
+        {picker === "session" ? (
+          <SessionLinkPicker
+            selectedId={session?.id}
+            onSelect={(choice) => {
+              setSession(choice);
+              setPicker(null);
+            }}
+            onClose={() => setPicker(null)}
+          />
+        ) : null}
+        {picker === "routine" ? (
+          <RoutineLinkPicker
+            selectedId={routine?.id}
+            onSelect={(choice) => {
+              setRoutine(choice);
+              setPicker(null);
+            }}
+            onClose={() => setPicker(null)}
+          />
+        ) : null}
       </SafeAreaView>
     </LinearGradient>
   );

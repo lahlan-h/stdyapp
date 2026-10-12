@@ -555,6 +555,77 @@ export const createStudyStyles = (colors: ColorScheme) => {
     },
     errorText: { fontSize: 13, color: colors.danger },
 
+    // ---- group session ---------------------------------------------------
+    /** "Studying with <group>" above Start, and the invite code mid-session. */
+    groupChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      alignSelf: "center",
+      minHeight: 36,
+      paddingLeft: 14,
+      paddingRight: 6,
+      borderRadius: 999,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    groupChipText: { fontSize: 13, fontWeight: "600", color: colors.text },
+    groupChipCode: {
+      fontSize: 13,
+      fontWeight: "700",
+      letterSpacing: 1.5,
+      color: colors.primary,
+      fontVariant: ["tabular-nums"],
+    },
+    groupChipClear: {
+      width: 28,
+      height: 28,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    // ---- who is in the room ---------------------------------------------
+    personRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: TOUCH_MIN,
+      paddingVertical: 4,
+    },
+    avatar: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.bg,
+    },
+    // Away is dimmed AND labelled, so it never rests on opacity alone.
+    avatarAway: { opacity: 0.45 },
+    personName: { flex: 1, fontSize: 15, fontWeight: "600", color: colors.text },
+    personMeta: { fontSize: 12, color: colors.textMuted },
+
+    // ---- history ---------------------------------------------------------
+    historyRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: TOUCH_MIN,
+      paddingVertical: 8,
+    },
+    historyDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    historyText: { flex: 1, gap: 2 },
+    historyTitle: { fontSize: 15, fontWeight: "600", color: colors.text },
+    historyMeta: { fontSize: 12, color: colors.textMuted },
+    historyValue: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: colors.text,
+      fontVariant: ["tabular-nums"],
+    },
+
     // ---- Sessions | Routines switch --------------------------------------
     // The analytics range switch's shape, so the two read as one control.
     viewSwitch: {

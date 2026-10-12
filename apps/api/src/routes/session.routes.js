@@ -1,6 +1,8 @@
 import { Router } from "express";
 import {
   start,
+  join,
+  room,
   getOne,
   listMine,
   end,
@@ -14,6 +16,7 @@ import { cache } from "../middleware/cache.js";
 import {
   sessionIdParamSchema,
   startSessionSchema,
+  joinSessionSchema,
   addInterruptionSchema,
 } from "../validation/session.validation.js";
 import {
@@ -27,6 +30,7 @@ import {
   CACHE_TTL_SESSION_LIST_SEC,
   RATE_LIMIT_READ,
   RATE_LIMIT_WRITE,
+  RATE_LIMIT_GROUP_JOIN,
 } from "../config/cache.js";
 
 const router = Router();
@@ -50,6 +54,10 @@ router.use(requireAuth);
  */
 const readLimit = rateLimit({ name: "session-read", ...RATE_LIMIT_READ });
 const writeLimit = rateLimit({ name: "session-write", ...RATE_LIMIT_WRITE });
+// POST /join carries a code that can be guessed one 404 at a time, so it gets
+// the group join's guessing budget rather than the write tier. Its own bucket,
+// so failed guesses here do not eat into joining groups.
+const joinLimit = rateLimit({ name: "session-join", ...RATE_LIMIT_GROUP_JOIN });
 
 /**
  * Cache configuration for the two cacheable reads.
@@ -100,6 +108,10 @@ const cacheMyList = cache({
 
 router.post("/", writeLimit, validate({ body: startSessionSchema }), start);
 
+// Declared before the /:id routes for readability only - no GET or POST /:id
+// shares this path's method and shape.
+router.post("/join", joinLimit, validate({ body: joinSessionSchema }), join);
+
 router.get("/", readLimit, cacheMyList, listMine);
 
 router.get(
@@ -108,6 +120,16 @@ router.get(
   validate({ params: sessionIdParamSchema }),
   cacheOne,
   getOne,
+);
+
+// UNCACHED: it changes whenever anyone in the room starts, ends or goes quiet,
+// and lastActiveAt moves with every focus sample. Clients re-read it when the
+// socket says the room changed, and on a slow timer for "away".
+router.get(
+  "/:id/room",
+  readLimit,
+  validate({ params: sessionIdParamSchema }),
+  room,
 );
 
 router.patch(

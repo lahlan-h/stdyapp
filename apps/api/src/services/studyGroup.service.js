@@ -2,8 +2,14 @@ import * as groupRepo from "../repositories/studyGroup.repository.js";
 // Deleting a group nulls sessions.groupId via ON DELETE SET NULL — a write to
 // sessions that never passes through session.service.js, so its cache has to be
 // told. The same shape post.service.js/session.service.js already use for posts.
-import { findSessionRefsByGroup } from "../repositories/session.repository.js";
-import { invalidateDetachedSessions } from "./session.service.js";
+import {
+  findSessionRefsByGroup,
+  findLiveSessionsByGroup,
+} from "../repositories/session.repository.js";
+import {
+  invalidateDetachedSessions,
+  LIVE_SESSION_WINDOW_MS,
+} from "./session.service.js";
 import { notifyActivity } from "./notification.service.js";
 import {
   bumpVersions,
@@ -39,6 +45,20 @@ const sanitizeGroup = (group, requesterId) => {
 };
 
 /**
+ * What the viewer is to this group, in the three fields a client needs.
+ *
+ * `memberships` arrives filtered to the viewer (see viewerInclude in the
+ * repository), so it is empty or one row - and it is dropped here so no list
+ * response ever looks like a member list.
+ */
+const withViewer = ({ memberships, ...group }, requesterId) => ({
+  ...sanitizeGroup(group, requesterId),
+  isMember: memberships.length > 0,
+  isOwner: group.ownerId === requesterId,
+  role: memberships[0]?.role ?? null,
+});
+
+/**
  * Invalidates this module's cached reads.
  *
  * Two scopes rather than the entity/owner split posts and sessions use, because
@@ -66,10 +86,12 @@ const invalidateGroup = async ({ groupId, content = false, members = false }) =>
   await bumpVersions(keys);
 };
 
+// Six characters of base36, uppercased - the shape joinGroupSchema and
+// updateGroupSchema are bounded around.
+const generateJoinCode = () => Math.random().toString(36).slice(2, 8).toUpperCase();
+
 export const createGroup = async ({ ownerId, name, description, isPrivate }) => {
-  const joinCode = isPrivate
-    ? Math.random().toString(36).slice(2, 8).toUpperCase()
-    : null;
+  const joinCode = isPrivate ? generateJoinCode() : null;
 
   const group = await groupRepo.createGroup({
     ownerId,
@@ -92,17 +114,65 @@ export const createGroup = async ({ ownerId, name, description, isPrivate }) => 
   return group;
 };
 
+/**
+ * One group, with the viewer's standing in it.
+ *
+ * Safe to cache as it is: GET /:id is keyed on the viewer AND stamped with the
+ * member counter, so a join or leave - which is what changes isMember - already
+ * orphans this payload.
+ */
 export const getGroup = async (groupId, requesterId) => {
   const group = await groupRepo.findGroupById(groupId);
   if (!group) throw notFound();
-  return sanitizeGroup(group, requesterId);
+
+  const membership = await groupRepo.findMembership(requesterId, groupId);
+  return withViewer(
+    { ...group, memberships: membership ? [membership] : [] },
+    requesterId,
+  );
 };
 
 // search results are public — private groups are discoverable by design,
 // they just can't be joined without the code
-export const searchGroups = async (query, requesterId) => {
-  const groups = await groupRepo.searchGroups(query);
-  return groups.map((g) => sanitizeGroup(g, requesterId));
+export const searchGroups = async ({ q, page, limit }, requesterId) => {
+  const [groups, total] = await groupRepo.searchGroups({ q, page, limit }, requesterId);
+  return {
+    items: groups.map((g) => withViewer(g, requesterId)),
+    total,
+    page,
+    limit,
+  };
+};
+
+export const listMyGroups = async (userId) => {
+  const groups = await groupRepo.findGroupsByMember(userId);
+  return groups.map((g) => withViewer(g, userId));
+};
+
+/**
+ * Who in the group is studying right now, with the invite code to join each.
+ *
+ * Members only. The codes are what make that matter: they are meant for people
+ * already in the room, and joinSession checks membership again regardless.
+ */
+export const listLiveSessions = async (groupId, requesterId) => {
+  const group = await groupRepo.findGroupById(groupId);
+  if (!group) throw notFound();
+
+  const membership = await groupRepo.findMembership(requesterId, groupId);
+  if (!membership) throw forbidden("Only members can see who's studying");
+
+  const sessions = await findLiveSessionsByGroup(
+    groupId,
+    new Date(Date.now() - LIVE_SESSION_WINDOW_MS),
+  );
+
+  // isMine so a client can leave its own session out of "join someone" without
+  // having to know its own user id.
+  return sessions.map((session) => ({
+    ...session,
+    isMine: session.user.id === requesterId,
+  }));
 };
 
 export const updateGroup = async (groupId, requesterId, data) => {
@@ -128,6 +198,16 @@ export const updateGroup = async (groupId, requesterId, data) => {
   const updateData = isOwner
     ? { name, description, isPrivate, joinCode }
     : { name, description };
+
+  // Going private with no code would make the group impossible to join - every
+  // code a newcomer could send fails the comparison against NULL - so one is
+  // generated. Going public clears the code, which no longer guards anything.
+  if (isOwner && isPrivate === true && joinCode === undefined && !group.joinCode) {
+    updateData.joinCode = generateJoinCode();
+  }
+  if (isOwner && isPrivate === false && joinCode === undefined) {
+    updateData.joinCode = null;
+  }
 
   const updated = await groupRepo.updateGroup(groupId, updateData);
 
@@ -158,6 +238,25 @@ export const deleteGroup = async (groupId, requesterId) => {
   await invalidateDetachedSessions(detached);
 
   return result;
+};
+
+/**
+ * A fresh join code, generated here rather than chosen by the owner - the
+ * shape the note on updateGroupSchema asks for, and the way to retire a code
+ * that has leaked. Existing members are unaffected; only new joins need it.
+ */
+export const regenerateJoinCode = async (groupId, requesterId) => {
+  const group = await groupRepo.findGroupById(groupId);
+  if (!group) throw notFound();
+  if (group.ownerId !== requesterId) throw forbidden("Only the owner can change the join code");
+  if (!group.isPrivate) throw conflict("Only a private group has a join code");
+
+  const updated = await groupRepo.updateGroup(groupId, { joinCode: generateJoinCode() });
+
+  // CONTENT only: the code is part of the owner's GET /:id payload.
+  await invalidateGroup({ groupId, content: true });
+
+  return updated;
 };
 
 export const transferOwnership = async (groupId, requesterId, newOwnerId) => {

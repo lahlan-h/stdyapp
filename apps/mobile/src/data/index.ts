@@ -70,7 +70,13 @@ export {
   type FocusResult,
   type FocusPhase,
   type SessionTask,
+  type SessionGroup,
 } from "./useFocusSession";
+export {
+  requestStudySession,
+  consumeStudyRequest,
+  type StudyRequest,
+} from "./studyRequest";
 export { usePost } from "./usePost";
 export { useUserPosts, type UserPostsState } from "./useUserPosts";
 export {
@@ -82,6 +88,7 @@ export { useStreak, type Streak, type StreakState } from "./useStreak";
 export {
   useStudySessions,
   type StudyTotals,
+  type PastSession,
   type StudySessionsState,
 } from "./useStudySessions";
 // The store's own setter, for a screen that shows ONE post and so has no feed
@@ -131,6 +138,19 @@ export {
   type ProfileState,
 } from "./useProfile";
 export { useRoutines, type RoutinesState } from "./useRoutines";
+export { useGroups, type GroupsState, type NewGroup } from "./useGroups";
+export { useGroup, type GroupState, type GroupEdit } from "./useGroup";
+export { useRoom, type RoomState, type RoomParticipant } from "./useRoom";
+export {
+  MAX_GROUP_NAME_LENGTH,
+  MAX_GROUP_DESCRIPTION_LENGTH,
+  MAX_JOIN_CODE_LENGTH,
+  type StudyGroup,
+  type GroupMember,
+  type GroupRole,
+  type GroupPerson,
+  type LiveSession,
+} from "./groupTypes";
 export { useRoutine, type RoutineState, type TodoEdit } from "./useRoutine";
 export {
   MAX_ROUTINE_TITLE_LENGTH,

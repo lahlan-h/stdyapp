@@ -221,6 +221,61 @@ export const createNewPostStyles = (colors: ColorScheme) => {
       paddingTop: 2,
     },
 
+    // A link row's clear button: its own padded target inside the row's.
+    rowClear: {
+      width: 32,
+      height: 32,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    // --- Link picker sheet ---
+    pickerBackdrop: { flex: 1, backgroundColor: colors.scrim },
+    pickerSheet: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      maxHeight: "70%",
+      paddingTop: 18,
+      paddingHorizontal: 16,
+      gap: 10,
+      borderTopLeftRadius: 26,
+      borderTopRightRadius: 26,
+      backgroundColor: colors.surface,
+      borderTopWidth: 1,
+      borderColor: colors.border,
+    },
+    pickerHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 4,
+    },
+    pickerTitle: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 18,
+      color: colors.text,
+    },
+    pickerOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: 52,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 14,
+    },
+    pickerOptionSelected: { backgroundColor: colors.bg },
+    pickerState: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.textMuted,
+      textAlign: "center",
+      paddingVertical: 24,
+    },
+
     // --- Error ---
     error: {
       flexDirection: "row",

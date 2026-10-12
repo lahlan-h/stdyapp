@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   startSessionSchema,
+  joinSessionSchema,
   addInterruptionSchema,
   INTERRUPTION_TYPES,
 } from "../src/validation/session.validation.js";
@@ -80,5 +81,39 @@ describe("addInterruptionSchema.type", () => {
 
   it("matches the Prisma enum exactly", () => {
     assert.deepEqual(INTERRUPTION_TYPES, ["APP_EXIT", "DEVICE_MOTION", "MANUAL"]);
+  });
+});
+
+describe("joinSessionSchema", () => {
+  it("accepts a generated code, and normalises case and whitespace", () => {
+    const parsed = joinSessionSchema.safeParse({ inviteCode: "  ab12cd " });
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data.inviteCode, "AB12CD");
+  });
+
+  it("rejects a missing, short, long or non-alphanumeric code", () => {
+    for (const body of [
+      {},
+      { inviteCode: "" },
+      { inviteCode: "ab" },
+      { inviteCode: "A".repeat(17) },
+      { inviteCode: "AB-12C" },
+    ]) {
+      assert.equal(
+        joinSessionSchema.safeParse(body).success,
+        false,
+        `${JSON.stringify(body)} should be rejected`,
+      );
+    }
+  });
+
+  it("rejects unknown keys, so a client cannot pick the group", () => {
+    assert.equal(
+      joinSessionSchema.safeParse({
+        inviteCode: "AB12CD",
+        groupId: "00000000-0000-4000-8000-000000000000",
+      }).success,
+      false,
+    );
   });
 });

@@ -97,6 +97,9 @@ app.use((err, req, res, next) => {
   }
 
   res.status(status).json({
+    // Anything a service attached for the client to act on - joinSession's
+    // groupId, say. Spread FIRST so it can never overwrite the message.
+    ...(status < 500 && err.data ? err.data : {}),
     error: err.message || "Internal server error",
   });
 });

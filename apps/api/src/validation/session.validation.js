@@ -87,6 +87,28 @@ export const startSessionSchema = z.strictObject({
 });
 
 /**
+ * POST /api/sessions/join.
+ *
+ * Bounds match the group joinCode's in studyGroup.validation.js: the generator
+ * makes six characters of base36, and the bounds only stop junk reaching the
+ * query.
+ *
+ * Uppercased here, unlike joinGroupSchema, because nothing is being guarded by
+ * case: joinSession still demands group membership, so the code only FINDS a
+ * session the caller could already see in their group. Being forgiving about a
+ * code read aloud costs nothing.
+ */
+export const joinSessionSchema = z.strictObject({
+  inviteCode: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .min(4, "inviteCode must be at least 4 characters")
+    .max(16, "inviteCode must be at most 16 characters")
+    .regex(/^[A-Z0-9]+$/, "inviteCode may only contain letters and numbers"),
+});
+
+/**
  * POST /api/sessions/:id/interruptions.
  *
  * Replaces the hand-rolled check in session.controller.js, which tested

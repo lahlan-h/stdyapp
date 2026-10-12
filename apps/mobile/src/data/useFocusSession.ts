@@ -51,8 +51,19 @@ interface EndedSession {
   tasksCompleted: number | null;
 }
 
+/** What POST /api/sessions and POST /api/sessions/join answer. */
 interface StartedSession {
   id: string;
+  groupId: string | null;
+  /** Set for group sessions - what someone else types to join this one. */
+  inviteCode: string | null;
+  plannedMinutes: number | null;
+}
+
+/** The group a session is (or will be) studied in. */
+export interface SessionGroup {
+  id: string;
+  name: string;
 }
 
 interface SamplePage {
@@ -158,9 +169,30 @@ export interface FocusSessionState {
   addTask: (title: string) => void;
   toggleTask: (task: SessionTask) => void;
   removeTask: (taskId: string) => void;
+  /**
+   * The group the NEXT Start will study in, or null for solo. Chosen from a
+   * group's screen; cleared after use so a later session is not silently a
+   * group one.
+   */
+  selectedGroup: SessionGroup | null;
+  setSelectedGroup: (group: SessionGroup | null) => void;
+  /**
+   * The running (or just-finished) session's group and invite code, for the
+   * screen to show and share. Null for a solo session.
+   */
+  activeGroup: { name: string; inviteCode: string | null } | null;
+  /** The running or just-finished session, so the recap can link a post to it. */
+  sessionId: string | null;
+  /**
+   * Set when a join was refused because the session's group is private and the
+   * user is not in it - the group to send them to, to enter its join code.
+   */
+  privateGroupId: string | null;
   error?: string;
   busy: boolean;
   start: () => void;
+  /** Joins someone's running group session by its invite code. */
+  join: (inviteCode: string, groupName?: string) => void;
   end: () => void;
   rate: (value: number) => void;
   reset: () => void;
@@ -181,6 +213,11 @@ export const useFocusSession = (): FocusSessionState => {
   const [rating, setRating] = useState<number | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState<SessionGroup | null>(null);
+  const [activeGroup, setActiveGroup] =
+    useState<FocusSessionState["activeGroup"]>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [privateGroupId, setPrivateGroupId] = useState<string | null>(null);
 
   /**
    * Refs, not state, for everything the interval and the AppState listener
@@ -317,10 +354,63 @@ export const useFocusSession = (): FocusSessionState => {
   // they left.
   useEffect(() => () => stopTimers.current(), []);
 
+  /**
+   * Everything after the session row exists, shared by start and join: attach
+   * the checklist, reset the counters, start the clock.
+   */
+  const begin = useCallback(
+    async (session: StartedSession, groupName: string | null) => {
+      sessionIdRef.current = session.id;
+      setSessionId(session.id);
+      setActiveGroup(
+        session.groupId && groupName
+          ? { name: groupName, inviteCode: session.inviteCode }
+          : null,
+      );
+
+      // Drafts become real rows now there is a session to attach them to.
+      // Failure here is not fatal: the session has started, and losing the
+      // checklist is better than losing the session over it.
+      if (draftTasks.length > 0) {
+        try {
+          const created = await withAuth((token) =>
+            request<TaskList>(`/api/sessions/${session.id}/tasks`, {
+              method: "POST",
+              token,
+              body: { titles: draftTasks },
+            }),
+          );
+          setTasks(created.data);
+        } catch (err) {
+          if (__DEV__) console.warn("[focus] checklist not saved:", describe(err));
+        }
+      } else {
+        setTasks([]);
+      }
+
+      startedAtRef.current = Date.now();
+      sampleCountRef.current = 0;
+      awaySinceRef.current = null;
+
+      setSampleCount(0);
+      setElapsedSec(0);
+      setAwaySec(0);
+      setLiveFocus(null);
+      setResult(null);
+      setRating(null);
+      setTrace([]);
+      setPhase("running");
+      startTimers();
+    },
+    [draftTasks, startTimers],
+  );
+
   const start = useCallback(() => {
     if (busy || phase === "running") return;
     setBusy(true);
     setError(undefined);
+
+    const group = selectedGroup;
 
     void (async () => {
       try {
@@ -330,54 +420,72 @@ export const useFocusSession = (): FocusSessionState => {
             token,
             // plannedMinutes is an Int column, so a 17m30s plan is stored as
             // 18. The countdown on screen still uses the exact seconds chosen.
-            body: plannedSec
-              ? { plannedMinutes: Math.max(1, Math.round(plannedSec / 60)) }
-              : {},
+            body: {
+              ...(plannedSec
+                ? { plannedMinutes: Math.max(1, Math.round(plannedSec / 60)) }
+                : {}),
+              ...(group ? { groupId: group.id } : {}),
+            },
           }),
         );
 
-        sessionIdRef.current = session.id;
-
-        // Drafts become real rows now there is a session to attach them to.
-        // Failure here is not fatal: the session has started, and losing the
-        // checklist is better than losing the session over it.
-        if (draftTasks.length > 0) {
-          try {
-            const created = await withAuth((token) =>
-              request<TaskList>(`/api/sessions/${session.id}/tasks`, {
-                method: "POST",
-                token,
-                body: { titles: draftTasks },
-              }),
-            );
-            setTasks(created.data);
-          } catch (err) {
-            if (__DEV__) console.warn("[focus] checklist not saved:", describe(err));
-          }
-        } else {
-          setTasks([]);
-        }
-
-        startedAtRef.current = Date.now();
-        sampleCountRef.current = 0;
-        awaySinceRef.current = null;
-
-        setSampleCount(0);
-        setElapsedSec(0);
-        setAwaySec(0);
-        setLiveFocus(null);
-        setResult(null);
-        setRating(null);
-        setTrace([]);
-        setPhase("running");
-        startTimers();
+        // Used up: the next session is solo unless a group is chosen again.
+        setSelectedGroup(null);
+        await begin(session, group?.name ?? null);
       } catch (err) {
         setError(describe(err));
       } finally {
         setBusy(false);
       }
     })();
-  }, [busy, phase, plannedSec, draftTasks, startTimers]);
+  }, [busy, phase, plannedSec, selectedGroup, begin]);
+
+  const join = useCallback(
+    (inviteCode: string, groupName?: string) => {
+      const code = inviteCode.trim();
+      if (busy || !code) return;
+      if (phase === "running") {
+        setError("End your current session before joining another.");
+        return;
+      }
+      setBusy(true);
+      setError(undefined);
+      setPrivateGroupId(null);
+
+      void (async () => {
+        try {
+          const session = await withAuth((token) =>
+            request<StartedSession>("/api/sessions/join", {
+              method: "POST",
+              token,
+              body: { inviteCode: code },
+            }),
+          );
+
+          // The host's remaining time, so the room finishes together. The
+          // server rounds up to whole minutes; an open-ended host gives an
+          // open-ended session.
+          setPlannedSec((session.plannedMinutes ?? 0) * 60);
+          setSelectedGroup(null);
+          await begin(session, groupName ?? "Group session");
+        } catch (err) {
+          setError(describe(err));
+          // A public group is joined on the way in; only a private one refuses,
+          // and it says which group so the screen can offer to open it.
+          if (
+            err instanceof ApiError &&
+            err.status === 403 &&
+            typeof err.data.groupId === "string"
+          ) {
+            setPrivateGroupId(err.data.groupId);
+          }
+        } finally {
+          setBusy(false);
+        }
+      })();
+    },
+    [busy, phase, begin],
+  );
 
   const end = useCallback(() => {
     const sessionId = sessionIdRef.current;
@@ -562,6 +670,9 @@ export const useFocusSession = (): FocusSessionState => {
   const reset = useCallback(() => {
     stopTimers.current();
     sessionIdRef.current = null;
+    setSessionId(null);
+    setActiveGroup(null);
+    setPrivateGroupId(null);
     startedAtRef.current = null;
     sampleCountRef.current = 0;
     awaySinceRef.current = null;
@@ -607,9 +718,15 @@ export const useFocusSession = (): FocusSessionState => {
     awaySec,
     result,
     rating,
+    selectedGroup,
+    setSelectedGroup,
+    activeGroup,
+    sessionId,
+    privateGroupId,
     error,
     busy,
     start,
+    join,
     end,
     rate,
     reset,
