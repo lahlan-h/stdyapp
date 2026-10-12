@@ -81,6 +81,8 @@ export default function RootLayout() {
           */}
           <Stack.Screen name="sessions" />
           <Stack.Screen name="session/[id]" />
+          {/* A push from the Analytics header, for post/[id]'s reason. */}
+          <Stack.Screen name="leaderboard" />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

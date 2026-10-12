@@ -197,3 +197,13 @@ export {
   type AnalyticsState,
   type GoalHitRate,
 } from "./useAnalytics";
+export {
+  useLeaderboard,
+  type Leaderboard,
+  type LeaderboardEntry,
+  type LeaderboardMe,
+  type LeaderboardMetric,
+  type LeaderboardRange,
+  type LeaderboardScope,
+  type LeaderboardState,
+} from "./useLeaderboard";

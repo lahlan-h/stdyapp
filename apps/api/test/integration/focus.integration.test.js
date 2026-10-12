@@ -344,18 +344,49 @@ describe("focus feature against a real database", { skip }, () => {
       };
       await run(rival, 90);
 
-      const visible = await focusService.getLeaderboard(userId, { days: 7, limit: 50 });
+      const global = { scope: "global", days: 7, limit: 50 };
+
+      const visible = await focusService.getLeaderboard(userId, global);
       assert.ok(
         visible.entries.some((e) => e.userId === rival),
         "rival should appear before being blocked",
       );
-      assert.ok(visible.me.weightedMinutes > 0, "caller's own total should be reported");
+      assert.ok(visible.me.value > 0, "caller's own total should be reported");
+
+      // The default board is the caller plus the people they follow.
+      const unfollowed = await focusService.getLeaderboard(userId, { days: 7, limit: 50 });
+      assert.equal(unfollowed.scope, "following");
+      assert.ok(
+        !unfollowed.entries.some((e) => e.userId === rival),
+        "someone the caller does not follow must not be on the following board",
+      );
+      assert.equal(unfollowed.followingCount, 0);
+
+      await prisma.follow.create({ data: { followerId: userId, followingId: rival } });
+      const followed = await focusService.getLeaderboard(userId, { days: 7, limit: 50 });
+      assert.ok(followed.entries.some((e) => e.userId === rival));
+      assert.ok(followed.entries.some((e) => e.userId === userId), "the caller ranks too");
+      assert.equal(followed.followingCount, 1);
+      assert.ok(followed.me.rank !== null, "the caller's rank is known on a following board");
+
+      // One scored session is below the floor for the average-focus board.
+      const focus = await focusService.getLeaderboard(rival, {
+        ...global,
+        metric: "focusScore",
+      });
+      assert.ok(!focus.entries.some((e) => e.userId === rival));
+      assert.equal(focus.me.qualified, false);
 
       await prisma.block.create({ data: { blockerId: userId, blockedId: rival } });
-      const hidden = await focusService.getLeaderboard(userId, { days: 7, limit: 50 });
+      const hidden = await focusService.getLeaderboard(userId, global);
       assert.ok(
         !hidden.entries.some((e) => e.userId === rival),
         "a blocked user must not appear on a social surface",
+      );
+      const hiddenFollowing = await focusService.getLeaderboard(userId, { days: 7, limit: 50 });
+      assert.ok(
+        !hiddenFollowing.entries.some((e) => e.userId === rival),
+        "following someone does not override a block",
       );
     } finally {
       await destroyUser(rival);
