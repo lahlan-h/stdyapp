@@ -1,10 +1,11 @@
-import { Alert, Image, Pressable, Text, View } from "react-native";
+import { Image, Pressable, Text, View } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 
 import { useTheme, useGroupsStyles, GROUPS_ICON_SIZE } from "@theme";
 import type { GroupMember, GroupRole, StudyGroup } from "@data";
 
 import { defaultAvatar } from "@components/defaultAvatar";
+import { confirmGroupAction } from "@components/confirmGroup";
 
 interface GroupMemberRowProps {
   member: GroupMember;
@@ -28,8 +29,8 @@ interface GroupMemberRowProps {
  * Neither rule ever reaches the viewer's own row - the owner's row is the
  * owner, and an admin's row is an admin - so no "is this me" check is needed.
  *
- * Every destructive choice is confirmed. Two buttons per alert, because
- * Android shows at most three.
+ * Every destructive choice is confirmed - see confirmGroup.ts, which also
+ * covers the web, where a bare Alert.alert does nothing.
  */
 const GroupMemberRow = ({
   member,
@@ -54,19 +55,19 @@ const GroupMemberRow = ({
   const meta = isOwnerRow ? "Owner" : member.role === "ADMIN" ? "Admin" : undefined;
 
   const confirmRemove = () =>
-    Alert.alert(`Remove ${name}?`, "They can join again if the group lets them.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Remove", style: "destructive", onPress: onRemove },
-    ]);
+    confirmGroupAction(
+      `Remove ${name}?`,
+      "They can join again if the group lets them.",
+      "Remove",
+      onRemove,
+    );
 
   const confirmTransfer = () =>
-    Alert.alert(
+    confirmGroupAction(
       `Make ${name} the owner?`,
       "They get full control of the group. You stay on as a member and cannot undo this yourself.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Make owner", style: "destructive", onPress: onTransfer },
-      ],
+      "Make owner",
+      onTransfer,
     );
 
   return (

@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   RefreshControl,
@@ -28,6 +27,7 @@ import {
 import { defaultAvatar } from "@components/defaultAvatar";
 import GroupEditCard from "@components/GroupEditCard";
 import GroupMemberRow from "@components/GroupMemberRow";
+import { confirmGroupAction } from "@components/confirmGroup";
 
 const minutesSince = (iso: string) =>
   Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -132,37 +132,29 @@ const GroupScreen = () => {
 
   const askLeave = () => {
     if (!group) return;
-    Alert.alert(`Leave ${group.name}?`, "You can join again later.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Leave", style: "destructive", onPress: () => void leave() },
-    ]);
+    confirmGroupAction(`Leave ${group.name}?`, "You can join again later.", "Leave", () =>
+      void leave(),
+    );
   };
 
   const askNewCode = () =>
-    Alert.alert(
+    confirmGroupAction(
       "Make a new join code?",
       "The current code stops working. People already in the group stay in.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "New code", onPress: () => void regenerateJoinCode() },
-      ],
+      "New code",
+      () => void regenerateJoinCode(),
+      { destructive: false },
     );
 
   const askDelete = () => {
     if (!group) return;
-    Alert.alert(
+    confirmGroupAction(
       `Delete ${group.name}?`,
       "Everyone is removed from it. Past sessions are kept, just no longer tied to the group. This cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            if (await deleteGroup()) router.back();
-          },
-        },
-      ],
+      "Delete",
+      async () => {
+        if (await deleteGroup()) router.back();
+      },
     );
   };
 
