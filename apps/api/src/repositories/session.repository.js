@@ -312,6 +312,10 @@ export const findCompletedSessionsSince = (userId, since) => {
  *   endedAt: Date,
  *   focusPoints: number,
  *   groupId: string | null,
+ *   focusScore: number | null,
+ *   focusWeightedMinutes: number | null,
+ *   tasksTotal: number | null,
+ *   tasksCompleted: number | null,
  *   interruptions: Array<{ durationSec: number, penaltyApplied: boolean }>,
  * }>>}
  */
@@ -327,6 +331,13 @@ export const findCompletedSessionsForAnalytics = (userId, since) => {
       endedAt: true,
       focusPoints: true,
       groupId: true,
+      // The focus estimate and checklist totals, as finaliseSessionFocus
+      // copied them onto the row - plain columns, so the task table is never
+      // joined (see the note on Session.tasksTotal in the Prisma schema).
+      focusScore: true,
+      focusWeightedMinutes: true,
+      tasksTotal: true,
+      tasksCompleted: true,
       interruptions: { select: { durationSec: true, penaltyApplied: true } },
     },
     orderBy: { startedAt: "asc" },

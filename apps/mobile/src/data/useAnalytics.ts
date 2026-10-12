@@ -54,6 +54,21 @@ export interface Analytics {
     penaltyCount: number;
     interruptionsPerHour: number | null;
     averageAwaySec: number | null;
+    /**
+     * The per-session focus ESTIMATE (0-100), averaged by duration over
+     * sessions that were scored. Null when none were - never 0. An estimate,
+     * not a medical measurement.
+     */
+    averageFocusScore: number | null;
+    scoredSessionCount: number;
+    previousAverageFocusScore: number | null;
+    /** Points, not percent, vs the previous period. Null when either side is. */
+    focusScoreChange: number | null;
+    focusWeightedMinutes: number | null;
+    tasksCompleted: number;
+    tasksTotal: number;
+    /** Null when no session in range had a checklist. */
+    taskCompletionPercent: number | null;
   };
   goals: {
     daily: GoalHitRate | null;

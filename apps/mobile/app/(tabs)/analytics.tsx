@@ -221,7 +221,8 @@ const AnalyticsBody = ({ analytics }: { analytics: Analytics }) => {
         />
       </View>
 
-      {/* 2-4, 6. The headline numbers, two to a row. */}
+      {/* 2-4, 6. The headline numbers, two to a row. The focus estimate and
+          task tiles sit beside efficiency so the focus-quality numbers read together. */}
       <View style={styles.tileGrid}>
         <AnalyticsStatTile
           icon="clock"
@@ -237,7 +238,31 @@ const AnalyticsBody = ({ analytics }: { analytics: Analytics }) => {
           icon="target"
           label="Focus efficiency"
           value={focusQuality.efficiencyPercent === null ? NONE : `${focusQuality.efficiencyPercent}%`}
-          detail={`${focusQuality.focusPoints} focus points kept`}
+          detail={`${focusQuality.focusPoints} points kept after 20+ min breaks`}
+        />
+        <AnalyticsStatTile
+          icon="activity"
+          label="Avg focus estimate"
+          value={focusQuality.averageFocusScore === null ? NONE : String(focusQuality.averageFocusScore)}
+          detail={
+            focusQuality.scoredSessionCount > 0
+              ? `across ${plural(focusQuality.scoredSessionCount, "scored session")}`
+              : "No scored sessions yet"
+          }
+        />
+        <AnalyticsStatTile
+          icon="check-square"
+          label="Tasks done"
+          value={
+            focusQuality.taskCompletionPercent === null
+              ? NONE
+              : `${focusQuality.taskCompletionPercent}%`
+          }
+          detail={
+            focusQuality.tasksTotal > 0
+              ? `${focusQuality.tasksCompleted} of ${plural(focusQuality.tasksTotal, "task")}`
+              : "No session checklists"
+          }
         />
         <AnalyticsStatTile
           icon="bell-off"
