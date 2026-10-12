@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { request } from "./api";
 import { withAuth } from "./auth";
+import { consumeGroupChanges } from "./groupSignal";
 import {
   describeGroupError,
   toGroup,
@@ -43,6 +44,11 @@ export interface GroupsState {
   search: (query: string) => void;
   /** The next page of the last search, appended. */
   loadMore: () => void;
+  /**
+   * Brings search results up to date with what happened on a group screen:
+   * deleted groups drop out, changed ones are re-read in place. Call on focus.
+   */
+  applyGroupChanges: () => void;
   /** Resolves to the new group, or undefined when the request failed. */
   create: (group: NewGroup) => Promise<StudyGroup | undefined>;
 }
@@ -141,6 +147,28 @@ export const useGroups = (): GroupsState => {
     fetchPage(query, page + 1);
   }, [fetchPage]);
 
+  const applyGroupChanges = useCallback(() => {
+    const { deleted, changed } = consumeGroupChanges();
+    if (deleted.length > 0) {
+      const gone = new Set(deleted);
+      setResults((prev) => prev?.filter((g) => !gone.has(g.id)));
+      setMyGroups((prev) => prev?.filter((g) => !gone.has(g.id)));
+    }
+
+    for (const groupId of changed) {
+      void (async () => {
+        try {
+          const fresh = toGroup(
+            await withAuth((token) => request<RawGroup>(`/api/groups/${groupId}`, { token })),
+          );
+          setResults((prev) => prev?.map((g) => (g.id === groupId ? fresh : g)));
+        } catch {
+          // A stale row until the next search - not worth an error over.
+        }
+      })();
+    }
+  }, []);
+
   const create = useCallback(async ({ name, description, isPrivate }: NewGroup) => {
     const clean = name.trim();
     if (!clean) return undefined;
@@ -199,6 +227,7 @@ export const useGroups = (): GroupsState => {
     reload: load,
     search,
     loadMore,
+    applyGroupChanges,
     create,
   };
 };

@@ -24,6 +24,7 @@ import RoutineList from "@components/RoutineList";
 import GroupList from "@components/GroupList";
 import SessionHistory from "@components/SessionHistory";
 import RoomParticipants from "@components/RoomParticipants";
+import { confirmGroupAction } from "@components/confirmGroup";
 
 /** The three views under the Study tab. */
 type StudyView = "sessions" | "routines" | "groups";
@@ -139,10 +140,19 @@ const Study = () => {
       setView("sessions");
       if (request.kind === "group") {
         setSelectedGroup({ id: request.groupId, name: request.groupName });
+      } else if (phase === "running") {
+        // One session at a time: joining another means leaving this one.
+        confirmGroupAction(
+          "Switch sessions?",
+          `Your current session ends and is saved, and you join the one in ${request.groupName}.`,
+          "Switch",
+          () => join(request.inviteCode, request.groupName, { switching: true }),
+          { destructive: false },
+        );
       } else {
         join(request.inviteCode, request.groupName);
       }
-    }, [join, setSelectedGroup]),
+    }, [join, setSelectedGroup, phase]),
   );
 
   const submitInvite = () => {

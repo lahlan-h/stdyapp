@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { ApiError, request } from "./api";
 import { withAuth } from "./auth";
+import { markGroupChanged } from "./groupSignal";
 import { useMotionVariance } from "./useMotionVariance";
 
 /**
@@ -37,6 +39,17 @@ const LIVE_REFRESH_EVERY = 4;
  * the real ones and spend the write budget on noise.
  */
 const MIN_AWAY_SEC = 5;
+
+/**
+ * The session this device is running, kept across app launches.
+ *
+ * Set when a session starts and cleared when it ends. Finding it set when no
+ * session is running here means the app died - or a request to end failed -
+ * mid-session, and that session is closed as ABANDONED (at its last sign of
+ * life) before anything new starts. The server would otherwise see it as still
+ * running for a few minutes and refuse the new one: one session per person.
+ */
+const RUNNING_KEY = "focus.runningSessionId";
 
 
 /** What PATCH /api/sessions/:id/end answers, which is the session row itself. */
@@ -191,8 +204,12 @@ export interface FocusSessionState {
   error?: string;
   busy: boolean;
   start: () => void;
-  /** Joins someone's running group session by its invite code. */
-  join: (inviteCode: string, groupName?: string) => void;
+  /**
+   * Joins someone's running group session by its invite code. While a session
+   * is running this refuses unless `switching` is set - then the current one
+   * is ended (and saved) first. Confirm with the user before switching.
+   */
+  join: (inviteCode: string, groupName?: string, options?: { switching?: boolean }) => void;
   end: () => void;
   rate: (value: number) => void;
   reset: () => void;
@@ -355,6 +372,50 @@ export const useFocusSession = (): FocusSessionState => {
   useEffect(() => () => stopTimers.current(), []);
 
   /**
+   * Closes a session this device left running - see RUNNING_KEY. Shared and
+   * awaited by start and join, and run once on mount so a crashed session is
+   * closed promptly rather than when the user next studies.
+   *
+   * Never throws. A failure leaves the key in place for the next attempt, and
+   * the server's own five-minute rule is the backstop either way.
+   */
+  const settlingRef = useRef<Promise<void> | null>(null);
+  const settleLeftover = useCallback((): Promise<void> => {
+    if (settlingRef.current) return settlingRef.current;
+
+    settlingRef.current = (async () => {
+      try {
+        const leftover = await AsyncStorage.getItem(RUNNING_KEY);
+        if (!leftover || leftover === sessionIdRef.current) return;
+        try {
+          await withAuth((token) =>
+            request(`/api/sessions/${leftover}/abandon`, { method: "PATCH", token }),
+          );
+        } catch (err) {
+          // Gone, or not ours (another account signed in here): nothing to
+          // close, so forget it. Anything else is kept for a retry.
+          if (!(err instanceof ApiError && (err.status === 404 || err.status === 403))) return;
+        }
+        await AsyncStorage.removeItem(RUNNING_KEY);
+      } catch {
+        /* storage unavailable - the server's rule covers it */
+      } finally {
+        settlingRef.current = null;
+      }
+    })();
+    return settlingRef.current;
+  }, []);
+
+  useEffect(() => {
+    void settleLeftover();
+  }, [settleLeftover]);
+
+  /** Forgets the running session once it has properly ended. */
+  const clearRunning = () => {
+    AsyncStorage.removeItem(RUNNING_KEY).catch(() => {});
+  };
+
+  /**
    * Everything after the session row exists, shared by start and join: attach
    * the checklist, reset the counters, start the clock.
    */
@@ -362,6 +423,7 @@ export const useFocusSession = (): FocusSessionState => {
     async (session: StartedSession, groupName: string | null) => {
       sessionIdRef.current = session.id;
       setSessionId(session.id);
+      AsyncStorage.setItem(RUNNING_KEY, session.id).catch(() => {});
       setActiveGroup(
         session.groupId && groupName
           ? { name: groupName, inviteCode: session.inviteCode }
@@ -414,6 +476,7 @@ export const useFocusSession = (): FocusSessionState => {
 
     void (async () => {
       try {
+        await settleLeftover();
         const session = await withAuth((token) =>
           request<StartedSession>("/api/sessions", {
             method: "POST",
@@ -438,13 +501,14 @@ export const useFocusSession = (): FocusSessionState => {
         setBusy(false);
       }
     })();
-  }, [busy, phase, plannedSec, selectedGroup, begin]);
+  }, [busy, phase, plannedSec, selectedGroup, begin, settleLeftover]);
 
   const join = useCallback(
-    (inviteCode: string, groupName?: string) => {
+    (inviteCode: string, groupName?: string, options?: { switching?: boolean }) => {
       const code = inviteCode.trim();
       if (busy || !code) return;
-      if (phase === "running") {
+      const switching = phase === "running";
+      if (switching && !options?.switching) {
         setError("End your current session before joining another.");
         return;
       }
@@ -454,6 +518,32 @@ export const useFocusSession = (): FocusSessionState => {
 
       void (async () => {
         try {
+          if (switching) {
+            // End the current session first - saved, just without a recap - so
+            // the server's one-session rule sees nothing still running.
+            const current = sessionIdRef.current;
+            stopTimers.current();
+            const since = awaySinceRef.current;
+            awaySinceRef.current = null;
+            if (since) await logAway((Date.now() - since) / 1000);
+            if (current) {
+              try {
+                await withAuth((token) =>
+                  request(`/api/sessions/${current}/end`, { method: "PATCH", token }),
+                );
+                clearRunning();
+              } catch (err) {
+                // Its clock has stopped either way. The kept RUNNING_KEY lets
+                // settleLeftover close it properly on the next try.
+                sessionIdRef.current = null;
+                setPhase("idle");
+                throw err;
+              }
+            }
+            sessionIdRef.current = null;
+          }
+
+          await settleLeftover();
           const session = await withAuth((token) =>
             request<StartedSession>("/api/sessions/join", {
               method: "POST",
@@ -467,6 +557,9 @@ export const useFocusSession = (): FocusSessionState => {
           // open-ended session.
           setPlannedSec((session.plannedMinutes ?? 0) * 60);
           setSelectedGroup(null);
+          // Joining a public group's session joins the group too, which the
+          // Groups view's lists should reflect.
+          if (session.groupId) markGroupChanged(session.groupId);
           await begin(session, groupName ?? "Group session");
         } catch (err) {
           setError(describe(err));
@@ -484,7 +577,7 @@ export const useFocusSession = (): FocusSessionState => {
         }
       })();
     },
-    [busy, phase, begin],
+    [busy, phase, begin, logAway, settleLeftover],
   );
 
   const end = useCallback(() => {
@@ -563,11 +656,16 @@ export const useFocusSession = (): FocusSessionState => {
           /* the reward card falls back to hiding the streak */
         }
 
+        clearRunning();
         setPhase("recap");
       } catch (err) {
         setError(describe(err));
         // Back to idle rather than stuck mid-session: the timers are already
         // gone, so "running" would be a lie the user could not get out of.
+        // RUNNING_KEY is KEPT, so the next start or join closes this session
+        // properly - at its last sign of life - instead of leaving it open.
+        // The ref is cleared so settleLeftover sees it as left over, not live.
+        sessionIdRef.current = null;
         setPhase("idle");
       } finally {
         setBusy(false);

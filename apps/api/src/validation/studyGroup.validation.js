@@ -170,9 +170,13 @@ export const setMemberRoleSchema = z.strictObject({
  *
  * Paginated like the user directory, with the same page/limit and the same
  * { data, pagination } envelope - pagination.validation.js owns the cap.
+ *
+ * `page` has NO default, and that absence is the switch: a request without it
+ * comes from an app build older than pagination, which expects the old bare
+ * array. The controller answers those in the old shape - see search().
  */
 export const searchGroupsQuerySchema = z.strictObject({
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce
     .number()
     .int()

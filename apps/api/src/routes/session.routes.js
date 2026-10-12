@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   start,
   join,
+  abandon,
   room,
   getOne,
   listMine,
@@ -137,6 +138,14 @@ router.patch(
   writeLimit,
   validate({ params: sessionIdParamSchema }),
   end,
+);
+
+// The app's "I died mid-session" - closes at the last sign of life, not now.
+router.patch(
+  "/:id/abandon",
+  writeLimit,
+  validate({ params: sessionIdParamSchema }),
+  abandon,
 );
 
 router.delete(

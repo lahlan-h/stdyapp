@@ -1,4 +1,5 @@
 import * as groupService from "../services/studyGroup.service.js";
+import { MAX_PAGE_SIZE } from "../validation/pagination.validation.js";
 
 /**
  * Thin by design: status codes and response shape only, no policy.
@@ -46,8 +47,25 @@ export const getOne = async (req, res, next) => {
  */
 export const search = async (req, res, next) => {
   try {
-    const { items, total, page, limit } = await groupService.searchGroups(
-      req.validated.query,
+    const { q, page, limit } = req.validated.query;
+
+    /**
+     * LEGACY SHAPE for app builds older than pagination: they send no ?page
+     * and read the body as a bare array. Answered as one page of the largest
+     * size, so they keep working and the query stays bounded - the old route
+     * returned every group, which is the gap pagination closed. Remove once
+     * no such build is in use.
+     */
+    if (page === undefined) {
+      const legacy = await groupService.searchGroups(
+        { q, page: 1, limit: MAX_PAGE_SIZE },
+        req.user.id,
+      );
+      return res.status(200).json(legacy.items);
+    }
+
+    const { items, total } = await groupService.searchGroups(
+      { q, page, limit },
       req.user.id,
     );
     res.status(200).json({

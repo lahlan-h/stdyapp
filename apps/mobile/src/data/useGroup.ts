@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { request } from "./api";
 import { withAuth } from "./auth";
+import { markGroupChanged, markGroupDeleted } from "./groupSignal";
 import {
   describeGroupError,
   toGroup,
@@ -129,6 +130,9 @@ export const useGroup = (groupId: string | undefined): GroupState => {
           request(`/api/groups/${groupId}${path}`, { method, token, body }),
         );
         setActionError(undefined);
+        // For the Study tab's search results, which this screen sits over.
+        if (method === "DELETE" && path === "") markGroupDeleted(groupId);
+        else markGroupChanged(groupId);
         if (reloadAfter) await load();
         return true;
       } catch (err) {

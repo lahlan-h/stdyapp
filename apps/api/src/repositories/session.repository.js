@@ -43,6 +43,31 @@ export const findSessionByInviteCode = (inviteCode) => {
   return prisma.session.findUnique({ where: { inviteCode } });
 };
 
+// The columns lastSignOfLife in session.service.js reads, shared by both
+// lookups below so the two can never judge "alive" differently.
+const activitySelect = {
+  id: true,
+  userId: true,
+  groupId: true,
+  startedAt: true,
+  endedAt: true,
+  focusSamples: {
+    select: { timestamp: true },
+    orderBy: { timestamp: "desc" },
+    take: 1,
+  },
+  interruptions: {
+    select: { startedAt: true },
+    orderBy: { startedAt: "desc" },
+    take: 1,
+  },
+};
+
+/** One session with its latest sign of life - for abandonSession. */
+export const findSessionActivity = (id) => {
+  return prisma.session.findUnique({ where: { id }, select: activitySelect });
+};
+
 /**
  * Every session the user has not ended, with the latest sign of life from
  * each: its newest focus sample and its newest interruption.
@@ -55,21 +80,7 @@ export const findSessionByInviteCode = (inviteCode) => {
 export const findOpenSessionsByUser = (userId) => {
   return prisma.session.findMany({
     where: { userId, endedAt: null },
-    select: {
-      id: true,
-      groupId: true,
-      startedAt: true,
-      focusSamples: {
-        select: { timestamp: true },
-        orderBy: { timestamp: "desc" },
-        take: 1,
-      },
-      interruptions: {
-        select: { startedAt: true },
-        orderBy: { startedAt: "desc" },
-        take: 1,
-      },
-    },
+    select: activitySelect,
   });
 };
 

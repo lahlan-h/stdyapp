@@ -318,16 +318,51 @@ const openSession = async ({ userId, groupId, plannedMinutes = null, hostSession
   return session;
 };
 
+/**
+ * One running session per person: two clocks for one person double count
+ * every minute they overlap, in points, streaks, goals and the leaderboard.
+ * startSession and joinSession both enforce it, so neither is a way around
+ * the other.
+ */
+const alreadyRunning = () => {
+  const err = new Error(
+    "You already have a session running, maybe on another device. End it before starting another.",
+  );
+  err.status = 409;
+  return err;
+};
+
 export const startSession = async ({ userId, groupId, plannedMinutes = null }) => {
-  // Housekeeping only - a start never refuses over another open session, as it
-  // never has. Guarded so a failure here cannot cost the user this session.
-  try {
-    await settleOpenSessions(userId);
-  } catch (err) {
-    log.warn(`settling open sessions failed for user ${userId}: ${err?.message}`);
-  }
+  // Sessions a crash left open are closed here rather than blocking - only a
+  // GENUINELY running one refuses. See settleOpenSessions; and the app closes
+  // its own leftovers at launch through abandonSession, so a crash on THIS
+  // device never waits out ABANDONED_AFTER_MS.
+  const running = await settleOpenSessions(userId);
+  if (running.length > 0) throw alreadyRunning();
 
   return openSession({ userId, groupId, plannedMinutes });
+};
+
+/**
+ * Closes one of the caller's sessions as ABANDONED: at its last sign of life
+ * rather than now, so time after the app died earns nothing.
+ *
+ * Called by the app when it relaunches and finds a session it was running but
+ * no longer is - the app is the one party that KNOWS the session is dead, so
+ * it need not wait for ABANDONED_AFTER_MS of silence the way
+ * settleOpenSessions must. Idempotent: an already-ended session is answered
+ * as it is, because a retried request must not look like a failure.
+ */
+export const abandonSession = async (sessionId, userId) => {
+  const activity = await sessionRepo.findSessionActivity(sessionId);
+  if (!activity) throw notFound();
+  if (activity.userId !== userId) throw forbidden();
+
+  if (activity.endedAt) return sessionRepo.findSessionById(sessionId);
+
+  const full = await sessionRepo.findSessionById(sessionId);
+  const { updated } = await closeSession(full, lastSignOfLife(activity));
+  return updated;
 };
 
 /**
@@ -385,13 +420,7 @@ export const joinSession = async ({ userId, inviteCode }) => {
   // running - anywhere - still blocks. One a crash left open no longer does:
   // settleOpenSessions closes it first.
   const running = await settleOpenSessions(userId);
-  if (running.length > 0) {
-    const err = new Error(
-      "You have a session running on another device. End it before joining this one.",
-    );
-    err.status = 409;
-    throw err;
-  }
+  if (running.length > 0) throw alreadyRunning();
 
   const membership = await findMembership(userId, found.groupId);
   if (!membership) {

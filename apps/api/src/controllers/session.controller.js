@@ -37,6 +37,15 @@ export const join = async (req, res, next) => {
   }
 };
 
+export const abandon = async (req, res, next) => {
+  try {
+    const session = await sessionService.abandonSession(req.validated.params.id, req.user.id);
+    res.status(200).json(session);
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const room = async (req, res, next) => {
   try {
     const result = await sessionService.getRoom(req.validated.params.id, req.user.id);

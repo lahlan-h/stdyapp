@@ -369,6 +369,41 @@ describe("group sessions against a real database", { skip }, () => {
     await rejectsWith(groupService.regenerateJoinCode(flip.id, hostId), 409);
   });
 
+  it("allows one running session per person, for starting as well as joining", async () => {
+    const first = await sessionService.startSession({ userId: memberId });
+    await rejectsWith(sessionService.startSession({ userId: memberId }), 409);
+    await sessionService.endSession(first.id, memberId);
+
+    // Ended, so the next start goes through.
+    const second = await sessionService.startSession({ userId: memberId });
+    await sessionService.endSession(second.id, memberId);
+  });
+
+  it("abandons a session at its last sign of life, once, and only for its owner", async () => {
+    const startedAt = new Date(Date.now() - 30 * 60 * 1000);
+    const lastSample = new Date(Date.now() - 20 * 60 * 1000);
+    const left = await prisma.session.create({ data: { userId: memberId, startedAt } });
+    await prisma.focusSample.create({
+      data: {
+        sessionId: left.id,
+        timestamp: lastSample,
+        motionVariance: 0,
+        inApp: true,
+        computedFocus: 0.7,
+      },
+    });
+
+    await rejectsWith(sessionService.abandonSession(left.id, hostId), 403);
+
+    const closed = await sessionService.abandonSession(left.id, memberId);
+    assert.equal(closed.endedAt.getTime(), lastSample.getTime());
+    assert.equal(closed.focusPoints, 10);
+
+    // A retry answers with the same closed session rather than failing.
+    const again = await sessionService.abandonSession(left.id, memberId);
+    assert.equal(again.endedAt.getTime(), lastSample.getTime());
+  });
+
   it("names the group on each row of the caller's history", async () => {
     const history = await sessionService.listMySessions(memberId);
     const grouped = history.filter((s) => s.groupId === group.id);

@@ -33,6 +33,7 @@ const GroupList = () => {
     reload,
     search,
     loadMore,
+    applyGroupChanges,
     create,
   } = useGroups();
 
@@ -41,15 +42,20 @@ const GroupList = () => {
   const [query, setQuery] = useState("");
 
   /**
-   * Reload on coming BACK to the Study tab - joining or leaving happens on the
-   * group screen. Skips the first focus, which the hook has already loaded.
+   * Catch up on coming BACK to the Study tab - joining, leaving, editing and
+   * deleting all happen on the group screen. "Your groups" is re-read whole;
+   * search results are patched (see groupSignal.ts), since they may be several
+   * pages deep. Skips the first focus, which the hook has already loaded.
    */
   const focusedOnce = useRef(false);
   useFocusEffect(
     useCallback(() => {
-      if (focusedOnce.current) reload();
+      if (focusedOnce.current) {
+        reload();
+        applyGroupChanges();
+      }
       focusedOnce.current = true;
-    }, [reload]),
+    }, [reload, applyGroupChanges]),
   );
 
   const open = (id: string) => router.push({ pathname: "/group/[id]", params: { id } });
