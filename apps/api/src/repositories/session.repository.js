@@ -22,6 +22,11 @@ export const findSessionById = (id) => {
 /**
  * The caller's history, newest first.
  *
+ * Includes the two relations the history screen summarises - interruptions
+ * (count and time away) and the self-rating - narrowed to the one column each
+ * that is read. session.service.js folds them into numbers via
+ * toSessionHistoryRow, so neither array reaches the response.
+ *
  * The group's NAME rides along so a history row can say who it was studied
  * with. A rename does not bump the session list's cache counter, so a cached
  * list can show the old name until CACHE_TTL_SESSION_LIST_SEC lapses - a minute
@@ -30,8 +35,12 @@ export const findSessionById = (id) => {
 export const findSessionsByUser = (userId) => {
   return prisma.session.findMany({
     where: { userId },
-    include: { group: { select: { id: true, name: true } } },
     orderBy: { startedAt: "desc" },
+    include: {
+      group: { select: { id: true, name: true } },
+      interruptions: { select: { durationSec: true } },
+      focusRating: { select: { selfRating: true } },
+    },
   });
 };
 

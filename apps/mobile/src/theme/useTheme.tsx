@@ -29,6 +29,7 @@ import { createAnalyticsStyles } from "./analytics.styles";
 import { createHomeSearchStyles } from "./homeSearch.styles";
 import { createMessagesStyles } from "./messages.styles";
 import { createRoutinesStyles } from "./routines.styles";
+import { createSessionHistoryStyles } from "./sessionHistory.styles";
 import { createGroupsStyles } from "./groups.styles";
 
 const STORAGE_KEY = "themePreference";
@@ -86,6 +87,7 @@ const styleMap = {
   homeSearch: createHomeSearchStyles,
   messages: createMessagesStyles,
   routines: createRoutinesStyles,
+  sessionHistory: createSessionHistoryStyles,
   groups: createGroupsStyles,
 } as const;
 

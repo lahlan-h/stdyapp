@@ -109,6 +109,17 @@ export {
   type PastSession,
   type StudySessionsState,
 } from "./useStudySessions";
+export {
+  useSessionHistory,
+  type SessionHistoryItem,
+  type SessionHistoryState,
+  type SessionStatus,
+} from "./useSessionHistory";
+export {
+  useSessionDetail,
+  type SessionDetail,
+  type SessionDetailState,
+} from "./useSessionDetail";
 // The store's own setter, for a screen that shows ONE post and so has no feed
 // hook to take it from. Same function usePosts hands back - there is one array.
 export { setLiked as setPostLiked } from "./postStore";

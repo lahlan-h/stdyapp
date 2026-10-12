@@ -1,6 +1,7 @@
 import * as focusRepo from "../repositories/focus.repository.js";
 import * as sessionRepo from "../repositories/session.repository.js";
 import { HttpError } from "../utils/httpError.js";
+import { bumpVersions, sessionOwnerVersionKey } from "../utils/cache.js";
 import {
   scoreSample,
   scoreSession,
@@ -345,6 +346,12 @@ export const listSessionSamples = async (sessionId, userId, { page, limit }) => 
 export const rateSession = async (sessionId, userId, selfRating) => {
   await getOwnedSessionOrThrow(sessionId, userId);
   const rating = await focusRepo.upsertRating({ sessionId, userId, selfRating });
+
+  // GET /api/sessions rows carry selfRating (see sessionHistory.js), so the
+  // caller's cached list is now stale. After the write, never before - the
+  // reason invalidateSession in session.service.js gives. bumpVersions
+  // swallows its own Redis errors, so this cannot fail the request.
+  await bumpVersions([sessionOwnerVersionKey(userId)]);
 
   // The feedback loop closes here: a new verdict is new evidence about how far
   // the estimate is off, so the correction is re-measured immediately.

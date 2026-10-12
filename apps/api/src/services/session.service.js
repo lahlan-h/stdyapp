@@ -3,6 +3,7 @@ import { createLogger } from "@stdyapp/core";
 import * as sessionRepo from "../repositories/session.repository.js";
 import { findMembership, findGroupById } from "../repositories/studyGroup.repository.js";
 import * as focusService from "./focus.service.js";
+import { toSessionHistoryRow } from "./sessionHistory.js";
 // joinSession adds the caller to a PUBLIC group on the way in, and joinGroup
 // carries the rules for that - the duplicate check, the owner's notification,
 // the member-cache bump. A service import for the reason the gamification
@@ -586,8 +587,15 @@ export const getSession = async (sessionId, userId) => {
   return getOwnedSessionOrThrow(sessionId, userId);
 };
 
+/**
+ * Each row is the Session's own columns plus the history summary - status,
+ * durationMinutes, interruptionCount, awaySeconds, selfRating, isGroup. See
+ * sessionHistory.js; nothing that was here before is removed or renamed.
+ */
 export const listMySessions = async (userId) => {
-  return sessionRepo.findSessionsByUser(userId);
+  const rows = await sessionRepo.findSessionsByUser(userId);
+  const now = new Date();
+  return rows.map((row) => toSessionHistoryRow(row, now));
 };
 
 /**
@@ -711,12 +719,10 @@ export const logInterruption = async (sessionId, userId, { durationSec, type = n
     type,
   });
 
-  // CONTENT scope only, and the asymmetry is deliberate. findSessionById
-  // includes interruptions, so the single-session payload changes; the list
-  // does not include them and focusPoints is not recomputed until endSession,
-  // so no row of findSessionsByUser is affected. Bumping the owner counter here
-  // would throw away a whole cached list on every away-event for nothing.
-  await invalidateSession({ sessionIds: [sessionId] });
+  // Both scopes. findSessionById includes interruptions, so the single-session
+  // payload changes; and every row of findSessionsByUser now carries
+  // interruptionCount and awaySeconds, so the owner's cached list changes too.
+  await invalidateSession({ sessionIds: [sessionId], ownerIds: [userId] });
 
   return interruption;
 };
