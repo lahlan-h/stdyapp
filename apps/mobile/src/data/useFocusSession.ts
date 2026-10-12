@@ -6,6 +6,13 @@ import { ApiError, request } from "./api";
 import { withAuth } from "./auth";
 import { markGroupChanged } from "./groupSignal";
 import { useMotionVariance } from "./useMotionVariance";
+import {
+  FOCUS_SAMPLE_INTERVAL_SEC,
+  buildFocusTimeline,
+  type FocusSpell,
+  type FocusTimeline,
+} from "./focusTrace";
+import { usePhoneDown } from "./usePhoneDown";
 
 /**
  * Drives one focus session: start, stream samples, log time away, end, rate.
@@ -26,10 +33,14 @@ import { useMotionVariance } from "./useMotionVariance";
  * rate and 3,600 at one per second, for an estimate that cannot be that
  * precise anyway.
  */
-const SAMPLE_INTERVAL_MS = 15_000;
+const SAMPLE_INTERVAL_MS = FOCUS_SAMPLE_INTERVAL_SEC * 1000;
 
-/** How often the live reading is refreshed, counted in samples. */
-const LIVE_REFRESH_EVERY = 4;
+/**
+ * How often the live reading and live chart are refreshed, counted in samples.
+ * Every 30 seconds, so the chart visibly answers what the user is doing; it is
+ * also refreshed straight away on returning to the app.
+ */
+const LIVE_REFRESH_EVERY = 2;
 
 /**
  * Below this, a trip out of the app is not an interruption.
@@ -93,7 +104,7 @@ export interface SessionGroup {
 }
 
 interface SamplePage {
-  data: { computedFocus: number }[];
+  data: { timestamp: string; computedFocus: number }[];
 }
 
 /** One item on the session checklist. */
@@ -164,6 +175,10 @@ export interface FocusSessionState {
   /** Running average of the server's per-sample scores, 0-100. */
   liveFocus: number | null;
   awaySec: number;
+  /** Seconds of absence credited as phone-down time rather than distraction. */
+  phoneDownSec: number;
+  /** Face-down mode is engaged: the study screen should go dark. */
+  isPhoneDown: boolean;
   result: FocusResult | null;
   rating: number | null;
   /**
@@ -171,7 +186,9 @@ export interface FocusSessionState {
    * the session ends - during one the dial already carries the average, and a
    * chart redrawing every 15 seconds is motion without information.
    */
-  trace: number[];
+  trace: FocusTimeline | null;
+  /** The running session's chart so far; null until the first refresh. */
+  liveTimeline: FocusTimeline | null;
   /** Seconds left against the plan, or null for an open-ended session. */
   remainingSec: number | null;
   /** False when motion is the fallback rather than a real accelerometer. */
@@ -242,8 +259,10 @@ export const useFocusSession = (): FocusSessionState => {
   const [sampleCount, setSampleCount] = useState(0);
   const [liveFocus, setLiveFocus] = useState<number | null>(null);
   const [awaySec, setAwaySec] = useState(0);
+  const [phoneDownSec, setPhoneDownSec] = useState(0);
   const [result, setResult] = useState<FocusResult | null>(null);
-  const [trace, setTrace] = useState<number[]>([]);
+  const [trace, setTrace] = useState<FocusTimeline | null>(null);
+  const [liveTimeline, setLiveTimeline] = useState<FocusTimeline | null>(null);
   const [streakDays, setStreakDays] = useState(0);
   const [tasks, setTasks] = useState<SessionTask[]>([]);
   const [draftTasks, setDraftTasks] = useState<string[]>([]);
@@ -272,10 +291,17 @@ export const useFocusSession = (): FocusSessionState => {
   const startedAtRef = useRef<number | null>(null);
   const sampleCountRef = useRef(0);
   const awaySinceRef = useRef<number | null>(null);
+  /** Absences settled this session, so the chart can say what each gap was. */
+  const awaySpellsRef = useRef<FocusSpell[]>([]);
+  const downSpellsRef = useRef<FocusSpell[]>([]);
+  /** Whether the current absence began straight after the phone lay face-down. */
+  const leftFromPhoneDownRef = useRef(false);
 
   const stopTimers = useRef<() => void>(() => {});
 
   const { startMotion, stopMotion, readMotionVariance, hasSensor } = useMotionVariance();
+  const { isPhoneDown, startPhoneDown, stopPhoneDown, wasPhoneDownRecently, stepsBetween } =
+    usePhoneDown();
 
   const describe = (err: unknown) =>
     err instanceof ApiError ? err.message : "Something went wrong";
@@ -288,10 +314,19 @@ export const useFocusSession = (): FocusSessionState => {
           token,
         }),
       );
-      const scores = page.data.map((s) => s.computedFocus);
-      if (scores.length === 0) return;
-      const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
-      setLiveFocus(Math.round(mean * 100));
+      // Away time counts, as it does in the final score: averaging only the
+      // samples would show a full reading to someone who has been gone for
+      // half the session.
+      const timeline = buildFocusTimeline({
+        samples: page.data,
+        startedAtMs: startedAtRef.current,
+        endedAtMs: Date.now(),
+        awaySpells: awaySpellsRef.current,
+        downSpells: downSpellsRef.current,
+      });
+      if (timeline.average === null) return;
+      setLiveTimeline(timeline);
+      setLiveFocus(timeline.average);
     } catch {
       // A failed read leaves the last reading on screen. It is a progress
       // indicator, not the result, and the session must not end over it.
@@ -346,6 +381,7 @@ export const useFocusSession = (): FocusSessionState => {
     if (!sessionId || durationSec < MIN_AWAY_SEC) return;
 
     setAwaySec((prev) => prev + durationSec);
+    awaySpellsRef.current.push({ endMs: Date.now(), durationSec });
     try {
       await withAuth((token) =>
         request(`/api/sessions/${sessionId}/interruptions`, {
@@ -359,9 +395,36 @@ export const useFocusSession = (): FocusSessionState => {
     }
   }, []);
 
+  /**
+   * Decides what an absence was, then records it.
+   *
+   * An absence that began straight after the phone lay face-down, with no
+   * steps on the pedometer while away, is phone-down time - the phone locked
+   * and left on the desk - and is NOT logged as an interruption, so the score
+   * does not count it as time away. Anything else, including every absence
+   * the pedometer cannot vouch for, is logged as before. See usePhoneDown for
+   * why this is inferred rather than measured.
+   */
+  const settleAway = useCallback(
+    async (sinceMs: number, untilMs: number, fromPhoneDown: boolean) => {
+      const durationSec = (untilMs - sinceMs) / 1000;
+      if (fromPhoneDown && (await stepsBetween(sinceMs, untilMs)) === 0) {
+        setPhoneDownSec((prev) => prev + durationSec);
+        downSpellsRef.current.push({ endMs: untilMs, durationSec });
+      } else {
+        await logAway(durationSec);
+      }
+      // Straight away, so the gap shows on the live chart the moment the user
+      // is back rather than at the next scheduled refresh.
+      if (sessionIdRef.current) void refreshLiveFocus(sessionIdRef.current);
+    },
+    [logAway, stepsBetween, refreshLiveFocus],
+  );
+
   /** Ticking clock, sampler and AppState listener, all torn down together. */
   const startTimers = useCallback(() => {
     startMotion();
+    startPhoneDown();
 
     const tick = setInterval(() => {
       if (startedAtRef.current) {
@@ -376,9 +439,12 @@ export const useFocusSession = (): FocusSessionState => {
       if (next === "active") {
         const since = awaySinceRef.current;
         awaySinceRef.current = null;
-        if (since) void logAway((Date.now() - since) / 1000);
+        if (since) void settleAway(since, Date.now(), leftFromPhoneDownRef.current);
       } else if (awaySinceRef.current === null) {
         awaySinceRef.current = Date.now();
+        // Read at the moment of leaving: by the time the user is back, "was it
+        // face-down just now" would be asking about the wrong moment.
+        leftFromPhoneDownRef.current = wasPhoneDownRecently();
       }
     };
     const subscription = AppState.addEventListener("change", onAppState);
@@ -388,9 +454,10 @@ export const useFocusSession = (): FocusSessionState => {
       clearInterval(sampler);
       subscription.remove();
       stopMotion();
+      stopPhoneDown();
       stopTimers.current = () => {};
     };
-  }, [sendSample, logAway, startMotion, stopMotion]);
+  }, [sendSample, settleAway, startMotion, stopMotion, startPhoneDown, stopPhoneDown, wasPhoneDownRecently]);
 
   // Nothing may outlive the screen: an interval still posting samples after
   // the user has navigated away would keep writing to a session they think
@@ -483,10 +550,14 @@ export const useFocusSession = (): FocusSessionState => {
       setSampleCount(0);
       setElapsedSec(0);
       setAwaySec(0);
+      setPhoneDownSec(0);
       setLiveFocus(null);
       setResult(null);
       setRating(null);
-      setTrace([]);
+      setTrace(null);
+      setLiveTimeline(null);
+      awaySpellsRef.current = [];
+      downSpellsRef.current = [];
       setPhase("running");
       startTimers();
     },
@@ -700,7 +771,15 @@ export const useFocusSession = (): FocusSessionState => {
               { token },
             ),
           );
-          setTrace(page.data.map((sample) => sample.computedFocus));
+          setTrace(
+            buildFocusTimeline({
+              samples: page.data,
+              startedAtMs: startedAtRef.current,
+              endedAtMs: Date.now(),
+              awaySpells: awaySpellsRef.current,
+              downSpells: downSpellsRef.current,
+            }),
+          );
         } catch {
           /* no trace: the recap simply omits the chart */
         }
@@ -844,9 +923,13 @@ export const useFocusSession = (): FocusSessionState => {
     setSampleCount(0);
     setLiveFocus(null);
     setAwaySec(0);
+    setPhoneDownSec(0);
     setResult(null);
     setRating(null);
-    setTrace([]);
+    setTrace(null);
+    setLiveTimeline(null);
+    awaySpellsRef.current = [];
+    downSpellsRef.current = [];
     setTasks([]);
     // Drafts survive a reset on purpose: someone who studies the same list
     // twice should not have to retype it.
@@ -864,6 +947,7 @@ export const useFocusSession = (): FocusSessionState => {
     phase,
     elapsedSec,
     trace,
+    liveTimeline,
     remainingSec,
     streakDays,
     tasks,
@@ -879,6 +963,8 @@ export const useFocusSession = (): FocusSessionState => {
     sampleCount,
     liveFocus,
     awaySec,
+    phoneDownSec,
+    isPhoneDown,
     result,
     rating,
     selectedGroup,

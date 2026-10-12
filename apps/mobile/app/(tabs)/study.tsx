@@ -30,6 +30,7 @@ import FocusTrace from "@components/FocusTrace";
 import RatingSheet from "@components/RatingSheet";
 import TaskChecklist from "@components/TaskChecklist";
 import RoutineList from "@components/RoutineList";
+import { focusBand, focusBandColor } from "@components/focusBand";
 import GroupList from "@components/GroupList";
 import SessionHistory from "@components/SessionHistory";
 import RoomParticipants from "@components/RoomParticipants";
@@ -83,18 +84,6 @@ const short = (totalSec: number) => {
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
 };
 
-/**
- * Bands, not a gradient. Two words land where a number needs interpreting, and
- * the estimate is not precise enough to justify finer grain.
- */
-const band = (score: number | null) => {
-  if (score === null) return { label: "No reading", key: "none" as const };
-  if (score >= 80) return { label: "Deep focus", key: "good" as const };
-  if (score >= 60) return { label: "Solid focus", key: "good" as const };
-  if (score >= 40) return { label: "Patchy", key: "mid" as const };
-  return { label: "Distracted", key: "poor" as const };
-};
-
 const Study = () => {
   const { colors } = useTheme();
   const styles = useStyles("study");
@@ -108,7 +97,10 @@ const Study = () => {
     setPlannedSec,
     liveFocus,
     awaySec,
+    phoneDownSec,
+    isPhoneDown,
     trace,
+    liveTimeline,
     result,
     rating,
     streakDays,
@@ -224,16 +216,9 @@ const Study = () => {
 
   const running = phase === "running";
   const score = running ? liveFocus : (result?.focusScore ?? null);
-  const scoreBand = band(score);
-
-  const bandColor =
-    scoreBand.key === "good"
-      ? colors.success
-      : scoreBand.key === "mid"
-        ? colors.warning
-        : scoreBand.key === "poor"
-          ? colors.danger
-          : colors.primary;
+  // Shared with the session history, so a score reads the same in both.
+  const scoreBand = focusBand(score);
+  const bandColor = focusBandColor(scoreBand.key, colors);
 
   /**
    * With a plan the ring is a clock. Without one there is no end to fill
@@ -547,6 +532,16 @@ const Study = () => {
                 </View>
               ) : null}
 
+              {phoneDownSec > 0 ? (
+                <View style={styles.calmChip}>
+                  <Feather name="smartphone" size={13} color={colors.success} />
+                  <Text style={styles.calmChipText}>{short(phoneDownSec)} phone down</Text>
+                </View>
+              ) : null}
+
+              {/* Live, so leaving the app or fidgeting shows up while it happens. */}
+              {liveTimeline ? <FocusTrace timeline={liveTimeline} live /> : null}
+
               {/* Group sessions only: a solo session is a room of one. */}
               {activeGroup && sessionId ? <RoomParticipants sessionId={sessionId} /> : null}
 
@@ -655,7 +650,7 @@ const Study = () => {
                 </Text>
               </Metric>
 
-              <FocusTrace values={trace} totalSec={result.totalSec} />
+              {trace ? <FocusTrace timeline={trace} /> : null}
 
               <View style={styles.rewardRow}>
                 <View style={styles.rewardCard}>
@@ -721,6 +716,14 @@ const Study = () => {
           onClose={() => setSheetOpen(false)}
         />
       </SafeAreaView>
+
+      {/* Face-down mode: nobody can see the screen, so it goes black. */}
+      {running && isPhoneDown ? (
+        <View style={styles.phoneDownOverlay} accessibilityLabel="Phone down, still focusing">
+          <Text style={styles.phoneDownText}>Phone down · focusing</Text>
+          <Text style={styles.phoneDownHint}>Pick it up to see your session</Text>
+        </View>
+      ) : null}
     </LinearGradient>
   );
 };

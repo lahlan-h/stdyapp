@@ -11,6 +11,15 @@
 export type { FeedAuthor, FeedPost, FeedSession } from "./types";
 export { useIsSignedIn, useSessionRestored, logout } from "./auth";
 export { useLogin, type LoginState } from "./useLogin";
+export {
+  buildFocusTimeline,
+  interruptionsToSpells,
+  FOCUS_SAMPLE_INTERVAL_SEC,
+  type FocusTimeline,
+  type FocusSpell,
+  type TraceSegment,
+  type TimedFocusSample,
+} from "./focusTrace";
 export { useRegister, type RegisterState } from "./useRegister";
 export { useGoogleSignIn, type GoogleSignInState } from "./useGoogleSignIn";
 export {

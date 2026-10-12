@@ -5,6 +5,8 @@ import {
   scoreSample,
   scoreSession,
   updateBaseline,
+  motionFeature,
+  isLegacyMotionBaseline,
   computeAccuracy,
   applyCalibration,
   nextCalibrationOffset,
@@ -233,8 +235,16 @@ const recalibrate = async (userId) => {
 const updateBaselinesFromSamples = async (userId, samples, baselineRows) => {
   const existing = toBaselineMap(baselineRows);
 
+  // A motion baseline from before the log scale is restarted, not extended:
+  // folding log readings into a mean of raw variances would produce a number
+  // that is neither.
+  if (isLegacyMotionBaseline(existing[SIGNALS.MOTION])) {
+    delete existing[SIGNALS.MOTION];
+  }
+
   const readings = {
-    [SIGNALS.MOTION]: samples.map((s) => s.motionVariance),
+    // Baselined on the same scale scoreMotion scores on.
+    [SIGNALS.MOTION]: samples.map((s) => motionFeature(s.motionVariance)),
     // Presence is tracked as 0/1 so the mean is simply the user's in-app rate.
     // Recorded for reporting only - scorePresence deliberately does not use it.
     [SIGNALS.PRESENCE]: samples.map((s) => (s.inApp ? 1 : 0)),

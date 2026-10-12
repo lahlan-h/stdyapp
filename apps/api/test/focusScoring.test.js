@@ -27,6 +27,10 @@ import {
   CALIBRATION_MIN_SAMPLES,
   SAMPLE_WEIGHT,
   COMPLETION_WEIGHT,
+  motionFeature,
+  isLegacyMotionBaseline,
+  TYPICAL_MOTION_VARIANCE,
+  MOTION_FLOOR,
 } from "../src/services/focusScoring.js";
 
 /**
@@ -51,7 +55,7 @@ const at = (minutes) => new Date(START.getTime() + minutes * MINUTE);
 /** A sample sitting exactly on the population motion mean, so motion === 0.5. */
 const typicalSample = (overrides = {}) => ({
   timestamp: START,
-  motionVariance: POPULATION_BASELINES.MOTION.mean,
+  motionVariance: TYPICAL_MOTION_VARIANCE,
   inApp: true,
   ...overrides,
 });
@@ -123,14 +127,26 @@ describe("resolveBaseline", () => {
   });
 });
 
+describe("motionFeature", () => {
+  it("is finite for zero, negative and non-numeric readings", () => {
+    for (const value of [0, -1, NaN, undefined, null]) {
+      closeTo(motionFeature(value), Math.log10(MOTION_FLOOR));
+    }
+  });
+
+  it("puts each order of magnitude about one unit apart", () => {
+    closeTo(motionFeature(1e-2) - motionFeature(1e-3), 1, 0.01);
+  });
+});
+
 describe("scoreMotion", () => {
   it("scores a perfectly typical reading at the midpoint", () => {
-    closeTo(scoreMotion(POPULATION_BASELINES.MOTION.mean, null), 0.5);
+    closeTo(scoreMotion(TYPICAL_MOTION_VARIANCE, null), 0.5);
   });
 
   it("rewards stillness and penalises movement, asymmetrically", () => {
     const still = scoreMotion(0, null);
-    const typical = scoreMotion(POPULATION_BASELINES.MOTION.mean, null);
+    const typical = scoreMotion(TYPICAL_MOTION_VARIANCE, null);
     const restless = scoreMotion(5, null);
 
     assert.ok(still > typical, "unusually still should beat typical");
@@ -144,6 +160,37 @@ describe("scoreMotion", () => {
       assert.ok(Number.isFinite(score), `NaN/Infinity for ${value}`);
       assert.ok(score >= 0 && score <= 1, `out of range for ${value}`);
     }
+  });
+
+  // Readings measured on a real phone (per-axis accelerometer variance, g^2).
+  // The bug this guards against: a swayed phone used to score as still because
+  // the raw scale crushed everything below "shaking" into one corner.
+  it("tells a still phone from a swayed one from a shaken one", () => {
+    const desk = scoreMotion(1e-6, null);
+    const swayed = scoreMotion(2e-2, null);
+    const shaken = scoreMotion(1.3e-1, null);
+
+    assert.ok(desk > 0.85, `a phone on a desk should read as still, got ${desk}`);
+    assert.ok(swayed < 0.25, `a swayed phone should read as moving, got ${swayed}`);
+    assert.ok(shaken < swayed, "shaking should score below swaying");
+  });
+
+  it("ignores a baseline built on the old raw scale", () => {
+    const legacy = { mean: 0.02, variance: 0.001, sampleCount: 500, isCalibrated: true };
+    assert.equal(isLegacyMotionBaseline(legacy), true);
+    closeTo(scoreMotion(2e-2, legacy), scoreMotion(2e-2, null));
+  });
+
+  it("uses a calibrated log-scale baseline", () => {
+    // Someone whose phone usually sits on the desk: a held phone is unusual.
+    const deskStudier = {
+      mean: motionFeature(1e-6),
+      variance: 0.25,
+      sampleCount: 500,
+      isCalibrated: true,
+    };
+    assert.equal(isLegacyMotionBaseline(deskStudier), false);
+    assert.ok(scoreMotion(1e-4, deskStudier) < scoreMotion(1e-4, null));
   });
 
   it("never produces NaN against a zero-variance baseline", () => {
@@ -243,7 +290,9 @@ describe("scoreSample", () => {
   it("scores an entirely distracted sample at zero", () => {
     const result = scoreSample({ motionVariance: 1e6, inApp: false });
     assert.equal(result.presence, 0);
-    closeTo(result.composite, 0, 1e-6);
+    // Motion is scored on a log scale, so even an absurd reading leaves a
+    // vanishing remainder rather than an exact zero.
+    closeTo(result.composite, 0, 1e-3);
   });
 });
 

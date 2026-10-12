@@ -145,6 +145,37 @@ export const createStudyStyles = (colors: ColorScheme) => {
     },
     warnChipText: { fontSize: 12, fontWeight: "600", color: colors.danger },
 
+    /** Mid-session, when an absence was credited as phone-down time. */
+    calmChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      alignSelf: "center",
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      backgroundColor: colors.successTint,
+      borderWidth: 1,
+      borderColor: colors.successEdge,
+    },
+    calmChipText: { fontSize: 12, fontWeight: "600", color: colors.success },
+
+    /**
+     * Face-down mode. Pure black, not a dimmed theme colour: on an OLED screen
+     * black pixels are switched off, which is what makes keeping the screen
+     * awake face-down cheap.
+     */
+    phoneDownOverlay: {
+      ...StyleSheet.absoluteFill,
+      backgroundColor: "#000000",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      zIndex: 10,
+    },
+    phoneDownText: { fontSize: 15, fontWeight: "600", color: "#3A3A3A" },
+    phoneDownHint: { fontSize: 12, color: "#2A2A2A" },
+
     // ---- duration picker -------------------------------------------------
     pickerWrap: { justifyContent: "center" },
     pickerRow: { flexDirection: "row" },
@@ -414,6 +445,48 @@ export const createStudyStyles = (colors: ColorScheme) => {
       height: "100%",
     },
     traceBar: { flex: 1, borderRadius: 2, minWidth: 2 },
+    /**
+     * An interval spent in another app: full height, so time away reads as a
+     * block the eye cannot miss rather than one more short bar.
+     */
+    traceAwayBar: {
+      flex: 1,
+      minWidth: 2,
+      height: "100%",
+      borderRadius: 2,
+      backgroundColor: colors.danger,
+      // Translucent so the block reads as a region of time, not a 100% score;
+      // strong enough that it cannot be mistaken for the empty plot behind it.
+      opacity: 0.55,
+    },
+    /** An interval with the phone down on the desk: present, just not looking. */
+    traceDownBar: {
+      flex: 1,
+      minWidth: 2,
+      height: "100%",
+      borderRadius: 2,
+      backgroundColor: colors.primary,
+      opacity: 0.28,
+    },
+    /** A one-line "where the time went" strip under the plot. */
+    traceRibbon: {
+      flexDirection: "row",
+      height: 8,
+      borderRadius: 4,
+      overflow: "hidden",
+      gap: 2,
+    },
+    traceRibbonPart: { height: "100%" },
+    traceLegend: { flexDirection: "row", flexWrap: "wrap", columnGap: 14, rowGap: 6 },
+    traceLegendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+    traceLegendDot: { width: 8, height: 8, borderRadius: 4 },
+    traceLegendText: {
+      fontSize: 12,
+      color: colors.textMuted,
+      fontVariant: ["tabular-nums"],
+    },
+    traceLegendStrong: { color: colors.text, fontWeight: "600" },
+    traceLiveTag: { fontSize: 11, fontWeight: "600", color: colors.success },
 
     traceYAxis: { justifyContent: "space-between", paddingVertical: 4, width: 26 },
     traceXAxis: { flexDirection: "row", justifyContent: "space-between" },
