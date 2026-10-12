@@ -71,19 +71,74 @@ export const TASK_WEIGHT = 0.15;
 export const CALIBRATION_MIN_SAMPLES = 30;
 
 /**
+ * Added before taking the log of a motion reading, in g^2.
+ *
+ * Roughly the accelerometer's own noise floor when the phone lies flat on a
+ * desk, so "perfectly still" lands at a finite value instead of log(0) = -Inf,
+ * and readings below the sensor's noise are not told apart from each other.
+ */
+export const MOTION_FLOOR = 1e-6;
+
+/**
+ * Turns a raw motion reading into the value motion is scored and baselined on.
+ *
+ * LOG SCALE, because accelerometer variance spans six orders of magnitude: a
+ * phone on a desk reads ~1e-6, one held in the hand ~1e-4, one being swayed
+ * ~1e-2, one being shaken ~1e-1. On the raw scale everything below "shaking"
+ * collapses into the same corner and motion stops discriminating at all, which
+ * is exactly what happened before this existed - a swayed phone scored as
+ * still. On the log scale each of those steps is about one unit apart.
+ *
+ * @param {number} motionVariance - g^2, as the client reports it
+ * @returns {number} log10(variance + MOTION_FLOOR)
+ */
+export const motionFeature = (motionVariance) =>
+  Math.log10(
+    (Number.isFinite(motionVariance) ? Math.max(0, motionVariance) : 0) + MOTION_FLOOR,
+  );
+
+/**
+ * What an ordinary study interval reads, in g^2: the phone held or nudged now
+ * and then, not lying untouched and not being carried about.
+ */
+export const TYPICAL_MOTION_VARIANCE = 3e-4;
+
+/**
  * Fallback statistics for an uncalibrated user.
  *
  * Rough, deliberately wide starting points rather than precise figures - wide
  * variance keeps early z-scores small, so a new user's estimate hovers near the
  * middle instead of swinging to the extremes on their first session.
  *
- * MOTION is the variance of accelerometer magnitude in g^2; HEART_RATE is BPM.
- * PRESENCE has no baseline - see scorePresence below.
+ * MOTION is in motionFeature units (log10 g^2): a variance of 1 there means one
+ * order of magnitude either side of typical is a 1-sigma reading. HEART_RATE
+ * is BPM. PRESENCE has no baseline - see scorePresence below.
  */
 export const POPULATION_BASELINES = Object.freeze({
-  MOTION: Object.freeze({ mean: 0.35, variance: 0.04 }),
+  MOTION: Object.freeze({ mean: motionFeature(TYPICAL_MOTION_VARIANCE), variance: 1 }),
   HEART_RATE: Object.freeze({ mean: 72, variance: 64 }),
 });
+
+/** Motion baseline means at or above this are raw variances - see below. */
+export const LEGACY_MOTION_MEAN_THRESHOLD = -0.5;
+
+/**
+ * Whether a stored motion baseline predates motionFeature.
+ *
+ * Baselines built before the log scale hold raw variances, whose mean is never
+ * negative. On the log scale a mean that high would mean a user whose phone
+ * is, on average, being shaken for the whole session - not a real study
+ * pattern. Such a row is treated as absent (population default) and restarted
+ * on the next session, rather than migrated: the raw readings needed to
+ * rebuild it on the new scale were never kept per user.
+ *
+ * @param {{ mean?: number } | null | undefined} baseline
+ * @returns {boolean}
+ */
+export const isLegacyMotionBaseline = (baseline) =>
+  Boolean(baseline) &&
+  Number.isFinite(baseline.mean) &&
+  baseline.mean >= LEGACY_MOTION_MEAN_THRESHOLD;
 
 /**
  * A standard deviation at or below this counts as degenerate.
@@ -158,13 +213,18 @@ export const zScore = (value, { mean, standardDeviation }) => {
  * also saturates gracefully, so one wild accelerometer reading cannot drag a
  * whole session down the way an unbounded linear penalty would.
  *
- * @param {number} motionVariance
- * @param {object|null} baseline
+ * Scored on motionFeature, not the raw variance - see there for why.
+ *
+ * @param {number} motionVariance - raw g^2
+ * @param {object|null} baseline - in motionFeature units
  * @returns {number} 0 (constant movement) to 1 (unusually still)
  */
 export const scoreMotion = (motionVariance, baseline) => {
-  const stats = resolveBaseline(baseline, POPULATION_BASELINES.MOTION);
-  const z = zScore(motionVariance, stats);
+  const stats = resolveBaseline(
+    isLegacyMotionBaseline(baseline) ? null : baseline,
+    POPULATION_BASELINES.MOTION,
+  );
+  const z = zScore(motionFeature(motionVariance), stats);
   return clamp01(1 / (1 + Math.exp(MOTION_SLOPE * z)));
 };
 

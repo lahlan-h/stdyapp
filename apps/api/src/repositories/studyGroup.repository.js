@@ -13,15 +13,42 @@ export const findGroupById = (id) => {
   });
 };
 
+// The viewer's own membership row, at most one, so a list can say "joined"
+// without a query per group. Filtered to the viewer: the full membership list
+// is GET /:id/members, not something every search result should carry.
+const viewerInclude = (viewerId) => ({
+  _count: { select: { memberships: true } },
+  memberships: { where: { userId: viewerId }, select: { role: true } },
+});
+
 // search covers both public AND private groups — private groups are
-// deliberately still discoverable, joining just requires the code
-export const searchGroups = (query) => {
+// deliberately still discoverable, joining just requires the code.
+//
+// One page plus the total, in one transaction so the two agree - the shape
+// and the reasoning of listUsers in user.service.js. The id tiebreak keeps
+// pages stable when two groups share a createdAt.
+export const searchGroups = ({ q, page, limit }, viewerId) => {
+  const where = q ? { name: { contains: q, mode: "insensitive" } } : undefined;
+
+  return prisma.$transaction([
+    prisma.studyGroup.findMany({
+      where,
+      include: viewerInclude(viewerId),
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.studyGroup.count({ where }),
+  ]);
+};
+
+// The groups the viewer belongs to, owned ones included - createGroup makes
+// the owner a member.
+export const findGroupsByMember = (userId) => {
   return prisma.studyGroup.findMany({
-    where: query
-      ? { name: { contains: query, mode: "insensitive" } }
-      : undefined,
-    include: { _count: { select: { memberships: true } } },
-    orderBy: { createdAt: "desc" },
+    where: { memberships: { some: { userId } } },
+    include: viewerInclude(userId),
+    orderBy: { name: "asc" },
   });
 };
 

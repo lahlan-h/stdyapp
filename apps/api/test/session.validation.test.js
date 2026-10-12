@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   startSessionSchema,
+  joinSessionSchema,
+  endSessionSchema,
   addInterruptionSchema,
   INTERRUPTION_TYPES,
 } from "../src/validation/session.validation.js";
@@ -80,5 +82,63 @@ describe("addInterruptionSchema.type", () => {
 
   it("matches the Prisma enum exactly", () => {
     assert.deepEqual(INTERRUPTION_TYPES, ["APP_EXIT", "DEVICE_MOTION", "MANUAL"]);
+  });
+});
+
+describe("joinSessionSchema", () => {
+  it("accepts a generated code, and normalises case and whitespace", () => {
+    const parsed = joinSessionSchema.safeParse({ inviteCode: "  ab12cd " });
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data.inviteCode, "AB12CD");
+  });
+
+  it("rejects a missing, short, long or non-alphanumeric code", () => {
+    for (const body of [
+      {},
+      { inviteCode: "" },
+      { inviteCode: "ab" },
+      { inviteCode: "A".repeat(17) },
+      { inviteCode: "AB-12C" },
+    ]) {
+      assert.equal(
+        joinSessionSchema.safeParse(body).success,
+        false,
+        `${JSON.stringify(body)} should be rejected`,
+      );
+    }
+  });
+
+  it("rejects unknown keys, so a client cannot pick the group", () => {
+    assert.equal(
+      joinSessionSchema.safeParse({
+        inviteCode: "AB12CD",
+        groupId: "00000000-0000-4000-8000-000000000000",
+      }).success,
+      false,
+    );
+  });
+});
+
+describe("endSessionSchema", () => {
+  it("accepts no body at all - every older client sends none", () => {
+    assert.equal(endSessionSchema.safeParse(undefined).success, true);
+    assert.equal(endSessionSchema.safeParse({}).success, true);
+  });
+
+  it("accepts the moment End was tapped, as an ISO timestamp", () => {
+    assert.equal(
+      endSessionSchema.safeParse({ endedAt: "2026-10-12T09:30:00.000Z" }).success,
+      true,
+    );
+  });
+
+  it("rejects a non-timestamp and unknown keys", () => {
+    for (const body of [{ endedAt: "yesterday" }, { endedAt: 12 }, { focusPoints: 999 }]) {
+      assert.equal(
+        endSessionSchema.safeParse(body).success,
+        false,
+        `${JSON.stringify(body)} should be rejected`,
+      );
+    }
   });
 });

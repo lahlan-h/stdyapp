@@ -8,6 +8,7 @@ import * as notificationStore from "./notificationStore";
 import { loadConversations, loadHistory } from "./messageApi";
 import * as messageStore from "./messageStore";
 import type { MessageCreatedEvent } from "./messageStore";
+import { emitRoomUpdate } from "./roomSignal";
 
 /** The API's socket path - NOTIFICATION_SOCKET_PATH in apps/api/src/realtime. */
 const SOCKET_URL = `${API_BASE_URL.replace(/^http/, "ws")}/api/notifications/ws`;
@@ -40,8 +41,8 @@ const NativeWebSocket = WebSocket as unknown as new (
 
 /**
  * Everything the server sends. Notification events use bare names; message
- * events are namespaced (`message:`, `conversation:`), so neither family can be
- * routed into the other's store.
+ * and room events are namespaced (`message:`, `conversation:`, `room:`), so no
+ * family can be routed into another's store.
  */
 type SocketEvent =
   | { type: "ready"; unread: number; messagesUnread?: number }
@@ -51,7 +52,8 @@ type SocketEvent =
   | { type: "read"; id: string }
   | { type: "read-all" }
   | ({ type: "message:created" } & MessageCreatedEvent)
-  | { type: "conversation:read"; userId: string };
+  | { type: "conversation:read"; userId: string }
+  | { type: "room:updated"; roomId: string };
 
 let socket: WebSocket | null = null;
 /** Whether a socket SHOULD be open: signed in, and the app in the foreground. */
@@ -77,8 +79,13 @@ const apply = (event: SocketEvent): void => {
       loadConversations().catch(() => {});
       const openChat = messageStore.getActiveChat();
       if (openChat) loadHistory(openChat).catch(() => {});
+      // And any study room on screen, for the same reason.
+      emitRoomUpdate(null);
       return;
     }
+    case "room:updated":
+      emitRoomUpdate(event.roomId);
+      return;
     case "message:created":
       messageStore.receive(event);
       return;

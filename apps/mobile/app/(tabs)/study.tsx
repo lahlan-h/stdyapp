@@ -1,8 +1,17 @@
-import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StatusBar, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  Share,
+  StatusBar,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 
 import {
@@ -11,8 +20,9 @@ import {
   useTabBarClearance,
   STUDY_FOOTER_ROOM,
   STUDY_ICON_SIZE,
+  TASK_ICON_SIZE,
 } from "@theme";
-import { useFocusSession } from "@data";
+import { useFocusSession, consumeStudyRequest, MAX_JOIN_CODE_LENGTH } from "@data";
 
 import DurationPicker from "@components/DurationPicker";
 import FocusDial from "@components/FocusDial";
@@ -20,13 +30,19 @@ import FocusTrace from "@components/FocusTrace";
 import RatingSheet from "@components/RatingSheet";
 import TaskChecklist from "@components/TaskChecklist";
 import RoutineList from "@components/RoutineList";
+import { focusBand, focusBandColor } from "@components/focusBand";
+import GroupList from "@components/GroupList";
+import SessionHistory from "@components/SessionHistory";
+import RoomParticipants from "@components/RoomParticipants";
+import { confirmGroupAction } from "@components/confirmGroup";
 
-/** The two views under the Study tab. */
-type StudyView = "sessions" | "routines";
+/** The three views under the Study tab. */
+type StudyView = "sessions" | "routines" | "groups";
 
 const VIEWS: { key: StudyView; label: string }[] = [
   { key: "sessions", label: "Sessions" },
   { key: "routines", label: "Routines" },
+  { key: "groups", label: "Groups" },
 ];
 
 /**
@@ -45,10 +61,11 @@ const VIEWS: { key: StudyView; label: string }[] = [
  *
  * Every colour is a palette token; the screen holds no hex of its own.
  *
- * TWO VIEWS, ONE SESSION. A switch at the top flips between Sessions and
- * Routines, but useFocusSession stays mounted in this screen whichever is
- * showing - so a running session keeps its timer, samples and away-tracking
- * while the user checks a routine. Only the rendered content swaps.
+ * THREE VIEWS, ONE SESSION. A switch at the top flips between Sessions,
+ * Routines and Groups, but useFocusSession stays mounted in this screen
+ * whichever is showing - so a running session keeps its timer, samples and
+ * away-tracking while the user checks a routine or a group. Only the rendered
+ * content swaps.
  */
 
 const clock = (totalSec: number) => {
@@ -67,18 +84,6 @@ const short = (totalSec: number) => {
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
 };
 
-/**
- * Bands, not a gradient. Two words land where a number needs interpreting, and
- * the estimate is not precise enough to justify finer grain.
- */
-const band = (score: number | null) => {
-  if (score === null) return { label: "No reading", key: "none" as const };
-  if (score >= 80) return { label: "Deep focus", key: "good" as const };
-  if (score >= 60) return { label: "Solid focus", key: "good" as const };
-  if (score >= 40) return { label: "Patchy", key: "mid" as const };
-  return { label: "Distracted", key: "poor" as const };
-};
-
 const Study = () => {
   const { colors } = useTheme();
   const styles = useStyles("study");
@@ -92,7 +97,10 @@ const Study = () => {
     setPlannedSec,
     liveFocus,
     awaySec,
+    phoneDownSec,
+    isPhoneDown,
     trace,
+    liveTimeline,
     result,
     rating,
     streakDays,
@@ -103,9 +111,16 @@ const Study = () => {
     addTask,
     toggleTask,
     removeTask,
+    selectedGroup,
+    setSelectedGroup,
+    activeGroup,
+    sessionId,
+    ending,
+    privateGroupId,
     error,
     busy,
     start,
+    join,
     end,
     rate,
     reset,
@@ -113,19 +128,97 @@ const Study = () => {
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [view, setView] = useState<StudyView>("sessions");
+  const [inviteDraft, setInviteDraft] = useState("");
+
+  /**
+   * Takes a request a group screen left on the way here - see studyRequest.ts.
+   * On focus, because that is how the group screen arrives: it navigates to
+   * this already-mounted tab rather than mounting a new one.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      const request = consumeStudyRequest();
+      if (!request) return;
+      setView("sessions");
+      if (request.kind === "group") {
+        setSelectedGroup({ id: request.groupId, name: request.groupName });
+      } else if (phase === "running") {
+        // One session at a time: joining another means leaving this one.
+        confirmGroupAction(
+          "Switch sessions?",
+          `Your current session ends and is saved, and you join the one in ${request.groupName}.`,
+          "Switch",
+          () => join(request.inviteCode, request.groupName, { switching: true }),
+          { destructive: false },
+        );
+      } else {
+        join(request.inviteCode, request.groupName);
+      }
+    }, [join, setSelectedGroup, phase]),
+  );
+
+  const submitInvite = () => {
+    if (!inviteDraft.trim()) return;
+    join(inviteDraft);
+    setInviteDraft("");
+  };
+
+  /** "Invite copied", shown under the chip for a moment after a web copy. */
+  const [inviteNotice, setInviteNotice] = useState<string | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+  }, []);
+
+  const showNotice = (text: string) => {
+    setInviteNotice(text);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setInviteNotice(null), 2500);
+  };
+
+  /**
+   * Shares the invite - the system share sheet on phones.
+   *
+   * The web needs its own path. react-native-web's Share is the browser's
+   * navigator.share, which most DESKTOP browsers lack, and there it rejects
+   * without a word - the chip looked dead. So the web uses the browser's sheet
+   * where it exists (most phone browsers) and otherwise copies the invite and
+   * says so. If even the clipboard is refused, the code is shown to copy by
+   * hand: the chip always does something.
+   */
+  const shareInvite = async () => {
+    if (!activeGroup?.inviteCode) return;
+    const code = activeGroup.inviteCode;
+    const message = `Study with me in ${activeGroup.name} on stdy - join with code ${code}`;
+
+    if (Platform.OS !== "web") {
+      void Share.share({ message });
+      return;
+    }
+
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ text: message });
+        return;
+      } catch (err) {
+        // Dismissing the sheet is a choice, not a failure - no fallback then.
+        if (err instanceof Error && err.name === "AbortError") return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(message);
+      showNotice("Invite copied - paste it to a friend");
+    } catch {
+      showNotice(`Your invite code is ${code}`);
+    }
+  };
 
   const running = phase === "running";
   const score = running ? liveFocus : (result?.focusScore ?? null);
-  const scoreBand = band(score);
-
-  const bandColor =
-    scoreBand.key === "good"
-      ? colors.success
-      : scoreBand.key === "mid"
-        ? colors.warning
-        : scoreBand.key === "poor"
-          ? colors.danger
-          : colors.primary;
+  // Shared with the session history, so a score reads the same in both.
+  const scoreBand = focusBand(score);
+  const bandColor = focusBandColor(scoreBand.key, colors);
 
   /**
    * With a plan the ring is a clock. Without one there is no end to fill
@@ -148,8 +241,8 @@ const Study = () => {
   }, [phase]);
 
   /**
-   * A session that ends while Routines is showing brings Sessions back, so the
-   * recap and its rating sheet are not opened behind the routine list.
+   * A session that ends while Routines or Groups is showing brings Sessions back, so the
+   * recap and its rating sheet are not opened behind another list.
    */
   useEffect(() => {
     if (phase === "recap") setView("sessions");
@@ -170,9 +263,13 @@ const Study = () => {
    * behaved as though it were not.
    */
   const share = () => {
+    // Read before reset() clears it, so the composer opens already linked.
+    const finished = sessionId;
     setSheetOpen(false);
     reset();
-    router.push("/new-post");
+    router.push(
+      finished ? { pathname: "/new-post", params: { sessionId: finished } } : "/new-post",
+    );
   };
 
   const Metric = ({
@@ -247,11 +344,24 @@ const Study = () => {
             })}
           </View>
 
-          {!showingSessions ? <RoutineList /> : null}
+          {view === "routines" ? <RoutineList /> : null}
+          {view === "groups" ? <GroupList /> : null}
 
           {showingSessions && error ? (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{error}</Text>
+              {/* A private group's session: the way in is the group's join code. */}
+              {privateGroupId ? (
+                <Pressable
+                  style={styles.linkButton}
+                  onPress={() =>
+                    router.push({ pathname: "/group/[id]", params: { id: privateGroupId } })
+                  }
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.linkText}>Open the group to enter its code</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
 
@@ -279,6 +389,25 @@ const Study = () => {
                 onRemoveDraft={removeDraftTask}
               />
 
+              {/* Chosen from a group's screen; clearing it makes Start solo again. */}
+              {selectedGroup ? (
+                <View style={styles.groupChip}>
+                  <Feather name="users" size={TASK_ICON_SIZE} color={colors.primary} />
+                  <Text style={styles.groupChipText} numberOfLines={1}>
+                    Studying with {selectedGroup.name}
+                  </Text>
+                  <Pressable
+                    style={styles.groupChipClear}
+                    onPress={() => setSelectedGroup(null)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Study solo instead"
+                  >
+                    <Feather name="x" size={TASK_ICON_SIZE} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+              ) : null}
+
               <Pressable
                 style={[styles.action, busy && styles.actionDisabled]}
                 disabled={busy}
@@ -293,6 +422,43 @@ const Study = () => {
               <Text style={styles.helpText}>
                 Focus is an estimate, not a measurement.
               </Text>
+
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Join a session</Text>
+                <View style={styles.taskAddRow}>
+                  <TextInput
+                    style={styles.taskInput}
+                    value={inviteDraft}
+                    onChangeText={setInviteDraft}
+                    onSubmitEditing={submitInvite}
+                    placeholder="Invite code"
+                    placeholderTextColor={colors.textMuted}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    returnKeyType="go"
+                    maxLength={MAX_JOIN_CODE_LENGTH}
+                    accessibilityLabel="Session invite code"
+                  />
+                  <Pressable
+                    style={[
+                      styles.taskAddButton,
+                      (busy || !inviteDraft.trim()) && styles.actionDisabled,
+                    ]}
+                    disabled={busy || !inviteDraft.trim()}
+                    onPress={submitInvite}
+                    accessibilityRole="button"
+                    accessibilityLabel="Join session"
+                  >
+                    <Feather name="log-in" size={STUDY_ICON_SIZE} color={colors.surface} />
+                  </Pressable>
+                </View>
+                <Text style={styles.emptyText}>
+                  Joining a public group's session adds you to the group. Or
+                  open one of your groups to see who is studying now.
+                </Text>
+              </View>
+
+              <SessionHistory />
             </>
           ) : null}
 
@@ -313,9 +479,50 @@ const Study = () => {
               <View style={styles.statusPill}>
                 <View style={[styles.statusDot, { backgroundColor: bandColor }]} />
                 <Text style={styles.statusText}>
-                  {liveFocus === null ? "Reading…" : scoreBand.label}
+                  {ending === "retrying"
+                    ? "Ending… reconnecting"
+                    : ending === "failed"
+                      ? "Not ended yet"
+                      : liveFocus === null
+                        ? "Reading…"
+                        : scoreBand.label}
                 </Text>
               </View>
+
+              {/* The code is what lets someone else join; tapping shares it. */}
+              {activeGroup ? (
+                <Pressable
+                  style={styles.groupChip}
+                  onPress={shareInvite}
+                  disabled={!activeGroup.inviteCode}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    activeGroup.inviteCode
+                      ? `Studying in ${activeGroup.name}. Share invite code ${activeGroup.inviteCode}`
+                      : `Studying in ${activeGroup.name}`
+                  }
+                >
+                  <Feather name="users" size={TASK_ICON_SIZE} color={colors.primary} />
+                  <Text style={styles.groupChipText} numberOfLines={1}>
+                    {activeGroup.name}
+                  </Text>
+                  {activeGroup.inviteCode ? (
+                    <>
+                      <Text style={styles.groupChipCode}>{activeGroup.inviteCode}</Text>
+                      <View style={styles.groupChipClear}>
+                        <Feather name="share" size={TASK_ICON_SIZE} color={colors.textMuted} />
+                      </View>
+                    </>
+                  ) : null}
+                </Pressable>
+              ) : null}
+
+              {/* Web only: says what the chip just did when there was no sheet. */}
+              {inviteNotice ? (
+                <Text style={[styles.helpText, styles.centeredText]} accessibilityLiveRegion="polite">
+                  {inviteNotice}
+                </Text>
+              ) : null}
 
               {/* Shown only when there is something to say. */}
               {awaySec > 0 ? (
@@ -324,6 +531,19 @@ const Study = () => {
                   <Text style={styles.warnChipText}>{short(awaySec)} away</Text>
                 </View>
               ) : null}
+
+              {phoneDownSec > 0 ? (
+                <View style={styles.calmChip}>
+                  <Feather name="smartphone" size={13} color={colors.success} />
+                  <Text style={styles.calmChipText}>{short(phoneDownSec)} phone down</Text>
+                </View>
+              ) : null}
+
+              {/* Live, so leaving the app or fidgeting shows up while it happens. */}
+              {liveTimeline ? <FocusTrace timeline={liveTimeline} live /> : null}
+
+              {/* Group sessions only: a solo session is a room of one. */}
+              {activeGroup && sessionId ? <RoomParticipants sessionId={sessionId} /> : null}
 
               <TaskChecklist
                 tasks={tasks}
@@ -337,11 +557,30 @@ const Study = () => {
                 disabled={busy}
                 onPress={end}
                 accessibilityRole="button"
-                accessibilityLabel="End session"
+                accessibilityLabel={ending === "failed" ? "Try ending again" : "End session"}
               >
-                <Feather name="square" size={STUDY_ICON_SIZE} color={colors.danger} />
-                <Text style={[styles.actionText, styles.actionDangerText]}>End</Text>
+                <Feather
+                  name={ending === "failed" ? "refresh-cw" : "square"}
+                  size={STUDY_ICON_SIZE}
+                  color={colors.danger}
+                />
+                <Text style={[styles.actionText, styles.actionDangerText]}>
+                  {ending === "retrying" ? "Ending…" : ending === "failed" ? "Try again" : "End"}
+                </Text>
               </Pressable>
+
+              {/* After the retries run out: the clock is already stopped, and
+                  the session is closed properly the next time they study. */}
+              {ending === "failed" ? (
+                <Pressable
+                  style={styles.actionSecondary}
+                  onPress={reset}
+                  accessibilityRole="button"
+                  accessibilityLabel="Leave it for now"
+                >
+                  <Text style={styles.actionSecondaryText}>Leave it for now</Text>
+                </Pressable>
+              ) : null}
             </>
           ) : null}
 
@@ -411,7 +650,7 @@ const Study = () => {
                 </Text>
               </Metric>
 
-              <FocusTrace values={trace} totalSec={result.totalSec} />
+              {trace ? <FocusTrace timeline={trace} /> : null}
 
               <View style={styles.rewardRow}>
                 <View style={styles.rewardCard}>
@@ -435,11 +674,7 @@ const Study = () => {
                 </View>
               </View>
 
-              {/*
-                Opens the composer. The post is NOT linked to this session yet -
-                useCreatePost deliberately does not send a sessionId - so that
-                connection is still the posts feature's to make.
-              */}
+              {/* Opens the composer with this session already linked. */}
               <Pressable
                 style={styles.action}
                 onPress={share}
@@ -481,6 +716,14 @@ const Study = () => {
           onClose={() => setSheetOpen(false)}
         />
       </SafeAreaView>
+
+      {/* Face-down mode: nobody can see the screen, so it goes black. */}
+      {running && isPhoneDown ? (
+        <View style={styles.phoneDownOverlay} accessibilityLabel="Phone down, still focusing">
+          <Text style={styles.phoneDownText}>Phone down · focusing</Text>
+          <Text style={styles.phoneDownHint}>Pick it up to see your session</Text>
+        </View>
+      ) : null}
     </LinearGradient>
   );
 };

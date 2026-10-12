@@ -253,6 +253,16 @@ model Session {
   // nullable: only generated for group sessions, meaningless for solo ones
   inviteCode    String?   @unique
 
+  /// The session this one JOINED, when it was joined by invite code - the
+  /// "room" everyone in it shares. Always the room's first session, never a
+  /// participant's, so a room is one level deep however its members joined.
+  ///
+  /// SetNull, as groupId: deleting the host's session costs the others their
+  /// link to it, not their own study history.
+  hostSessionId String?
+  hostSession   Session?  @relation("SessionRoom", fields: [hostSessionId], references: [id], onDelete: SetNull)
+  participants  Session[] @relation("SessionRoom")
+
   startedAt     DateTime  @default(now())
   endedAt       DateTime?
 
@@ -307,6 +317,8 @@ model Session {
   focusRating   FocusRating?
   tasks         SessionTask[]
 
+  /// "Who is in this room", and the delete path's read-before-SetNull.
+  @@index([hostSessionId])
   @@map("sessions")
 }
 

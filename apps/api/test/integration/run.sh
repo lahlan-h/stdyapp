@@ -26,8 +26,12 @@ echo "test database ready"
 # endSession invalidates the Redis cache, so the tests need the same broker
 # settings the app uses. Without these ioredis retries against the default port
 # forever and the run hangs with no output.
+#
+# JWT_SECRET too: the password-reset tests mint and verify real tokens, and
+# config/auth.js refuses to run without one. Still read from .env, never
+# written here - the secret stays out of the repo.
 set -a
-source <(grep -E '^(REDIS_URL|RABBITMQ_URL|RABBITMQ_USER|RABBITMQ_PASSWORD)=' "$REPO/.env" || true)
+source <(grep -E '^(REDIS_URL|RABBITMQ_URL|RABBITMQ_USER|RABBITMQ_PASSWORD|JWT_SECRET)=' "$REPO/.env" || true)
 set +a
 
 cd "$REPO/apps/api"

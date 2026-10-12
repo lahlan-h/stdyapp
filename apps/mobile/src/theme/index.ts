@@ -15,6 +15,7 @@ export {
   useEditProfileStyles,
   useAnalyticsStyles,
   useRoutinesStyles,
+  useGroupsStyles,
   type ThemePreference,
 } from "./useTheme";
 export { lightColors, darkColors, type ColorScheme } from "./colors";
@@ -115,3 +116,8 @@ export {
   ROUTINES_HEADER_ICON_SIZE,
   ROUTINES_ICON_SIZE,
 } from "./routines.styles";
+export {
+  createGroupsStyles,
+  GROUPS_HEADER_ICON_SIZE,
+  GROUPS_ICON_SIZE,
+} from "./groups.styles";

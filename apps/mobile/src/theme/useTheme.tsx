@@ -29,6 +29,7 @@ import { createAnalyticsStyles } from "./analytics.styles";
 import { createHomeSearchStyles } from "./homeSearch.styles";
 import { createMessagesStyles } from "./messages.styles";
 import { createRoutinesStyles } from "./routines.styles";
+import { createGroupsStyles } from "./groups.styles";
 
 const STORAGE_KEY = "themePreference";
 
@@ -85,6 +86,7 @@ const styleMap = {
   homeSearch: createHomeSearchStyles,
   messages: createMessagesStyles,
   routines: createRoutinesStyles,
+  groups: createGroupsStyles,
 } as const;
 
 type StyleName = keyof typeof styleMap;
@@ -270,3 +272,6 @@ export const useAnalyticsStyles = () => useStyles("analytics");
 
 /** The routines stylesheet for the active theme. Never rebuilds. */
 export const useRoutinesStyles = () => useStyles("routines");
+
+/** The groups stylesheet for the active theme. Never rebuilds. */
+export const useGroupsStyles = () => useStyles("groups");

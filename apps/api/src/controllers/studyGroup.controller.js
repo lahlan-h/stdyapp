@@ -1,4 +1,5 @@
 import * as groupService from "../services/studyGroup.service.js";
+import { MAX_PAGE_SIZE } from "../validation/pagination.validation.js";
 
 /**
  * Thin by design: status codes and response shape only, no policy.
@@ -40,10 +41,76 @@ export const getOne = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/groups - one page of groups, newest first, in the user directory's
+ * { data, pagination } envelope (see listUsers in users.controller.js).
+ */
 export const search = async (req, res, next) => {
   try {
-    const groups = await groupService.searchGroups(req.validated.query.q, req.user.id);
+    const { q, page, limit } = req.validated.query;
+
+    /**
+     * LEGACY SHAPE for app builds older than pagination: they send no ?page
+     * and read the body as a bare array. Answered as one page of the largest
+     * size, so they keep working and the query stays bounded - the old route
+     * returned every group, which is the gap pagination closed. Remove once
+     * no such build is in use.
+     */
+    if (page === undefined) {
+      const legacy = await groupService.searchGroups(
+        { q, page: 1, limit: MAX_PAGE_SIZE },
+        req.user.id,
+      );
+      return res.status(200).json(legacy.items);
+    }
+
+    const { items, total } = await groupService.searchGroups(
+      { q, page, limit },
+      req.user.id,
+    );
+    res.status(200).json({
+      data: items,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page * limit < total,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const regenerateJoinCode = async (req, res, next) => {
+  try {
+    const group = await groupService.regenerateJoinCode(
+      req.validated.params.id,
+      req.user.id,
+    );
+    res.status(200).json(group);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const mine = async (req, res, next) => {
+  try {
+    const groups = await groupService.listMyGroups(req.user.id);
     res.status(200).json(groups);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const liveSessions = async (req, res, next) => {
+  try {
+    const sessions = await groupService.listLiveSessions(
+      req.validated.params.id,
+      req.user.id,
+    );
+    res.status(200).json(sessions);
   } catch (err) {
     next(err);
   }

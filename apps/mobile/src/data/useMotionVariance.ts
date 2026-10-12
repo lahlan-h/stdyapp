@@ -5,11 +5,16 @@ import { Accelerometer } from "expo-sensors";
 /**
  * How still the device has been since the last reading.
  *
- * WHY VARIANCE AND NOT MAGNITUDE. At rest the accelerometer still reports ~1g,
- * because gravity never stops. A phone lying flat and a phone held upright both
- * read about 1 - the number says nothing about movement, only orientation.
- * Variance of that magnitude over a window does: it is ~0 for anything not
- * moving, whichever way up it is, and rises with how much it was disturbed.
+ * WHY VARIANCE AND NOT A SINGLE READING. At rest the accelerometer still
+ * reports ~1g, because gravity never stops, so one reading says nothing about
+ * movement. Variance over a window does: it is ~0 for anything not moving and
+ * rises with how much it was disturbed.
+ *
+ * WHY PER AXIS AND NOT THE MAGNITUDE. Swaying or tilting a phone barely changes
+ * how STRONG gravity reads - it stays ~1g - it changes which axes gravity falls
+ * on. Variance of the magnitude therefore read a swayed phone as perfectly
+ * still. Summing the variance of x, y and z separately sees the tilt as well as
+ * the jolts, and is still ~0 for a phone that is not moving, whichever way up.
  *
  * That also makes it the right shape for the server, which z-scores this
  * against the user's own baseline rather than any absolute threshold - a
@@ -44,7 +49,7 @@ const MAX_VARIANCE = 1000;
  * deliberately rather than zero: a hard zero would be an unbeatable motion
  * score, so a browser session would outscore every real one.
  */
-const FALLBACK = () => 0.08 + Math.random() * 0.06;
+const FALLBACK = () => 2e-4 + Math.random() * 2e-4;
 
 export interface MotionSource {
   /** Starts listening. Safe to call when already started. */
@@ -61,7 +66,7 @@ export interface MotionSource {
 }
 
 export const useMotionVariance = (): MotionSource => {
-  const windowRef = useRef<number[]>([]);
+  const windowRef = useRef<{ x: number; y: number; z: number }[]>([]);
   const subscriptionRef = useRef<{ remove: () => void } | null>(null);
   const availableRef = useRef(false);
 
@@ -84,8 +89,9 @@ export const useMotionVariance = (): MotionSource => {
 
         Accelerometer.setUpdateInterval(SAMPLE_INTERVAL_MS);
         subscriptionRef.current = Accelerometer.addListener(({ x, y, z }) => {
-          const magnitude = Math.sqrt(x * x + y * y + z * z);
-          if (Number.isFinite(magnitude)) windowRef.current.push(magnitude);
+          if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+            windowRef.current.push({ x, y, z });
+          }
         });
       } catch {
         // A refused or missing sensor is a degraded estimate, never a failed
@@ -107,9 +113,11 @@ export const useMotionVariance = (): MotionSource => {
 
     if (!availableRef.current || readings.length < MIN_READINGS) return FALLBACK();
 
-    const mean = readings.reduce((a, b) => a + b, 0) / readings.length;
-    const variance =
-      readings.reduce((sum, v) => sum + (v - mean) ** 2, 0) / readings.length;
+    const axisVariance = (axis: "x" | "y" | "z") => {
+      const mean = readings.reduce((sum, r) => sum + r[axis], 0) / readings.length;
+      return readings.reduce((sum, r) => sum + (r[axis] - mean) ** 2, 0) / readings.length;
+    };
+    const variance = axisVariance("x") + axisVariance("y") + axisVariance("z");
 
     if (!Number.isFinite(variance)) return FALLBACK();
     return Math.min(MAX_VARIANCE, Math.max(0, variance));

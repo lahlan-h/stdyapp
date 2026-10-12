@@ -87,6 +87,46 @@ export const startSessionSchema = z.strictObject({
 });
 
 /**
+ * PATCH /api/sessions/:id/end.
+ *
+ * The body is OPTIONAL - every client before this field existed sends none,
+ * and the session then ends at the moment the request arrives, as it always
+ * has.
+ *
+ * endedAt is when the user tapped End. A client retrying through a dead
+ * network sends the ORIGINAL moment, so the wait for a connection is not
+ * credited as study time. endSession clamps it to [startedAt, now], so it can
+ * only ever shorten a session, never lengthen it.
+ */
+export const endSessionSchema = z
+  .strictObject({
+    endedAt: z.iso.datetime({ offset: true }).optional(),
+  })
+  .optional();
+
+/**
+ * POST /api/sessions/join.
+ *
+ * Bounds match the group joinCode's in studyGroup.validation.js: the generator
+ * makes six characters of base36, and the bounds only stop junk reaching the
+ * query.
+ *
+ * Uppercased here, unlike joinGroupSchema, because nothing is being guarded by
+ * case: joinSession still demands group membership, so the code only FINDS a
+ * session the caller could already see in their group. Being forgiving about a
+ * code read aloud costs nothing.
+ */
+export const joinSessionSchema = z.strictObject({
+  inviteCode: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .min(4, "inviteCode must be at least 4 characters")
+    .max(16, "inviteCode must be at most 16 characters")
+    .regex(/^[A-Z0-9]+$/, "inviteCode may only contain letters and numbers"),
+});
+
+/**
  * POST /api/sessions/:id/interruptions.
  *
  * Replaces the hand-rolled check in session.controller.js, which tested
