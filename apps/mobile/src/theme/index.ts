@@ -117,6 +117,12 @@ export {
   ROUTINES_ICON_SIZE,
 } from "./routines.styles";
 export {
+  createSessionHistoryStyles,
+  SESSION_HISTORY_HEADER_ICON_SIZE,
+  SESSION_HISTORY_ICON_SIZE,
+  SESSION_HISTORY_STAR_SIZE,
+} from "./sessionHistory.styles";
+export {
   createGroupsStyles,
   GROUPS_HEADER_ICON_SIZE,
   GROUPS_ICON_SIZE,

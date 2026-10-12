@@ -78,7 +78,9 @@ const BLOCK_EPOCH = "b1";
  * payload embeds its todo items, so each of those shapes must be free to change
  * and orphan only its own keys.
  */
-const SESSION_EPOCH = "se1";
+// se2: GET /api/sessions rows gained the history summary fields
+// (services/sessionHistory.js), so entries cached in the old shape are orphaned.
+const SESSION_EPOCH = "se2";
 const GROUP_EPOCH = "g1";
 const ROUTINE_EPOCH = "r1";
 
@@ -751,8 +753,8 @@ export const sessionKey = (sessionId, viewerId, version) =>
  * Unlike postUserListKey this is not shared with a by-user route, because there
  * is no GET /api/sessions/user/:userId: study history is private in this API.
  * If one is ever added, it must NOT share this key unless it returns the
- * identical shape - findSessionsByUser omits interruptions, findSessionById
- * includes them.
+ * identical shape - findSessionsByUser summarises interruptions and the
+ * self-rating into counts, findSessionById includes the interruption rows.
  *
  * @param {string} userId @param {number} version
  */

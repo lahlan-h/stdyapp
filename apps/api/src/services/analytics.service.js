@@ -14,6 +14,7 @@ import {
   weekStartKey,
 } from "../utils/timeZone.js";
 import { ANALYTICS_RANGES } from "../validation/analytics.validation.js";
+import { summariseFocusEstimate, focusScoreChange } from "./analyticsFocus.js";
 
 /**
  * Personal study analytics: GET /api/analytics/me.
@@ -173,6 +174,9 @@ export const getMyAnalytics = async (userId, { range, tz }, now = new Date()) =>
   const previousKeySet = new Set(previousKeys);
 
   const inRange = [];
+  // Kept as a list, not just a sum, so the focus estimate can be compared with
+  // last period too.
+  const previous = [];
   let previousMs = 0;
 
   for (const session of sessions) {
@@ -181,7 +185,10 @@ export const getMyAnalytics = async (userId, { range, tz }, now = new Date()) =>
     msByDay.set(dayKey, (msByDay.get(dayKey) ?? 0) + ms);
 
     if (rangeKeySet.has(dayKey)) inRange.push({ session, ms });
-    else if (previousKeySet.has(dayKey)) previousMs += ms;
+    else if (previousKeySet.has(dayKey)) {
+      previous.push({ session, ms });
+      previousMs += ms;
+    }
   }
 
   const minutesOn = (dayKey) => toMinutes(msByDay.get(dayKey) ?? 0);
@@ -231,6 +238,15 @@ export const getMyAnalytics = async (userId, { range, tz }, now = new Date()) =>
   const interruptions = inRange.flatMap(({ session }) => session.interruptions);
   const awaySec = interruptions.reduce((sum, item) => sum + item.durationSec, 0);
 
+  // The per-session focus ESTIMATE and checklist totals - additive to the
+  // fields above, which are left exactly as they were. efficiencyPercent only
+  // moves when a single break passes the penalty threshold, so on its own it
+  // reads 100% for almost everyone; these are what say how focused the time
+  // actually was. See analyticsFocus.js for why unscored sessions are skipped
+  // rather than counted as 0.
+  const estimate = summariseFocusEstimate(inRange);
+  const previousEstimate = summariseFocusEstimate(previous);
+
   const focusQuality = {
     focusPoints,
     // Capped at 100: focusPoints can never exceed minutes, but a session whose
@@ -245,6 +261,19 @@ export const getMyAnalytics = async (userId, { range, tz }, now = new Date()) =>
         ? Math.round((interruptions.length / (totalMs / MILLISECONDS_PER_HOUR)) * 10) / 10
         : null,
     averageAwaySec: interruptions.length > 0 ? Math.round(awaySec / interruptions.length) : null,
+    // 0-100, duration-weighted, null when no in-range session was scored.
+    averageFocusScore: estimate.averageFocusScore,
+    scoredSessionCount: estimate.scoredSessionCount,
+    previousAverageFocusScore: previousEstimate.averageFocusScore,
+    // In points, not percent - see focusScoreChange.
+    focusScoreChange: focusScoreChange(
+      estimate.averageFocusScore,
+      previousEstimate.averageFocusScore,
+    ),
+    focusWeightedMinutes: estimate.focusWeightedMinutes,
+    tasksCompleted: estimate.tasksCompleted,
+    tasksTotal: estimate.tasksTotal,
+    taskCompletionPercent: estimate.taskCompletionPercent,
   };
 
   // --- 5. Goals ---

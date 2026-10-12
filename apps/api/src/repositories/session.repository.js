@@ -22,6 +22,11 @@ export const findSessionById = (id) => {
 /**
  * The caller's history, newest first.
  *
+ * Includes the two relations the history screen summarises - interruptions
+ * (count and time away) and the self-rating - narrowed to the one column each
+ * that is read. session.service.js folds them into numbers via
+ * toSessionHistoryRow, so neither array reaches the response.
+ *
  * The group's NAME rides along so a history row can say who it was studied
  * with. A rename does not bump the session list's cache counter, so a cached
  * list can show the old name until CACHE_TTL_SESSION_LIST_SEC lapses - a minute
@@ -30,8 +35,12 @@ export const findSessionById = (id) => {
 export const findSessionsByUser = (userId) => {
   return prisma.session.findMany({
     where: { userId },
-    include: { group: { select: { id: true, name: true } } },
     orderBy: { startedAt: "desc" },
+    include: {
+      group: { select: { id: true, name: true } },
+      interruptions: { select: { durationSec: true } },
+      focusRating: { select: { selfRating: true } },
+    },
   });
 };
 
@@ -303,6 +312,10 @@ export const findCompletedSessionsSince = (userId, since) => {
  *   endedAt: Date,
  *   focusPoints: number,
  *   groupId: string | null,
+ *   focusScore: number | null,
+ *   focusWeightedMinutes: number | null,
+ *   tasksTotal: number | null,
+ *   tasksCompleted: number | null,
  *   interruptions: Array<{ durationSec: number, penaltyApplied: boolean }>,
  * }>>}
  */
@@ -318,6 +331,13 @@ export const findCompletedSessionsForAnalytics = (userId, since) => {
       endedAt: true,
       focusPoints: true,
       groupId: true,
+      // The focus estimate and checklist totals, as finaliseSessionFocus
+      // copied them onto the row - plain columns, so the task table is never
+      // joined (see the note on Session.tasksTotal in the Prisma schema).
+      focusScore: true,
+      focusWeightedMinutes: true,
+      tasksTotal: true,
+      tasksCompleted: true,
       interruptions: { select: { durationSec: true, penaltyApplied: true } },
     },
     orderBy: { startedAt: "asc" },

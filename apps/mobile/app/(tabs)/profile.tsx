@@ -1,7 +1,9 @@
 import { useCallback } from "react";
-import { useFocusEffect } from "expo-router";
+import { Pressable, Text, View } from "react-native";
+import { router, useFocusEffect } from "expo-router";
+import Feather from "@expo/vector-icons/Feather";
 
-import { useTabBarClearance } from "@theme";
+import { useTabBarClearance, useTheme, useStyles, PROFILE_ACTION_ICON_SIZE } from "@theme";
 import {
   useProfile,
   useUserPosts,
@@ -26,6 +28,8 @@ const Profile = () => {
   // What the floating tab bar covers, inset included - without it the last
   // card's buttons sit behind the bar, drawn but untappable.
   const tabBarClearance = useTabBarClearance();
+  const { colors } = useTheme();
+  const styles = useStyles("profile");
 
   const { profile, isLoading: profileLoading, loadError, reload: reloadProfile } =
     useProfile();
@@ -72,7 +76,23 @@ const Profile = () => {
       totals={totals}
       followers={summary?.followers}
       following={summary?.following}
-      actions={<ProfileActions />}
+      actions={
+        <>
+          <ProfileActions />
+          {/* Session history: a push to app/sessions.tsx. */}
+          <View style={styles.actions}>
+            <Pressable
+              onPress={() => router.push("/sessions")}
+              accessibilityRole="button"
+              accessibilityLabel="Session history"
+              style={({ pressed }) => [styles.actionButton, pressed ? { opacity: 0.6 } : undefined]}
+            >
+              <Feather name="clock" size={PROFILE_ACTION_ICON_SIZE} color={colors.text} />
+              <Text style={styles.actionLabel}>Session history</Text>
+            </Pressable>
+          </View>
+        </>
+      }
       bottomPadding={tabBarClearance}
     />
   );
