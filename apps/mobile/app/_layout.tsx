@@ -42,6 +42,8 @@ export default function RootLayout() {
             guard and lands on the feed with no navigation of its own.
           */}
           <Stack.Screen name="register" />
+          {/* Signed-out only too: it is how you get back to logging in. */}
+          <Stack.Screen name="forgot-password" />
         </Stack.Protected>
 
         <Stack.Protected guard={signedIn}>

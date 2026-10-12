@@ -12,13 +12,16 @@ import Feather from "@expo/vector-icons/Feather";
 import { useTheme, useRegisterStyles, REGISTER_CHECK_ICON_SIZE } from "@theme";
 import {
   REGISTRATION_CHECK_GROUPS,
-  REGISTRATION_CHECK_COUNT,
-  countPassed,
+  type RegistrationCheckGroup,
   type RegistrationResults,
 } from "@data";
 
 interface RegistrationChecksProps {
   results: RegistrationResults;
+  /** Which rules to show - every sign-up rule unless told otherwise. */
+  groups?: RegistrationCheckGroup[];
+  /** The panel's title until everything passes. */
+  title?: string;
 }
 
 /** How long the bar takes to catch up with a check changing. */
@@ -65,10 +68,12 @@ const useReduceMotion = (): boolean => {
 };
 
 /**
- * The sign-up screen's checklist: a progress bar over six rows, one per rule.
+ * A password checklist: a progress bar over one row per rule. Sign-up shows all
+ * six rules (email and password); setting a new password after a reset passes
+ * `groups` to show the four password rules alone.
  *
- * The bar fills one step per passed check and only turns success green at six
- * of six - the moment Register stops being dimmed. At that point the rows have
+ * The bar fills one step per passed check and only turns success green when
+ * every shown check passes - the moment the screen's button stops being dimmed. At that point the rows have
  * nothing left to say, so they slide shut under the bar; if a check fails
  * again, they slide back open to show which one.
  *
@@ -76,13 +81,20 @@ const useReduceMotion = (): boolean => {
  * height are layout properties, and the native driver only handles opacity and
  * transforms.
  */
-const RegistrationChecks = ({ results }: RegistrationChecksProps) => {
+const RegistrationChecks = ({
+  results,
+  groups = REGISTRATION_CHECK_GROUPS,
+  title = "Account checks",
+}: RegistrationChecksProps) => {
   const { colors } = useTheme();
   const styles = useRegisterStyles();
   const reduceMotion = useReduceMotion();
 
-  const passed = countPassed(results);
-  const total = REGISTRATION_CHECK_COUNT;
+  // Counted over the checks SHOWN, not every result: on the reset screen the
+  // email checks are always false and would keep the panel from completing.
+  const shown = groups.flatMap((group) => group.checks);
+  const passed = shown.filter((check) => results[check.key]).length;
+  const total = shown.length;
   const complete = passed === total;
 
   // Seeded from the first render's state, so the panel opens at rest rather
@@ -133,7 +145,7 @@ const RegistrationChecks = ({ results }: RegistrationChecksProps) => {
     <View style={[styles.checks, complete && styles.checksDone]}>
       <View style={styles.checksHead}>
         <Text style={[styles.checksTitle, complete && styles.checksTitleDone]}>
-          {complete ? "All checks passed" : "Account checks"}
+          {complete ? "All checks passed" : title}
         </Text>
         <Text style={[styles.checksCount, complete && styles.checksCountDone]}>
           {passed} of {total}
@@ -143,7 +155,7 @@ const RegistrationChecks = ({ results }: RegistrationChecksProps) => {
       <View
         style={styles.meter}
         accessibilityRole="progressbar"
-        accessibilityLabel="Account checks"
+        accessibilityLabel={title}
         accessibilityValue={{ min: 0, max: total, now: passed }}
       >
         <Animated.View
@@ -203,7 +215,7 @@ const RegistrationChecks = ({ results }: RegistrationChecksProps) => {
             },
           ]}
         >
-          {REGISTRATION_CHECK_GROUPS.map((group) => (
+          {groups.map((group) => (
             <View key={group.label} style={styles.group}>
               <Text style={styles.groupLabel}>{group.label}</Text>
               {group.checks.map((check) => {
