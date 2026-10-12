@@ -200,16 +200,26 @@ export const getGoalProgress = async (userId, period, now = new Date()) => {
  * ⚠ NEVER THROWS, for emitNotification's reason: it runs on the tail of a
  * session that has already ended, and a failure here must not fail that.
  *
+ * A session that STARTED before a goal's current period cannot have crossed
+ * that goal's line - its minutes are not in the progress at all - so it is
+ * skipped for that goal. That only happens for an abandoned session closed
+ * late; without the check, subtracting minutes that were never added could
+ * announce a goal reached hours ago as if it had just happened.
+ *
  * @param {string} userId
  * @param {number} sessionMinutes - minutes the just-ended session contributed
+ * @param {{ startedAt?: Date }} [session] - when it started; defaults to "now"
  */
-export const notifyGoalsReached = async (userId, sessionMinutes) => {
+export const notifyGoalsReached = async (userId, sessionMinutes, { startedAt } = {}) => {
   try {
     const goals = await goalRepo.findGoalsByUser(userId);
     if (goals.length === 0) return;
 
+    const now = new Date();
     for (const goal of goals) {
-      const progress = await getGoalProgress(userId, goal.period);
+      if (startedAt && startedAt < periodStart(goal.period, now)) continue;
+
+      const progress = await getGoalProgress(userId, goal.period, now);
 
       // Not there yet.
       if (!progress.isMet) continue;

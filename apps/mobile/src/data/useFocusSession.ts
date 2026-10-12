@@ -51,6 +51,19 @@ const MIN_AWAY_SEC = 5;
  */
 const RUNNING_KEY = "focus.runningSessionId";
 
+/**
+ * Waits between attempts to end a session through a bad connection - about
+ * thirty seconds in all, enough to ride out a lift or a tunnel without leaving
+ * the user staring at a spinner for minutes.
+ */
+const END_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000];
+
+/** Worth retrying: no response at all, the server failing, or rate limiting. */
+const isRetryable = (err: unknown) =>
+  err instanceof ApiError && (err.status === 0 || err.status >= 500 || err.status === 429);
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 
 /** What PATCH /api/sessions/:id/end answers, which is the session row itself. */
 interface EndedSession {
@@ -197,6 +210,13 @@ export interface FocusSessionState {
   /** The running or just-finished session, so the recap can link a post to it. */
   sessionId: string | null;
   /**
+   * Where ending stands. "retrying" while the server cannot be reached and the
+   * end is being re-sent; "failed" once that has run out - the clock is
+   * stopped, nothing is lost, and end() tries again or reset() leaves it to be
+   * closed later (see RUNNING_KEY).
+   */
+  ending: "none" | "retrying" | "failed";
+  /**
    * Set when a join was refused because the session's group is private and the
    * user is not in it - the group to send them to, to enter its join code.
    */
@@ -235,6 +255,12 @@ export const useFocusSession = (): FocusSessionState => {
     useState<FocusSessionState["activeGroup"]>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [privateGroupId, setPrivateGroupId] = useState<string | null>(null);
+  const [ending, setEnding] = useState<FocusSessionState["ending"]>("none");
+  /**
+   * When End was FIRST tapped. Every retry sends this rather than its own
+   * moment, so time spent waiting for a connection is not study time.
+   */
+  const endTappedAtRef = useRef<number | null>(null);
 
   /**
    * Refs, not state, for everything the interval and the AppState listener
@@ -580,29 +606,63 @@ export const useFocusSession = (): FocusSessionState => {
     [busy, phase, begin, logAway, settleLeftover],
   );
 
+  /**
+   * Sends the end, retrying through a bad connection.
+   *
+   * A 409 means it has ALREADY ended - most likely an earlier attempt that
+   * reached the server but whose answer was lost - so the row is read back and
+   * treated as this attempt's answer rather than as a failure.
+   */
+  const requestEnd = useCallback(async (sessionId: string, endedAt: string) => {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await withAuth((token) =>
+          request<EndedSession>(`/api/sessions/${sessionId}/end`, {
+            method: "PATCH",
+            token,
+            body: { endedAt },
+          }),
+        );
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409) {
+          return withAuth((token) =>
+            request<EndedSession>(`/api/sessions/${sessionId}`, { token }),
+          );
+        }
+        if (!isRetryable(err) || attempt >= END_RETRY_DELAYS_MS.length) throw err;
+        setEnding("retrying");
+        await sleep(END_RETRY_DELAYS_MS[attempt]);
+      }
+    }
+  }, []);
+
   const end = useCallback(() => {
     const sessionId = sessionIdRef.current;
     if (busy || !sessionId) return;
     setBusy(true);
+    setError(undefined);
+
+    // Only the first tap counts - "Try again" after a failure keeps it.
+    const firstTap = endTappedAtRef.current === null;
+    if (firstTap) endTappedAtRef.current = Date.now();
+    const tappedAt = endTappedAtRef.current!;
 
     void (async () => {
-      // Stopped FIRST: a sample landing after the session has ended is
-      // rejected by the API, and the score is computed on end from what is
-      // already stored.
-      stopTimers.current();
+      if (firstTap) {
+        // Stopped FIRST: a sample landing after the session has ended is
+        // rejected by the API, and the score is computed on end from what is
+        // already stored.
+        stopTimers.current();
 
-      // A session ended while the user is still away should count that time.
-      const since = awaySinceRef.current;
-      awaySinceRef.current = null;
-      if (since) await logAway((Date.now() - since) / 1000);
+        // A session ended while the user is still away should count that time.
+        const since = awaySinceRef.current;
+        awaySinceRef.current = null;
+        if (since) await logAway((tappedAt - since) / 1000);
+      }
 
       try {
-        const ended = await withAuth((token) =>
-          request<EndedSession>(`/api/sessions/${sessionId}/end`, {
-            method: "PATCH",
-            token,
-          }),
-        );
+        const ended = await requestEnd(sessionId, new Date(tappedAt).toISOString());
+        setEnding("none");
 
         // The end response carries the score but not the away time or the
         // interruption count the recap shows, so the authoritative summary is
@@ -629,7 +689,7 @@ export const useFocusSession = (): FocusSessionState => {
           tasksTotal: ended.tasksTotal ?? summary?.tasksTotal ?? 0,
           tasksCompleted: ended.tasksCompleted ?? summary?.tasksCompleted ?? 0,
           totalSec: startedAtRef.current
-            ? Math.round((Date.now() - startedAtRef.current) / 1000)
+            ? Math.round((tappedAt - startedAtRef.current) / 1000)
             : 0,
         });
 
@@ -657,21 +717,24 @@ export const useFocusSession = (): FocusSessionState => {
         }
 
         clearRunning();
+        endTappedAtRef.current = null;
         setPhase("recap");
       } catch (err) {
-        setError(describe(err));
-        // Back to idle rather than stuck mid-session: the timers are already
-        // gone, so "running" would be a lie the user could not get out of.
-        // RUNNING_KEY is KEPT, so the next start or join closes this session
-        // properly - at its last sign of life - instead of leaving it open.
-        // The ref is cleared so settleLeftover sees it as left over, not live.
-        sessionIdRef.current = null;
-        setPhase("idle");
+        // The clock is stopped and nothing is lost. The screen offers to try
+        // again (end() again, same tap time) or to leave it: reset() then
+        // drops the session here, and the kept RUNNING_KEY has the next start,
+        // join or launch close it properly at its last sign of life.
+        setEnding("failed");
+        setError(
+          isRetryable(err)
+            ? "Couldn't reach the server to end your session. Your time is safe - try again, or leave it and it will be saved next time you study."
+            : describe(err),
+        );
       } finally {
         setBusy(false);
       }
     })();
-  }, [busy, logAway]);
+  }, [busy, logAway, requestEnd]);
 
   const rate = useCallback(
     (value: number) => {
@@ -768,6 +831,8 @@ export const useFocusSession = (): FocusSessionState => {
   const reset = useCallback(() => {
     stopTimers.current();
     sessionIdRef.current = null;
+    endTappedAtRef.current = null;
+    setEnding("none");
     setSessionId(null);
     setActiveGroup(null);
     setPrivateGroupId(null);
@@ -820,6 +885,7 @@ export const useFocusSession = (): FocusSessionState => {
     setSelectedGroup,
     activeGroup,
     sessionId,
+    ending,
     privateGroupId,
     error,
     busy,

@@ -56,6 +56,21 @@ export const LIVE_SESSION_WINDOW_MS = 12 * 60 * 60 * 1000;
  */
 const ABANDONED_AFTER_MS = 5 * 60 * 1000;
 
+/**
+ * The background sweep's rule, which must be far gentler than the five minutes
+ * above. That rule only runs when the user is starting or joining something
+ * else, which proves they are not in the old session. The sweep has no such
+ * proof - it would otherwise end the session of someone studying with their
+ * phone locked, which stops foreground samples on every platform.
+ *
+ * So the sweep closes a session only when it has been silent this long...
+ */
+const SWEEP_SILENCE_MS = 60 * 60 * 1000;
+/** ...and, if it had a plan, is this far past the planned end... */
+const SWEEP_PAST_PLAN_MS = 60 * 60 * 1000;
+/** ...or, with no plan to go by, has been silent this long. */
+const SWEEP_OPEN_ENDED_SILENCE_MS = 3 * 60 * 60 * 1000;
+
 const log = createLogger("sessions");
 
 const notFound = () => {
@@ -235,6 +250,26 @@ const lastSignOfLife = (session) =>
   );
 
 /**
+ * The gamification endSession does, for a session closed as abandoned - but
+ * dated to when it STARTED, because that is when the studying happened. A
+ * session left open overnight and closed this morning counts for yesterday's
+ * streak, not today's.
+ *
+ * recordStudyDay and notifyGoalsReached both know how to take a past day; see
+ * their notes. Non-fatal, for endSession's reason.
+ */
+const creditAbandoned = async (session, minutesStudied) => {
+  try {
+    await recordStudyDay(session.userId, session.startedAt);
+    await notifyGoalsReached(session.userId, minutesStudied, {
+      startedAt: session.startedAt,
+    });
+  } catch (err) {
+    log.warn(`gamification failed for abandoned session ${session.id}: ${err?.message}`);
+  }
+};
+
+/**
  * Closes the user's ABANDONED sessions and returns the ones still running.
  *
  * The app runs one session at a time, so a user starting or joining a session
@@ -247,8 +282,8 @@ const lastSignOfLife = (session) =>
  * NOT silent is genuinely running, most likely on another device, and is left
  * alone - closing it would pull a live session out from under its user.
  *
- * Streaks and goals are not touched for a session closed this way: they are
- * keyed to TODAY, and the abandoned session may have been yesterday's.
+ * Streaks and goals ARE credited, to the day the session started rather than
+ * today - see creditAbandoned.
  *
  * Each close is non-fatal. This is housekeeping on the way to the session the
  * user actually asked for, and must never be the reason that one fails.
@@ -267,13 +302,67 @@ const settleOpenSessions = async (userId) => {
     try {
       // Re-read with its interruptions, which closeSession needs for penalties.
       const full = await sessionRepo.findSessionById(session.id);
-      if (full && !full.endedAt) await closeSession(full, last);
+      if (full && !full.endedAt) {
+        const { minutesStudied } = await closeSession(full, last);
+        await creditAbandoned(full, minutesStudied);
+      }
     } catch (err) {
       log.warn(`could not close abandoned session ${session.id}: ${err?.message}`);
     }
   }
 
   return running;
+};
+
+/**
+ * Closes sessions nobody is coming back to - the sweep half of abandonment.
+ *
+ * Abandoned sessions are otherwise only closed when their owner next starts,
+ * joins or reopens the app, which may be days away; until then they show as
+ * "studying now" in their group. This closes them on the server's own
+ * schedule, under the gentle rule above (SWEEP_*), at their last sign of life,
+ * with streaks and goals credited to the day they started - exactly as any
+ * other abandoned session.
+ *
+ * Judged only on foreground samples, so the outcome is the same on every
+ * phone (see latestForegroundSample in the repository). Each close is
+ * non-fatal: one bad row must not stop the rest of the sweep.
+ *
+ * @param {{ now?: Date, userIds?: string[] }} [options] - `userIds` narrows
+ *   the sweep to those users; the job sweeps everyone. Tests use it so a sweep
+ *   cannot reach sessions another test file is in the middle of using.
+ * @returns {Promise<number>} how many sessions were closed
+ */
+export const sweepAbandonedSessions = async ({ now = new Date(), userIds } = {}) => {
+  const candidates = await sessionRepo.findSweepCandidates(
+    new Date(now.getTime() - SWEEP_SILENCE_MS),
+    userIds,
+  );
+  let closed = 0;
+
+  for (const session of candidates) {
+    const last = lastSignOfLife(session);
+    const silentFor = now.getTime() - last.getTime();
+    if (silentFor < SWEEP_SILENCE_MS) continue;
+
+    const due = session.plannedMinutes
+      ? now.getTime() >=
+        session.startedAt.getTime() + session.plannedMinutes * 60_000 + SWEEP_PAST_PLAN_MS
+      : silentFor >= SWEEP_OPEN_ENDED_SILENCE_MS;
+    if (!due) continue;
+
+    try {
+      const full = await sessionRepo.findSessionById(session.id);
+      if (!full || full.endedAt) continue;
+      const { minutesStudied } = await closeSession(full, last);
+      await creditAbandoned(full, minutesStudied);
+      closed += 1;
+    } catch (err) {
+      log.warn(`sweep could not close session ${session.id}: ${err?.message}`);
+    }
+  }
+
+  return closed;
 };
 
 /**
@@ -361,7 +450,8 @@ export const abandonSession = async (sessionId, userId) => {
   if (activity.endedAt) return sessionRepo.findSessionById(sessionId);
 
   const full = await sessionRepo.findSessionById(sessionId);
-  const { updated } = await closeSession(full, lastSignOfLife(activity));
+  const { updated, minutesStudied } = await closeSession(full, lastSignOfLife(activity));
+  await creditAbandoned(full, minutesStudied);
   return updated;
 };
 
@@ -500,7 +590,14 @@ export const listMySessions = async (userId) => {
   return sessionRepo.findSessionsByUser(userId);
 };
 
-export const endSession = async (sessionId, userId) => {
+/**
+ * @param {string} sessionId
+ * @param {string} userId
+ * @param {{ endedAt?: Date }} [options] - when the user tapped End, from a
+ *   client that had to retry. Clamped to [startedAt, now]: it can shorten a
+ *   session by the time spent waiting for a connection, never lengthen one.
+ */
+export const endSession = async (sessionId, userId, { endedAt: tappedAt } = {}) => {
   const session = await getOwnedSessionOrThrow(sessionId, userId);
 
   if (session.endedAt) {
@@ -509,7 +606,12 @@ export const endSession = async (sessionId, userId) => {
     throw err;
   }
 
-  const { updated, focus, minutesStudied } = await closeSession(session, new Date());
+  const now = new Date();
+  const endedAt = tappedAt
+    ? new Date(Math.min(now.getTime(), Math.max(session.startedAt.getTime(), tappedAt.getTime())))
+    : now;
+
+  const { updated, focus, minutesStudied } = await closeSession(session, endedAt);
 
   /**
    * Gamification, and everything about the placement of this block is

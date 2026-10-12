@@ -43,19 +43,33 @@ export const findSessionByInviteCode = (inviteCode) => {
   return prisma.session.findUnique({ where: { inviteCode } });
 };
 
-// The columns lastSignOfLife in session.service.js reads, shared by both
-// lookups below so the two can never judge "alive" differently.
+/**
+ * A session's newest FOREGROUND sample - the one sign of life that means the
+ * same thing on every phone.
+ *
+ * inApp: true is what makes it consistent. iOS suspends a backgrounded app at
+ * once, so it sends nothing; Android often keeps the JS timers running for a
+ * while and goes on sampling with inApp: false. Counting those would make an
+ * Android user who put their phone away look active where an iPhone user in
+ * the same moment looks away. Counting only time in the app treats both alike.
+ */
+const latestForegroundSample = {
+  where: { inApp: true },
+  select: { timestamp: true },
+  orderBy: { timestamp: "desc" },
+  take: 1,
+};
+
+// The columns lastSignOfLife in session.service.js reads, shared by every
+// lookup below so none can judge "alive" differently.
 const activitySelect = {
   id: true,
   userId: true,
   groupId: true,
   startedAt: true,
   endedAt: true,
-  focusSamples: {
-    select: { timestamp: true },
-    orderBy: { timestamp: "desc" },
-    take: 1,
-  },
+  plannedMinutes: true,
+  focusSamples: latestForegroundSample,
   interruptions: {
     select: { startedAt: true },
     orderBy: { startedAt: "desc" },
@@ -108,11 +122,7 @@ export const findRoomSessions = (roomId, since) => {
       startedAt: true,
       plannedMinutes: true,
       user: { select: { id: true, username: true, avatarUrl: true } },
-      focusSamples: {
-        select: { timestamp: true },
-        orderBy: { timestamp: "desc" },
-        take: 1,
-      },
+      focusSamples: latestForegroundSample,
       interruptions: {
         select: { startedAt: true },
         orderBy: { startedAt: "desc" },
@@ -120,6 +130,26 @@ export const findRoomSessions = (roomId, since) => {
       },
     },
     orderBy: { startedAt: "asc" },
+  });
+};
+
+/**
+ * Open sessions old enough that the sweep might close them - anything started
+ * more than `startedBefore` ago and never ended. The sweep applies the real
+ * rule (see sweepAbandonedSessions); this only keeps the scan to sessions that
+ * could possibly qualify, on the startedAt the table is already ordered by.
+ *
+ * @param {Date} startedBefore
+ * @param {string[]} [userIds] - only these users' sessions; every user when absent
+ */
+export const findSweepCandidates = (startedBefore, userIds) => {
+  return prisma.session.findMany({
+    where: {
+      endedAt: null,
+      startedAt: { lt: startedBefore },
+      ...(userIds ? { userId: { in: userIds } } : {}),
+    },
+    select: activitySelect,
   });
 };
 

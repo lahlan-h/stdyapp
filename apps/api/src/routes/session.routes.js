@@ -18,6 +18,7 @@ import {
   sessionIdParamSchema,
   startSessionSchema,
   joinSessionSchema,
+  endSessionSchema,
   addInterruptionSchema,
 } from "../validation/session.validation.js";
 import {
@@ -136,7 +137,7 @@ router.get(
 router.patch(
   "/:id/end",
   writeLimit,
-  validate({ params: sessionIdParamSchema }),
+  validate({ params: sessionIdParamSchema, body: endSessionSchema }),
   end,
 );
 

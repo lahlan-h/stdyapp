@@ -23,6 +23,7 @@ import { assertStripeConfig } from "./config/stripe.js";
 import { corsOptions, warnIfCorsUnconfigured } from "./config/cors.js";
 import { HttpError } from "./utils/httpError.js";
 import { attachNotificationSocket } from "./realtime/notificationSocket.js";
+import { startSessionSweep } from "./jobs/sessionSweep.js";
 
 const log = createLogger("api");
 
@@ -130,6 +131,10 @@ const server = app.listen(PORT, () => {
 // listener to deploy.
 const closeNotificationSocket = attachNotificationSocket(server);
 
+// Closes sessions a crashed or abandoned app left open - see
+// sweepAbandonedSessions for the rule, and jobs/sessionSweep.js for the timer.
+const stopSessionSweep = startSessionSweep();
+
 // Guards against re-entry when Ctrl+C is pressed twice.
 let isShuttingDown = false;
 
@@ -155,6 +160,7 @@ const shutdown = async (signal) => {
     // Sockets first: an open WebSocket holds its HTTP connection, so
     // server.close() would otherwise wait on every one of them until the force
     // exit above fired.
+    stopSessionSweep();
     await closeNotificationSocket().catch(() => {});
     await new Promise((resolve) => server.close(resolve));
     await Promise.allSettled([

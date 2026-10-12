@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   startSessionSchema,
   joinSessionSchema,
+  endSessionSchema,
   addInterruptionSchema,
   INTERRUPTION_TYPES,
 } from "../src/validation/session.validation.js";
@@ -115,5 +116,29 @@ describe("joinSessionSchema", () => {
       }).success,
       false,
     );
+  });
+});
+
+describe("endSessionSchema", () => {
+  it("accepts no body at all - every older client sends none", () => {
+    assert.equal(endSessionSchema.safeParse(undefined).success, true);
+    assert.equal(endSessionSchema.safeParse({}).success, true);
+  });
+
+  it("accepts the moment End was tapped, as an ISO timestamp", () => {
+    assert.equal(
+      endSessionSchema.safeParse({ endedAt: "2026-10-12T09:30:00.000Z" }).success,
+      true,
+    );
+  });
+
+  it("rejects a non-timestamp and unknown keys", () => {
+    for (const body of [{ endedAt: "yesterday" }, { endedAt: 12 }, { focusPoints: 999 }]) {
+      assert.equal(
+        endSessionSchema.safeParse(body).success,
+        false,
+        `${JSON.stringify(body)} should be rejected`,
+      );
+    }
   });
 });

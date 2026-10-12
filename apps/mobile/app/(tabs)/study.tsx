@@ -114,6 +114,7 @@ const Study = () => {
     setSelectedGroup,
     activeGroup,
     sessionId,
+    ending,
     privateGroupId,
     error,
     busy,
@@ -440,7 +441,13 @@ const Study = () => {
               <View style={styles.statusPill}>
                 <View style={[styles.statusDot, { backgroundColor: bandColor }]} />
                 <Text style={styles.statusText}>
-                  {liveFocus === null ? "Reading…" : scoreBand.label}
+                  {ending === "retrying"
+                    ? "Ending… reconnecting"
+                    : ending === "failed"
+                      ? "Not ended yet"
+                      : liveFocus === null
+                        ? "Reading…"
+                        : scoreBand.label}
                 </Text>
               </View>
 
@@ -495,11 +502,30 @@ const Study = () => {
                 disabled={busy}
                 onPress={end}
                 accessibilityRole="button"
-                accessibilityLabel="End session"
+                accessibilityLabel={ending === "failed" ? "Try ending again" : "End session"}
               >
-                <Feather name="square" size={STUDY_ICON_SIZE} color={colors.danger} />
-                <Text style={[styles.actionText, styles.actionDangerText]}>End</Text>
+                <Feather
+                  name={ending === "failed" ? "refresh-cw" : "square"}
+                  size={STUDY_ICON_SIZE}
+                  color={colors.danger}
+                />
+                <Text style={[styles.actionText, styles.actionDangerText]}>
+                  {ending === "retrying" ? "Ending…" : ending === "failed" ? "Try again" : "End"}
+                </Text>
               </Pressable>
+
+              {/* After the retries run out: the clock is already stopped, and
+                  the session is closed properly the next time they study. */}
+              {ending === "failed" ? (
+                <Pressable
+                  style={styles.actionSecondary}
+                  onPress={reset}
+                  accessibilityRole="button"
+                  accessibilityLabel="Leave it for now"
+                >
+                  <Text style={styles.actionSecondaryText}>Leave it for now</Text>
+                </Pressable>
+              ) : null}
             </>
           ) : null}
 

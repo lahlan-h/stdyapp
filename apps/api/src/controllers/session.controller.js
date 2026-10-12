@@ -75,7 +75,10 @@ export const listMine = async (req, res, next) => {
 
 export const end = async (req, res, next) => {
   try {
-    const session = await sessionService.endSession(req.validated.params.id, req.user.id);
+    const endedAt = req.validated.body?.endedAt;
+    const session = await sessionService.endSession(req.validated.params.id, req.user.id, {
+      endedAt: endedAt ? new Date(endedAt) : undefined,
+    });
     res.status(200).json(session);
   } catch (err) {
     next(err);

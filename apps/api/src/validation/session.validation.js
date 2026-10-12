@@ -87,6 +87,24 @@ export const startSessionSchema = z.strictObject({
 });
 
 /**
+ * PATCH /api/sessions/:id/end.
+ *
+ * The body is OPTIONAL - every client before this field existed sends none,
+ * and the session then ends at the moment the request arrives, as it always
+ * has.
+ *
+ * endedAt is when the user tapped End. A client retrying through a dead
+ * network sends the ORIGINAL moment, so the wait for a connection is not
+ * credited as study time. endSession clamps it to [startedAt, now], so it can
+ * only ever shorten a session, never lengthen it.
+ */
+export const endSessionSchema = z
+  .strictObject({
+    endedAt: z.iso.datetime({ offset: true }).optional(),
+  })
+  .optional();
+
+/**
  * POST /api/sessions/join.
  *
  * Bounds match the group joinCode's in studyGroup.validation.js: the generator
