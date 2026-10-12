@@ -215,6 +215,19 @@ export const RATE_LIMIT_WRITE = { max: 20, windowSec: 60 };
 export const RATE_LIMIT_BULK = { max: 5, windowSec: 3600 };
 
 /**
+ * Forgot password, per EMAIL rather than per user - nobody asking is signed in.
+ * See the `key` option in middleware/rateLimit.js.
+ *
+ * 3 codes per 15 minutes: room for "it never came" twice, and a cap on how
+ * often anyone can make the API email a stranger's inbox.
+ */
+export const RATE_LIMIT_RESET_REQUEST = { max: 3, windowSec: 900 };
+
+// 10 code checks per 15 minutes. Each code also dies after five wrong guesses
+// (RESET_CODE_MAX_ATTEMPTS), which holds even when Redis is down and this does not.
+export const RATE_LIMIT_RESET_VERIFY = { max: 10, windowSec: 900 };
+
+/**
  * Likes reuse RATE_LIMIT_READ and RATE_LIMIT_BULK as they stand — those tiers
  * are written as whole-API ceilings, and rateLimit()'s `name` already gives each
  * router its own Redis keyspace and therefore its own independent budget.

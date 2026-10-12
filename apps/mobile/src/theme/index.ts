@@ -11,6 +11,7 @@ export {
   useReportDialogStyles,
   useLoginStyles,
   useRegisterStyles,
+  useForgotPasswordStyles,
   useEditProfileStyles,
   useAnalyticsStyles,
   useRoutinesStyles,
@@ -77,6 +78,7 @@ export {
   createRegisterStyles,
   REGISTER_CHECK_ICON_SIZE,
 } from "./register.styles";
+export { createForgotPasswordStyles } from "./forgotPassword.styles";
 export { createEditProfileStyles, EDIT_PROFILE_BACK_ICON_SIZE } from "./editProfile.styles";
 export {
   createProfileStyles,

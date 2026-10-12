@@ -13,9 +13,16 @@ export { useIsSignedIn, useSessionRestored, logout } from "./auth";
 export { useLogin, type LoginState } from "./useLogin";
 export { useRegister, type RegisterState } from "./useRegister";
 export { useGoogleSignIn, type GoogleSignInState } from "./useGoogleSignIn";
+export {
+  useForgotPassword,
+  normalizeResetCode,
+  RESET_CODE_LENGTH,
+  type ForgotPasswordState,
+} from "./useForgotPassword";
 export type { RegisterInput } from "./auth";
 export {
   REGISTRATION_CHECK_GROUPS,
+  PASSWORD_CHECK_GROUPS,
   REGISTRATION_CHECK_COUNT,
   MAX_USERNAME_LENGTH,
   MAX_NAME_LENGTH,
@@ -23,8 +30,10 @@ export {
   evaluateRegistration,
   countPassed,
   isValidUsername,
+  isValidEmail,
   withinPasswordLimit,
   type RegistrationCheckKey,
+  type RegistrationCheckGroup,
   type RegistrationResults,
 } from "./registrationChecks";
 export { usePosts, type FeedState, type SetLiked } from "./usePosts";
