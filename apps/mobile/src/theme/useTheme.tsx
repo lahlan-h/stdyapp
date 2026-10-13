@@ -31,6 +31,7 @@ import { createMessagesStyles } from "./messages.styles";
 import { createRoutinesStyles } from "./routines.styles";
 import { createSessionHistoryStyles } from "./sessionHistory.styles";
 import { createGroupsStyles } from "./groups.styles";
+import { createPlansStyles } from "./plans.styles";
 
 const STORAGE_KEY = "themePreference";
 
@@ -89,6 +90,7 @@ const styleMap = {
   routines: createRoutinesStyles,
   sessionHistory: createSessionHistoryStyles,
   groups: createGroupsStyles,
+  plans: createPlansStyles,
 } as const;
 
 type StyleName = keyof typeof styleMap;

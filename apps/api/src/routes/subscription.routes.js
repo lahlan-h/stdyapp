@@ -4,7 +4,10 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { validate } from "../middleware/validate.js";
 import { rateLimit } from "../middleware/rateLimit.js";
 import { cache } from "../middleware/cache.js";
-import { emptyBodySchema } from "../validation/subscription.validation.js";
+import {
+  emptyBodySchema,
+  checkoutBodySchema,
+} from "../validation/subscription.validation.js";
 import { subscriptionUserVersionKey, subscriptionKey } from "../utils/cache.js";
 import {
   CACHE_TTL_SUBSCRIPTION_SEC,
@@ -43,15 +46,16 @@ const cacheMine = cache({
 });
 
 /**
- * Both writes validate an EMPTY body, which is the security boundary rather
+ * Both writes validate a strict body, which is the security boundary rather
  * than a formality: every column on a subscription is server-computed, so a
  * request carrying "status" or "renewsAt" must be a 400 rather than silently
- * ignored one layer down. See subscription.validation.js.
+ * ignored one layer down. Cancel takes nothing at all; subscribe takes only an
+ * app return URL. See subscription.validation.js.
  */
 
 router.get("/me", readLimit, cacheMine, getMine);
 
-router.post("/", writeLimit, validate({ body: emptyBodySchema }), subscribe);
+router.post("/", writeLimit, validate({ body: checkoutBodySchema }), subscribe);
 
 router.post(
   "/cancel",

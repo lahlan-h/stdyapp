@@ -119,6 +119,19 @@ const toLocalStatus = (stripeSub) => {
 };
 
 /**
+ * An app return URL with the outcome appended - `?checkout=success`, say.
+ *
+ * checkoutBodySchema has already refused a query, so this sets rather than
+ * merges. URL handles non-web schemes (exp://host:8081/--/plans included)
+ * without special-casing.
+ */
+const withCheckoutResult = (returnUrl, result) => {
+  const url = new URL(returnUrl);
+  url.searchParams.set("checkout", result);
+  return url.toString();
+};
+
+/**
  * The client-facing shape.
  *
  * Adds `isPremium`, which is the only question a client actually has, so that
@@ -208,11 +221,16 @@ export const getMySubscription = async (userId) => {
  * both would bill. This schema allows one row per user, so the second would
  * also silently overwrite the first's reference and orphan it at Stripe.
  *
+ * returnUrl is a native app's own link, from checkoutBodySchema, which has
+ * already confined it to app schemes. Without one - on web - Checkout returns
+ * to the configured URLs exactly as before.
+ *
  * @param {string} userId
+ * @param {{ returnUrl?: string }} [options]
  * @returns {Promise<{ url: string }>}
  * @throws {HttpError} 409 when the user is already premium
  */
-export const createCheckoutSession = async (userId) => {
+export const createCheckoutSession = async (userId, { returnUrl } = {}) => {
   const existing = await subscriptionRepo.findSubscriptionByUser(userId);
 
   // isExpired rather than status alone: a CANCELLED subscription still inside
@@ -228,8 +246,12 @@ export const createCheckoutSession = async (userId) => {
     mode: "subscription",
     customer,
     line_items: [{ price: getStripePriceId(), quantity: 1 }],
-    success_url: getCheckoutSuccessUrl(),
-    cancel_url: getCheckoutCancelUrl(),
+    success_url: returnUrl
+      ? withCheckoutResult(returnUrl, "success")
+      : getCheckoutSuccessUrl(),
+    cancel_url: returnUrl
+      ? withCheckoutResult(returnUrl, "cancelled")
+      : getCheckoutCancelUrl(),
     // Belt and braces for the dashboard. The webhook does NOT read this - it
     // goes through the customer id, which is the column with the constraint.
     client_reference_id: userId,

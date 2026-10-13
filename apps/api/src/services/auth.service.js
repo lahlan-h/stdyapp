@@ -318,13 +318,14 @@ export const loginWithGoogle = async (idToken, userAgent) => {
     });
   };
 
+  const found =
+    (await prisma.user.findUnique({ where: { googleId: claims.sub }, select })) ??
+    (await linkByEmail());
+  const created = found ? null : await createGoogleUser(claims);
+
   // The trailing linkByEmail covers createGoogleUser losing a race to a
   // concurrent first sign-in with the same email.
-  const user =
-    (await prisma.user.findUnique({ where: { googleId: claims.sub }, select })) ??
-    (await linkByEmail()) ??
-    (await createGoogleUser(claims)) ??
-    (await linkByEmail());
+  const user = found ?? created ?? (await linkByEmail());
 
   if (!user) throw new HttpError(401, GOOGLE_SIGN_IN_FAILED);
 
@@ -336,6 +337,9 @@ export const loginWithGoogle = async (idToken, userAgent) => {
   return {
     user: await userService.getUserById(user.id),
     tokens: await tokenService.issueTokenPair(user, userAgent),
+    // Only an account THIS call created. A linked one already existed, and its
+    // owner has been through onboarding - pick a plan included - before.
+    isNewUser: Boolean(created),
   };
 };
 

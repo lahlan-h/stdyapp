@@ -116,7 +116,7 @@ const Settings = () => {
 
           {/* Analytics is a tab now, and Routines lives under Study. */}
           {/*
-            Edit profile and Sign out are live. Privacy and Delete account are
+            Edit profile, Manage subscription and Sign out are live. Privacy and Delete account are
             still placeholders: the API stores isPrivate but nothing enforces it
             yet, and account deletion needs its own confirm-with-password flow.
           */}
@@ -127,6 +127,13 @@ const Settings = () => {
               label="Edit profile"
               description="Name, username and bio"
               onPress={() => router.push("/edit-profile")}
+              right={<Feather name="chevron-right" size={ROW_ICON_SIZE} color={colors.textMuted} />}
+            />
+            <SettingsRow
+              icon="credit-card"
+              label="Manage subscription"
+              description="Free or Premium, and billing"
+              onPress={() => router.push("/plans")}
               right={<Feather name="chevron-right" size={ROW_ICON_SIZE} color={colors.textMuted} />}
             />
             <SettingsRow

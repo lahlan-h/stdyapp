@@ -127,3 +127,8 @@ export {
   GROUPS_HEADER_ICON_SIZE,
   GROUPS_ICON_SIZE,
 } from "./groups.styles";
+export {
+  createPlansStyles,
+  PLANS_BACK_ICON_SIZE,
+  PLANS_ICON_SIZE,
+} from "./plans.styles";

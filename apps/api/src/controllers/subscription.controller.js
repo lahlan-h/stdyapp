@@ -3,12 +3,12 @@ import * as subscriptionService from "../services/subscription.service.js";
 /**
  * Thin by design: status codes and response shape only, no policy.
  *
- * ⚠ NOTHING HERE READS req.validated.body, and that is the point rather than an
- * oversight. Every column on the subscription is computed server-side - now
- * from what Stripe reports rather than from the clock - so there is nothing on
- * the wire to forward. The body is still validated, as an empty strictObject,
- * so that an attempt to send one is a 400 rather than silence. See
- * subscription.validation.js.
+ * ⚠ ONE FIELD OF req.validated.body IS READ, BY NAME, and nothing else. Every
+ * column on the subscription is computed server-side - now from what Stripe
+ * reports rather than from the clock - so there is nothing on the wire to
+ * forward. subscribe takes returnUrl, which decides only where Checkout sends
+ * the browser back to; cancel takes nothing. Both bodies are strictObjects, so
+ * anything more is a 400 rather than silence. See subscription.validation.js.
  */
 
 export const getMine = async (req, res, next) => {
@@ -37,7 +37,9 @@ export const getMine = async (req, res, next) => {
  */
 export const subscribe = async (req, res, next) => {
   try {
-    const { url } = await subscriptionService.createCheckoutSession(req.user.id);
+    const { url } = await subscriptionService.createCheckoutSession(req.user.id, {
+      returnUrl: req.validated.body.returnUrl,
+    });
     res.status(200).json({ url });
   } catch (err) {
     next(err);
