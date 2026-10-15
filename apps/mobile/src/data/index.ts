@@ -52,9 +52,11 @@ export {
   isRangeInvalid,
   toDayKey,
   fromDayKey,
+  DEFAULT_FEED_AUDIENCE,
   type FeedFilters,
   type FeedSort,
   type FeedDateMode,
+  type FeedAudience,
 } from "./feedFilters";
 export {
   useUserSearch,
