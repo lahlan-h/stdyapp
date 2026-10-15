@@ -50,6 +50,7 @@ export {
   BAR_HEIGHT,
   SESSION_BAR_CLEARANCE,
   SESSION_BAR_ICON_SIZE,
+  FALLBACK_TAB_BAR_HEIGHT,
 } from "./tabBar.styles";
 export {
   createNewPostStyles,

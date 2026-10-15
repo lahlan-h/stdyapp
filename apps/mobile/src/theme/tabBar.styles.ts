@@ -1,5 +1,5 @@
 import type { ColorScheme } from "./colors";
-import { StyleSheet } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 
 /** Size of a tab's icon. Three tabs leave room for the 25 the bar started with. */
 const TAB_ICON_SIZE = 24;
@@ -35,6 +35,13 @@ const SESSION_BAR_ICON_SIZE = 20;
 
 /** Those round buttons, inset from the bar's ends. */
 const SESSION_BAR_BUTTON = 46;
+
+/**
+ * The native tab bar's height where the floating session bar has to clear it
+ * by hand - Android's navigation bar and iOS's pre-26 bar. iOS 26 never needs
+ * it: there the session sits in the bar's own accessory slot.
+ */
+const FALLBACK_TAB_BAR_HEIGHT = Platform.OS === "android" ? 80 : 49;
 
 /**
  * The bar's visible top, measured up from the safe-area inset: the pill plus
@@ -111,7 +118,58 @@ export const createTabBarStyles = (colors: ColorScheme) => {
       color: colors.primary,
     },
 
-    // --- Running-session bar ---
+    // --- Running-session bar, in the native bar's accessory (iOS 26) ---
+    // No background: the accessory is the bar's own Liquid Glass.
+    accessory: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingLeft: 18,
+      paddingRight: 8,
+    },
+    accessoryOpen: {
+      flex: 1,
+      alignSelf: "stretch",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    accessoryInline: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingHorizontal: 12,
+    },
+    // The palette's text colour rather than white: the glass follows light
+    // and dark mode, unlike the floating bar's fixed blue.
+    accessoryTitle: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 15,
+      color: colors.text,
+      fontVariant: ["tabular-nums"],
+    },
+    accessoryCaption: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 12,
+      color: colors.textMuted,
+    },
+    accessoryButton: {
+      width: 40,
+      height: 40,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    // --- Running-session bar, floating (Android, iOS before 26) ---
+    // Positioned by the tabs layout, just above the native bar.
+    sessionBarOverlay: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+    },
     // Full width less a margin, unlike the pill, so it reads as the session
     // in progress rather than one more tab.
     sessionBar: {
@@ -199,5 +257,6 @@ export {
   TAB_BAR_HEIGHT,
   BAR_HEIGHT,
   SESSION_BAR_CLEARANCE,
+  FALLBACK_TAB_BAR_HEIGHT,
   SESSION_BAR_ICON_SIZE,
 };
