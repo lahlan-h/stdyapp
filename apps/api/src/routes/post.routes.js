@@ -59,7 +59,7 @@ const writeLimit = rateLimit({ name: "post-write", ...RATE_LIMIT_WRITE });
 const bulkLimit = rateLimit({ name: "post-bulk", ...RATE_LIMIT_BULK });
 
 // A fourth bucket on its own tier, for POST /photos: each call can leave up to
-// four objects in R2 whether or not a post ever claims them. See
+// MAX_POST_PHOTOS objects in R2 whether or not a post ever claims them. See
 // RATE_LIMIT_POST_PHOTO_WRITE.
 const photoLimit = rateLimit({ name: "post-photo", ...RATE_LIMIT_POST_PHOTO_WRITE });
 

@@ -60,13 +60,14 @@ export const MAX_POST_PHOTO_BYTES = 5 * 1024 * 1024;
  * Photos on one post. Mirrored by MAX_POST_PHOTOS in the app's useCreatePost.ts
  * - the API cannot import @stdyapp/shared, which is TypeScript - so change both.
  *
- * Four, as on X: a desk, the notes, the whiteboard and a selfie, without a post
- * turning into an album that buries the feed.
+ * Five, as Facebook's post grid shows them: two across the top and three below.
+ * Past five Facebook overlays a "+N", which a study post does not need - this
+ * is a session, not an album.
  */
-export const MAX_POST_PHOTOS = 4;
+export const MAX_POST_PHOTOS = 5;
 
 /**
- * How long a presigned upload URL works. Long enough for four photos on a slow
+ * How long a presigned upload URL works. Long enough for five photos on a slow
  * phone connection; short enough that a leaked URL is worth nothing by the time
  * anyone could use it. It allows one PUT, to one key the API chose.
  */

@@ -3,6 +3,8 @@ import { StyleSheet } from "react-native";
 
 /** Diameter of the author avatar on a post card. */
 const AVATAR_SIZE = 65;
+/** The space between photos in a post's grid - Facebook's hairline-plus. */
+const PHOTO_GRID_GAP = 2;
 
 export const createHomeStyles = (colors: ColorScheme) => {
   const styles = StyleSheet.create({
@@ -102,34 +104,23 @@ export const createHomeStyles = (colors: ColorScheme) => {
       fontFamily: "PlusJakartaSans_600SemiBold",
       color: colors.text,
     },
-    // --- A post's photos: one, or a swipeable row (PostPhotos) ---
+    // --- A post's photos: one on its own, or Facebook's grid (PostPhotos) ---
     // Shared with the post detail screen, whose frame differs only in its own
-    // outer style.
-    carouselPhoto: {
-      height: "100%",
+    // outer style. The gaps show the card behind, so the tiles read as separate
+    // photos without a border colour of their own.
+    photoGrid: {
+      gap: PHOTO_GRID_GAP,
     },
-    // Over the photo itself, so it carries the lightbox's fixed black and white
-    // rather than theme colours, which would vanish on a dark or light image.
-    carouselDots: {
-      position: "absolute",
-      bottom: 10,
-      alignSelf: "center",
+    photoGridRow: {
       flexDirection: "row",
-      gap: 5,
-      paddingHorizontal: 8,
-      paddingVertical: 5,
-      borderRadius: 999,
-      backgroundColor: colors.lightbox.control,
+      gap: PHOTO_GRID_GAP,
     },
-    carouselDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: colors.lightbox.text,
-      opacity: 0.45,
+    photoGridTile: {
+      flex: 1,
     },
-    carouselDotActive: {
-      opacity: 1,
+    photoGridImage: {
+      width: "100%",
+      height: "100%",
     },
 
     // --- Badges a session earned ("Personal best"...) ---

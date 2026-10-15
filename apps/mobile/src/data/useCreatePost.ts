@@ -13,7 +13,7 @@ import type { PreparedPhoto } from "./preparePhoto";
  * MAX_POST_PHOTO_BYTES and MAX_POST_PHOTOS in apps/api/src/config/upload.js.
  */
 export const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-export const MAX_POST_PHOTOS = 4;
+export const MAX_POST_PHOTOS = 5;
 export const MAX_CAPTION_LENGTH = 2000;
 export const MAX_TITLE_LENGTH = 100;
 

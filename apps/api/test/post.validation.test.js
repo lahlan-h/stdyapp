@@ -6,6 +6,7 @@ import {
   createPhotoUploadsSchema,
   createPostSchema,
 } from "../src/validation/post.validation.js";
+import { MAX_POST_PHOTOS } from "../src/config/upload.js";
 
 const GROUP_ID = "8a4b7c1e-2f3d-4e5a-9b6c-7d8e9f0a1b2c";
 
@@ -55,22 +56,22 @@ describe("listAllPostsQuerySchema.audience", () => {
 
 describe("createPhotoUploadsSchema", () => {
   const photo = (overrides = {}) => ({ mimeType: "image/jpeg", sizeBytes: 500_000, ...overrides });
+  const photos = (count) => Array.from({ length: count }, () => photo());
 
-  it("accepts one to four photos, with or without dimensions", () => {
+  it(`accepts one to ${MAX_POST_PHOTOS} photos, with or without dimensions`, () => {
     assert.equal(createPhotoUploadsSchema.safeParse({ photos: [photo()] }).success, true);
     assert.equal(
       createPhotoUploadsSchema.safeParse({
-        photos: [photo({ width: 2048, height: 1536 }), photo(), photo(), photo()],
+        photos: [photo({ width: 2048, height: 1536 }), ...photos(MAX_POST_PHOTOS - 1)],
       }).success,
       true,
     );
   });
 
-  it("refuses none, or more than four", () => {
+  it(`refuses none, or more than ${MAX_POST_PHOTOS}`, () => {
     assert.equal(createPhotoUploadsSchema.safeParse({ photos: [] }).success, false);
     assert.equal(
-      createPhotoUploadsSchema.safeParse({ photos: [photo(), photo(), photo(), photo(), photo()] })
-        .success,
+      createPhotoUploadsSchema.safeParse({ photos: photos(MAX_POST_PHOTOS + 1) }).success,
       false,
     );
   });
@@ -97,22 +98,23 @@ describe("createPhotoUploadsSchema", () => {
 });
 
 describe("createPostSchema.photoIds", () => {
-  const id = (n) => `3f2504e0-4f89-41d3-9a0c-0305e82c330${n}`;
+  const id = (n) => `3f2504e0-4f89-41d3-9a0c-0305e82c33${String(n).padStart(2, "0")}`;
+  const ids = (count) => Array.from({ length: count }, (_, n) => id(n));
 
   it("is optional, so a text-only post sends none", () => {
     assert.equal(createPostSchema.safeParse({ title: "Notes", caption: "Done" }).success, true);
   });
 
-  it("accepts up to four distinct ids", () => {
+  it(`accepts up to ${MAX_POST_PHOTOS} distinct ids`, () => {
     assert.equal(
-      createPostSchema.safeParse({ title: "Desk", photoIds: [id(1), id(2), id(3), id(4)] }).success,
+      createPostSchema.safeParse({ title: "Desk", photoIds: ids(MAX_POST_PHOTOS) }).success,
       true,
     );
   });
 
-  it("refuses a fifth, a repeat, a non-uuid, and a photoUrl", () => {
+  it("refuses one too many, a repeat, a non-uuid, and a photoUrl", () => {
     for (const body of [
-      { title: "Desk", photoIds: [id(1), id(2), id(3), id(4), id(5)] },
+      { title: "Desk", photoIds: ids(MAX_POST_PHOTOS + 1) },
       { title: "Desk", photoIds: [id(1), id(1)] },
       { title: "Desk", photoIds: ["not-a-uuid"] },
       { title: "Desk", photoUrl: "https://cdn.example.com/x.jpg" },
