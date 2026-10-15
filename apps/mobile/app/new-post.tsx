@@ -275,8 +275,16 @@ const NewPost = () => {
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          // Dragging the form puts the keyboard away too, so it is never the
+          // only thing standing between the user and the Post button.
+          keyboardDismissMode="on-drag"
         >
           <View>
+            {/*
+              multiline so a long title wraps, but Return closes the keyboard
+              rather than adding a line - the keyboard otherwise had no way to
+              go away and sat over the Post button.
+            */}
             <TextInput
               style={newPostStyles.titleInput}
               value={title}
@@ -284,6 +292,8 @@ const NewPost = () => {
               placeholder="New post"
               placeholderTextColor={colors.textMuted}
               multiline
+              submitBehavior="blurAndSubmit"
+              returnKeyType="done"
               maxLength={MAX_TITLE_LENGTH}
               accessibilityLabel="Post title"
             />
@@ -356,6 +366,10 @@ const NewPost = () => {
               placeholder="How did the session go?"
               placeholderTextColor={colors.textMuted}
               multiline
+              // Return closes the keyboard here too, for the title's reason.
+              // The cost is no line breaks in a caption; the text still wraps.
+              submitBehavior="blurAndSubmit"
+              returnKeyType="done"
               maxLength={MAX_CAPTION_LENGTH}
               accessibilityLabel="Caption"
             />
