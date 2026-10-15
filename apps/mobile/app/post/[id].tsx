@@ -37,6 +37,7 @@ import { formatRelativeTime, formatDuration } from "@stdyapp/shared";
 
 import ReportDialog from "@components/ReportDialog";
 import PostRoutineLink from "@components/PostRoutineLink";
+import PostPhoto from "@components/PostPhoto";
 
 /** Stands in for a number that is not known yet, rather than inventing one. */
 const PLACEHOLDER = "—";
@@ -167,11 +168,7 @@ const PostDetail = () => {
             </View>
 
             {post.imageUrl && (
-              <Image
-                style={styles.photo}
-                source={{ uri: post.imageUrl }}
-                resizeMode="cover"
-              />
+              <PostPhoto uri={post.imageUrl} title={post.title} style={styles.photo} />
             )}
 
             {post.caption ? (

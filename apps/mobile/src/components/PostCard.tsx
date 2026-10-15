@@ -1,4 +1,4 @@
-import { Image, Pressable } from "react-native";
+import { Pressable } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 
@@ -10,6 +10,7 @@ import PostCardBody from "./PostCardBody";
 import PostCardStats from "./PostCardStats";
 import PostCardFooter from "./PostCardFooter";
 import PostRoutineLink from "./PostRoutineLink";
+import PostPhoto from "./PostPhoto";
 
 interface PostCardProps {
   post: FeedPost;
@@ -78,11 +79,12 @@ const PostCard = ({ post, onToggleLike, onReport }: PostCardProps) => {
         {/* Always rendered. PostCardStats holds the row's place with a dash when
             a post has no linked session, rather than the row coming and going. */}
         <PostCardStats session={post.session} />
+        {/* Opens full size rather than the post - see PostPhoto. */}
         {post.imageUrl && (
-          <Image
+          <PostPhoto
+            uri={post.imageUrl}
+            title={post.title}
             style={homeStyles.postCardImage}
-            source={{ uri: post.imageUrl }}
-            resizeMode="cover"
           />
         )}
       </Pressable>

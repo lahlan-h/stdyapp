@@ -32,6 +32,7 @@ import { createRoutinesStyles } from "./routines.styles";
 import { createSessionHistoryStyles } from "./sessionHistory.styles";
 import { createLeaderboardStyles } from "./leaderboard.styles";
 import { createGroupsStyles } from "./groups.styles";
+import { createPhotoViewerStyles } from "./photoViewer.styles";
 import { createPlansStyles } from "./plans.styles";
 
 const STORAGE_KEY = "themePreference";
@@ -92,6 +93,7 @@ const styleMap = {
   sessionHistory: createSessionHistoryStyles,
   leaderboard: createLeaderboardStyles,
   groups: createGroupsStyles,
+  photoViewer: createPhotoViewerStyles,
   plans: createPlansStyles,
 } as const;
 

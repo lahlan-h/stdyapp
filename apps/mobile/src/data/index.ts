@@ -142,6 +142,11 @@ export {
 // hook to take it from. Same function usePosts hands back - there is one array.
 export { setLiked as setPostLiked } from "./postStore";
 export { useLikePost, type LikePostState } from "./useLikePost";
+export {
+  usePhotoSave,
+  type PhotoSaveState,
+  type PhotoSaveStatus,
+} from "./usePhotoSave";
 export { useReportPost, type ReportPostState } from "./useReportPost";
 export {
   REPORT_REASONS,
