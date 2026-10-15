@@ -84,7 +84,9 @@ export const createHomeStyles = (colors: ColorScheme) => {
     },
     postCardImage: {
       width: "100%",
-      aspectRatio: 1 / 1,
+      // Square only until the photo's own shape is known - PostPhoto
+      // replaces this with it, within 4:5 and 2:1.
+      aspectRatio: 1,
       borderColor: colors.border,
       borderTopWidth: 1,
       borderBottomWidth: 1,
