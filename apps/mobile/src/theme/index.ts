@@ -45,9 +45,6 @@ export {
 export { useTabBarClearance, useTabBarInset } from "./useTabBarClearance";
 export {
   createTabBarStyles,
-  TAB_ICON_SIZE,
-  TAB_BAR_HEIGHT,
-  BAR_HEIGHT,
   SESSION_BAR_CLEARANCE,
   SESSION_BAR_ICON_SIZE,
   FALLBACK_TAB_BAR_HEIGHT,

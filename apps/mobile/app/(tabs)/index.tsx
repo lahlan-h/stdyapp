@@ -322,7 +322,7 @@ const Index = () => {
   /**
    * Home pressed while already on Home: close the page if one is open,
    * otherwise go back to the top - the usual meaning of tapping the tab you are
-   * on. TabBar emits tabPress for exactly this.
+   * on. The native tab bar emits tabPress for exactly this.
    *
    * Read through a ref so the listener is attached once rather than re-attached
    * every time a page opens or closes.
