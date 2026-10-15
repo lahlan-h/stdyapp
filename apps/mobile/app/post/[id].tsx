@@ -39,6 +39,8 @@ import ReportDialog from "@components/ReportDialog";
 import PostRoutineLink from "@components/PostRoutineLink";
 import PostPhoto from "@components/PostPhoto";
 import StudiedWith from "@components/StudiedWith";
+import PostHighlights from "@components/PostHighlights";
+import { focusBand, focusBandColor } from "@components/focusBand";
 
 /** Stands in for a number that is not known yet, rather than inventing one. */
 const PLACEHOLDER = "—";
@@ -195,10 +197,29 @@ const PostDetail = () => {
                 <Text style={styles.statValue}>{durationOf(post)}</Text>
               </View>
               <View>
+                <Text style={styles.statLabel}>Focus</Text>
+                {/* The band's word too, which the card has no room for. */}
+                <Text
+                  style={[
+                    styles.statValue,
+                    post.session?.focusScore != null && {
+                      color: focusBandColor(focusBand(post.session.focusScore).key, colors),
+                    },
+                  ]}
+                >
+                  {focusOf(post)}
+                </Text>
+              </View>
+              <View>
                 <Text style={styles.statLabel}>Tasks</Text>
                 <Text style={styles.statValue}>{tasksOf(post)}</Text>
               </View>
             </View>
+
+            <PostHighlights
+              highlights={post.session?.highlights ?? []}
+              style={{ marginHorizontal: 16, marginBottom: 16 }}
+            />
 
             <View style={styles.actions}>
               <Pressable
@@ -380,6 +401,12 @@ const PostDetail = () => {
       </SafeAreaView>
     </LinearGradient>
   );
+};
+
+/** "82 · Deep focus", or a dash when the session was not measured. */
+const focusOf = (post: FeedPost): string => {
+  const score = post.session?.focusScore ?? null;
+  return score === null ? PLACEHOLDER : `${score} · ${focusBand(score).label}`;
 };
 
 /** "4/5" tasks ticked off, or a dash when the session had no task list. */

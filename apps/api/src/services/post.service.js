@@ -2,7 +2,7 @@ import * as postRepo from "../repositories/post.repository.js";
 import * as sessionRepo from "../repositories/session.repository.js";
 import * as routineRepo from "../repositories/studyRoutine.repository.js";
 import { HttpError } from "../utils/httpError.js";
-import { toViewerSession } from "./studiedWith.js";
+import { toViewerSession } from "./postSession.js";
 // The only sanctioned way to reach prisma.user from here: user.service.js
 // declares itself the sole module in apps/api that touches that table, so its
 // column allowlist cannot be bypassed by accident. It also already throws the
@@ -299,7 +299,20 @@ export const getPost = async (postId, requesterId) => {
  *
  * @param {string} viewerId - the caller's own id; guaranteed by requireAuth
  */
-const toViewerPost = (viewerId) => ({ likes, reports, ...post }) => {
+/**
+ * The personal bests among a page of rows - one query, whatever the page size.
+ * See findPersonalBestSessionIds.
+ */
+const personalBestsOf = (rows) =>
+  postRepo.findPersonalBestSessionIds(
+    rows.map((row) => row.sessionId).filter(Boolean),
+  );
+
+/**
+ * @param {string} viewerId
+ * @param {Set<string>} [personalBests] - session ids, from personalBestsOf
+ */
+const toViewerPost = (viewerId, personalBests = new Set()) => ({ likes, reports, ...post }) => {
   const report = reports[0];
   // Presence is NOT the answer. A withdrawn report is still a row - the unique
   // keeps it there so the reporter can file again - and getPostReportStatus in
@@ -309,7 +322,9 @@ const toViewerPost = (viewerId) => ({ likes, reports, ...post }) => {
 
   return {
     ...post,
-    session: toViewerSession(post.session, post.userId),
+    session: toViewerSession(post.session, post.userId, {
+      isPersonalBest: personalBests.has(post.sessionId),
+    }),
     isLiked: likes.length > 0,
     isReported,
     // Both only while the report is live. Handing back the id of a WITHDRAWN
@@ -388,13 +403,14 @@ export const listAllPosts = async ({ page, limit, sort, from, to, audience, grou
     viewerId,
   );
 
-  return { items: rows.map(toViewerPost(viewerId)), total, page, limit };
+  const personalBests = await personalBestsOf(rows);
+  return { items: rows.map(toViewerPost(viewerId, personalBests)), total, page, limit };
 };
 
 export const listMyPosts = async (userId) => {
   // Both ids are the caller: these are their posts, and they are the viewer.
   const rows = await postRepo.findPostsByUser(userId, userId);
-  return rows.map(toViewerPost(userId));
+  return rows.map(toViewerPost(userId, await personalBestsOf(rows)));
 };
 
 /**
@@ -416,7 +432,7 @@ export const listPostsByUser = async (targetUserId, viewerId) => {
   // They differ whenever one user is looking at another's profile, which is the
   // whole reason this takes two ids rather than one.
   const rows = await postRepo.findPostsByUser(targetUserId, viewerId);
-  return rows.map(toViewerPost(viewerId));
+  return rows.map(toViewerPost(viewerId, await personalBestsOf(rows)));
 };
 
 /**

@@ -319,6 +319,10 @@ model Session {
 
   /// "Who is in this room", and the delete path's read-before-SetNull.
   @@index([hostSessionId])
+  // "This user's sessions that ended before that one" - the personal-best
+  // check on posts (findPersonalBestSessionIds). Also the first index on
+  // sessions.userId at all, which every per-user session list can use.
+  @@index([userId, endedAt])
   @@map("sessions")
 }
 

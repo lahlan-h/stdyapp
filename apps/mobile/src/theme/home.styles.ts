@@ -102,6 +102,29 @@ export const createHomeStyles = (colors: ColorScheme) => {
       fontFamily: "PlusJakartaSans_600SemiBold",
       color: colors.text,
     },
+    // --- Badges a session earned ("Personal best"...) ---
+    // Shared with the post detail screen through the PostHighlights component.
+    highlights: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+    },
+    highlight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.bg,
+    },
+    highlightText: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 12,
+      color: colors.text,
+    },
     statsContainer: {
       paddingHorizontal: 12,
       paddingTop: 10,

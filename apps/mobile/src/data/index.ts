@@ -8,7 +8,7 @@
  * API anywhere outside src/data is a bug, and so is a component that knows what
  * `_count` or `photoUrl` means.
  */
-export type { FeedAuthor, FeedPost, FeedSession, FeedRoutine } from "./types";
+export type { FeedAuthor, FeedPost, FeedSession, FeedRoutine, PostHighlight } from "./types";
 export {
   useIsSignedIn,
   useSessionRestored,

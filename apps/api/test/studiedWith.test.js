@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { toStudiedWith, toViewerSession } from "../src/services/studiedWith.js";
+import { toStudiedWith } from "../src/services/studiedWith.js";
 
 /**
  * Who a post says its author studied with. The cases that matter most are the
@@ -79,24 +79,5 @@ describe("toStudiedWith", () => {
     const [sam] = toStudiedWith(baseSession({ participants: [{ user: person("sam") }] }), AUTHOR);
     assert.equal("blocking" in sam, false);
     assert.equal("blockedBy" in sam, false);
-  });
-});
-
-describe("toViewerSession", () => {
-  it("passes null through - a post with no session", () => {
-    assert.equal(toViewerSession(null, AUTHOR), null);
-  });
-
-  it("keeps the session's numbers and swaps the room relations for studiedWith", () => {
-    const out = toViewerSession(
-      baseSession({ participants: [{ user: person("sam") }] }),
-      AUTHOR,
-    );
-    assert.equal(out.tasksCompleted, 4);
-    assert.equal(out.tasksTotal, 5);
-    assert.equal(out.focusPoints, 50);
-    assert.deepEqual(ids(out.studiedWith), ["sam"]);
-    assert.equal("participants" in out, false);
-    assert.equal("hostSession" in out, false);
   });
 });

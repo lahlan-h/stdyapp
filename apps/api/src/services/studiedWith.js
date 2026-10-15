@@ -1,9 +1,9 @@
 /**
- * A post's session as the feed carries it, and who it was studied with.
+ * Who a post's session was studied with.
  *
  * Pure: no I/O, so it is tested directly (test/studiedWith.test.js), the split
  * sessionHistory.js makes. post.repository.js loads the room relations through
- * studyBuddySelect; this decides who appears.
+ * studyBuddySelect; this decides who appears. postSession.js calls it.
  */
 
 /**
@@ -31,11 +31,4 @@ export const toStudiedWith = (session, authorId) => {
     people.push(person);
   }
   return people;
-};
-
-/** The session as the feed carries it - room relations flattened away. */
-export const toViewerSession = (session, authorId) => {
-  if (!session) return null;
-  const { participants: _participants, hostSession: _hostSession, ...rest } = session;
-  return { ...rest, studiedWith: toStudiedWith(session, authorId) };
 };
