@@ -1,6 +1,7 @@
 import * as postRepo from "../repositories/post.repository.js";
 import * as sessionRepo from "../repositories/session.repository.js";
 import * as routineRepo from "../repositories/studyRoutine.repository.js";
+import { HttpError } from "../utils/httpError.js";
 // The only sanctioned way to reach prisma.user from here: user.service.js
 // declares itself the sole module in apps/api that touches that table, so its
 // column allowlist cannot be bypassed by accident. It also already throws the
@@ -193,6 +194,9 @@ export const invalidateDetachedPosts = async (posts) => {
  * checked, and they are checked in parallel so supplying both still costs one
  * round trip's latency rather than two.
  */
+/** A post is a title plus at least one of these. */
+const NEEDS_PHOTO_OR_CAPTION = "A post needs a photo or a caption";
+
 /**
  * Creates a post and stores its photo, in one request.
  *
@@ -205,11 +209,12 @@ export const invalidateDetachedPosts = async (posts) => {
  * the write is wrapped so a failed insert takes the orphan with it.
  *
  * @param {{ userId: string, sessionId?: string, routineId?: string,
- *           title: string, caption?: string, photo: Buffer }} input - photo is
- *           the parsed file part, size-capped and guaranteed non-empty by
- *           uploadImage()
+ *           title: string, caption?: string, photo?: Buffer }} input - photo is
+ *           the parsed file part, size-capped and non-empty when present (see
+ *           uploadImage()), and absent for a text-only post
  * @returns {Promise<object>} the created post
- * @throws 403 when a link is not the caller's, 415 for non-image bytes, 502 R2 down
+ * @throws 400 with neither a photo nor a caption, 403 when a link is not the
+ *         caller's, 415 for non-image bytes, 502 R2 down
  */
 export const createPost = async ({
   userId,
@@ -219,6 +224,11 @@ export const createPost = async ({
   caption,
   photo,
 }) => {
+  // Before anything else: a title alone is not a post. caption has already
+  // been trimmed and refused when empty by createPostSchema, so presence is the
+  // whole test.
+  if (!photo && !caption) throw new HttpError(400, NEEDS_PHOTO_OR_CAPTION);
+
   // FIRST, before a byte reaches R2. Both checks hit the database, so they are
   // not free - but they are far cheaper than an upload, and doing them first
   // means a 403 leaves nothing behind to reclaim.
@@ -230,11 +240,10 @@ export const createPost = async ({
   // The bytes decide the format, never the Content-Type multer accepted - see
   // uploadPhoto, and utils/imageType.js for why that distinction is the security
   // boundary rather than a detail.
-  const { key: postKey, url: photoUrl } = await uploadPhoto({
-    prefix: POST_PREFIX,
-    ownerId: userId,
-    buffer: photo,
-  });
+  // Text-only posts skip storage entirely, and have nothing to reclaim below.
+  const { key: postKey, url: photoUrl } = photo
+    ? await uploadPhoto({ prefix: POST_PREFIX, ownerId: userId, buffer: photo })
+    : { key: null, url: null };
 
   let post;
   try {
@@ -257,7 +266,7 @@ export const createPost = async ({
     // it would not be under a two-step upload, where the bytes arrived in an
     // earlier request and a client might still retry with them - exactly the
     // shape setAvatar uses in avatar.service.js, for the same reason.
-    await deleteQuietly(postKey, "database write failed");
+    if (postKey) await deleteQuietly(postKey, "database write failed");
     throw err;
   }
 
@@ -473,7 +482,14 @@ export const updatePost = async (
   requesterId,
   { title, caption, sessionId, routineId },
 ) => {
-  await getOwnedPostOrThrow(postId, requesterId);
+  const existing = await getOwnedPostOrThrow(postId, requesterId);
+
+  // Clearing the caption (null) of a post with no photo would leave a title
+  // alone, which createPost refuses - so this must too. The photo is fixed at
+  // creation, so the stored row is the whole answer.
+  if (caption === null && !existing.photoUrl) {
+    throw new HttpError(400, NEEDS_PHOTO_OR_CAPTION);
+  }
 
   const checks = [];
   if (sessionId) checks.push(assertOwnsSession(sessionId, requesterId));

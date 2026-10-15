@@ -119,9 +119,9 @@ const LinkRow = ({
  * Compose a post.
  *
  * Presented as a modal from the Study tab when a session finishes - there is
- * no other way in, since a post is about a session. A photo and a title
- * are required - Post.photoUrl is not nullable, so there is no text-only post
- * to fall back to - and the caption is the optional half.
+ * no other way in, since a post is about a session. A title is required, plus
+ * a photo OR a caption - either, or both. A title alone is not a post, and the
+ * API refuses one with a 400 (see createPost in post.service.js).
  *
  * POST OR DISCARD. For a session that just ended there are exactly two ways
  * out, as on Hevy's save screen: publish it, or discard it, which deletes the
@@ -196,7 +196,9 @@ const NewPost = () => {
   const [routine, setRoutine] = useState<LinkChoice | null>(null);
   const [picker, setPicker] = useState<"session" | "routine" | null>(null);
 
-  const canSubmit = Boolean(photo) && title.trim().length > 0 && !isSubmitting;
+  // Mirrors the API's rule: a title, plus a photo or a caption.
+  const hasBody = Boolean(photo) || caption.trim().length > 0;
+  const canSubmit = title.trim().length > 0 && hasBody && !isSubmitting;
 
   const pickPhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -247,12 +249,12 @@ const NewPost = () => {
   };
 
   const submit = async () => {
-    if (!photo) return;
+    if (!canSubmit) return;
 
     const created = await createPost({
       title,
       caption,
-      photo,
+      photo: photo ?? undefined,
       sessionId: session?.id,
       routineId: routine?.id,
     });
@@ -372,9 +374,6 @@ const NewPost = () => {
             <View style={newPostStyles.fieldHeader}>
               <View style={newPostStyles.fieldLabelRow}>
                 <Text style={newPostStyles.fieldLabel}>Caption</Text>
-                <View style={newPostStyles.badge}>
-                  <Text style={newPostStyles.badgeText}>OPTIONAL</Text>
-                </View>
               </View>
               <Text style={newPostStyles.counter}>
                 {caption.length} / {MAX_CAPTION_LENGTH}

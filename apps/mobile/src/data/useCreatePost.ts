@@ -22,7 +22,11 @@ export interface NewPost {
   title: string;
   /** Omitted entirely when the user typed nothing - see createPost. */
   caption?: string;
-  photo: NewPostPhoto;
+  /**
+   * Optional - but a post needs this OR a caption. A text-only post sends no
+   * file part at all, and the API refuses a post with neither.
+   */
+  photo?: NewPostPhoto;
   /** One of the user's own sessions. Anyone else's is a 403. */
   sessionId?: string;
   /** One of the user's own routines. Anyone else's is a 403. */
@@ -97,8 +101,10 @@ export interface CreatePostState {
 /**
  * Creates a post, photo and all, in one multipart request.
  *
- * The photo is mandatory: Post.photoUrl is not nullable and the route answers
- * 400 without a file part. There is no separate upload step - the API takes the
+ * The photo is optional, but a post needs it OR a caption - the route answers
+ * 400 with neither. A text-only post is still multipart, just without a file
+ * part, since the API reads its fields from the form. There is no separate
+ * upload step - the API takes the
  * bytes, sniffs them, writes to R2 and inserts the row, reclaiming the object
  * if the insert fails.
  */
@@ -113,7 +119,7 @@ export const useCreatePost = (): CreatePostState => {
     try {
       const formData = new FormData();
 
-      await appendPhoto(formData, post.photo);
+      if (post.photo) await appendPhoto(formData, post.photo);
 
       formData.append("title", post.title.trim());
 

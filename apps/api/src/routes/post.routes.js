@@ -154,7 +154,9 @@ router.delete("/user/me", bulkLimit, removeMine);
 router.get("/all", readLimit, validate({ query: listAllPostsQuerySchema }), listAll);
 
 /**
- * Create a post: ONE multipart request carrying the photo and the caption.
+ * Create a post: ONE multipart request carrying the title, and a photo and/or a
+ * caption. The photo part is optional - a text-only post sends none - but at
+ * least one of the two is required, which post.service.js enforces.
  *
  * uploadImage BEFORE validate, which inverts the rule this router follows
  * everywhere else and is not a style choice: multer is what populates req.body
@@ -173,7 +175,12 @@ router.get("/all", readLimit, validate({ query: listAllPostsQuerySchema }), list
 router.post(
   "/",
   photoLimit,
-  uploadImage({ field: "photo", types: IMAGE_MIME_TYPES, limit: MAX_POST_PHOTO_BYTES }),
+  uploadImage({
+    field: "photo",
+    types: IMAGE_MIME_TYPES,
+    limit: MAX_POST_PHOTO_BYTES,
+    optional: true,
+  }),
   validate({ body: createPostSchema }),
   create,
 );

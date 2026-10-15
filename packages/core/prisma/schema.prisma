@@ -474,7 +474,12 @@ model Post {
   // existed, when it was carrying the headline; see the add_post_title
   // migration, which moved that text across and cleared this column.
   caption   String?
-  photoUrl  String
+
+  // Optional too, but not independently: a post must have a photo OR a
+  // caption, so a title is never left standing alone. The database cannot say
+  // "one of two", so post.service.js enforces it on create and on edit. Was NOT
+  // NULL until text-only posts existed - see make_post_photo_optional.
+  photoUrl  String?
   createdAt DateTime     @default(now())
 
   likes     Like[]

@@ -220,18 +220,6 @@ export const createNewPostStyles = (colors: ColorScheme) => {
     rowDisabled: {
       opacity: 0.45,
     },
-    badge: {
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 999,
-      backgroundColor: colors.border,
-    },
-    badgeText: {
-      fontFamily: "PlusJakartaSans_600SemiBold",
-      fontSize: 11,
-      letterSpacing: 0.4,
-      color: colors.textMuted,
-    },
     footnote: {
       fontFamily: "PlusJakartaSans_400Regular",
       fontSize: 12,

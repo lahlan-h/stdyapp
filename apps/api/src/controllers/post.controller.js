@@ -24,7 +24,8 @@ export const create = async (req, res, next) => {
       routineId,
       title,
       caption,
-      photo: req.file.buffer,
+      // Undefined for a text-only post - uploadImage is mounted optional.
+      photo: req.file?.buffer,
     });
     res.status(201).json(post);
   } catch (err) {
