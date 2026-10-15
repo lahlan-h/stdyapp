@@ -24,7 +24,6 @@ import {
 } from "@theme";
 import { useFocusSession, consumeStudyRequest, MAX_JOIN_CODE_LENGTH } from "@data";
 
-import DurationPicker from "@components/DurationPicker";
 import FocusDial from "@components/FocusDial";
 import FocusTrace from "@components/FocusTrace";
 import RatingSheet from "@components/RatingSheet";
@@ -35,6 +34,7 @@ import GroupList from "@components/GroupList";
 import SessionHistory from "@components/SessionHistory";
 import WeeklyStudyCard from "@components/WeeklyStudyCard";
 import AdvancedAnalyticsRow from "@components/AdvancedAnalyticsRow";
+import BeginCard from "@components/BeginCard";
 import RoomParticipants from "@components/RoomParticipants";
 import { confirmGroupAction } from "@components/confirmGroup";
 
@@ -96,7 +96,6 @@ const Study = () => {
     elapsedSec,
     remainingSec,
     plannedSec,
-    setPlannedSec,
     liveFocus,
     awaySec,
     phoneDownSec,
@@ -107,9 +106,6 @@ const Study = () => {
     rating,
     streakDays,
     tasks,
-    draftTasks,
-    addDraftTask,
-    removeDraftTask,
     addTask,
     toggleTask,
     removeTask,
@@ -373,28 +369,9 @@ const Study = () => {
               <WeeklyStudyCard />
               <AdvancedAnalyticsRow />
 
-              <View style={styles.dialWrap}>
-                <FocusDial progress={0} color={colors.primary}>
-                  <Text style={styles.dialValue}>
-                    {plannedSec ? clock(plannedSec) : "\u221e"}
-                  </Text>
-                  <Text style={styles.dialCaption}>
-                    {plannedSec ? "planned" : "no limit"}
-                  </Text>
-                </FocusDial>
-              </View>
-
-              {/* Zero across all three wheels is an open-ended session, so
-                  there is no separate "no limit" control. */}
-              <DurationPicker seconds={plannedSec} onChange={setPlannedSec} />
-
-              <TaskChecklist
-                drafts={draftTasks}
-                onAdd={addDraftTask}
-                onRemoveDraft={removeDraftTask}
-              />
-
-              {/* Chosen from a group's screen; clearing it makes Start solo again. */}
+              {/* Chosen from a group's screen; clearing it makes the next
+                  session solo again. Above Begin, because it changes what
+                  Begin starts. */}
               {selectedGroup ? (
                 <View style={styles.groupChip}>
                   <Feather name="users" size={TASK_ICON_SIZE} color={colors.primary} />
@@ -413,16 +390,10 @@ const Study = () => {
                 </View>
               ) : null}
 
-              <Pressable
-                style={[styles.action, busy && styles.actionDisabled]}
-                disabled={busy}
-                onPress={start}
-                accessibilityRole="button"
-                accessibilityLabel="Start session"
-              >
-                <Feather name="play" size={STUDY_ICON_SIZE} color={colors.surface} />
-                <Text style={styles.actionText}>Start</Text>
-              </Pressable>
+              {/* No length to pick and no checklist to fill first: a session
+                  starts the moment a mode is chosen. Tasks can still be added
+                  once it is running. */}
+              <BeginCard busy={busy} onStartNormal={start} />
 
               <Text style={styles.helpText}>
                 Focus is an estimate, not a measurement.

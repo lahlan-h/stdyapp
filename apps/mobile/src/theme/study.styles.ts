@@ -52,6 +52,9 @@ export const WEEK_PILL_ICON_SIZE = 14;
 /** The chart and lock glyphs either side of "See Advanced Analytics". */
 export const ADVANCED_ANALYTICS_ICON_SIZE = 24;
 
+/** The chevron on a Begin card row that starts something. */
+export const BEGIN_CHEVRON_SIZE = 18;
+
 export const createStudyStyles = (colors: ColorScheme) => {
   const styles = StyleSheet.create({
     container: { flex: 1 },
@@ -881,6 +884,68 @@ export const createStudyStyles = (colors: ColorScheme) => {
       fontFamily: "PlusJakartaSans_600SemiBold",
       fontSize: 17,
       color: colors.text,
+    },
+
+    // ---- Begin card -----------------------------------------------------
+    beginCard: {
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 20,
+      gap: 12,
+    },
+    beginTitle: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 18,
+      color: colors.text,
+    },
+    // A transparent edge on every row, so the lit one's border does not make
+    // it a pixel taller than the rest.
+    beginOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: TOUCH_MIN,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: "transparent",
+    },
+    // The mode that works today, lit the way the design lights it.
+    beginOptionPrimary: {
+      backgroundColor: colors.primaryTint,
+      borderColor: colors.primaryEdge,
+    },
+    beginOptionDisabled: {
+      opacity: 0.55,
+    },
+    beginOptionText: {
+      flex: 1,
+      gap: 2,
+    },
+    beginOptionTitle: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 16,
+      color: colors.text,
+    },
+    beginOptionCaption: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.textMuted,
+    },
+    beginBadge: {
+      paddingVertical: 3,
+      paddingHorizontal: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    beginBadgeText: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 10,
+      letterSpacing: 0.8,
+      color: colors.textMuted,
     },
   });
 

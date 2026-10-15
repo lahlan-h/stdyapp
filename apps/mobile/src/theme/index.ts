@@ -34,6 +34,7 @@ export {
   WEEK_CHART_HEIGHT,
   WEEK_PILL_ICON_SIZE,
   ADVANCED_ANALYTICS_ICON_SIZE,
+  BEGIN_CHEVRON_SIZE,
 } from "./study.styles";
 export {
   createSettingsStyles,

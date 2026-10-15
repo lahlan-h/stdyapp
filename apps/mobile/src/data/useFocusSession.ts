@@ -255,7 +255,10 @@ export interface FocusSessionState {
 export const useFocusSession = (): FocusSessionState => {
   const [phase, setPhase] = useState<FocusPhase>("idle");
   const [elapsedSec, setElapsedSec] = useState(0);
-  const [plannedSec, setPlannedSec] = useState(25 * 60);
+  // Open-ended by default: the Study tab's "Normal / Unlimited" is a stopwatch
+  // that runs until End. A plan, and the countdown that comes with it, is
+  // still supported for a timed mode to set.
+  const [plannedSec, setPlannedSec] = useState(0);
   const [sampleCount, setSampleCount] = useState(0);
   const [liveFocus, setLiveFocus] = useState<number | null>(null);
   const [awaySec, setAwaySec] = useState(0);
