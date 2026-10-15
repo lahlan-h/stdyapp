@@ -9,14 +9,15 @@ import {
   RefreshControl,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 
 import {
   useTheme,
   useAnalyticsStyles,
-  useTabBarClearance,
   ANALYTICS_ICON_SIZE,
+  ANALYTICS_BACK_ICON_SIZE,
   DAILY_CHART_HEIGHT,
   HOURLY_CHART_HEIGHT,
 } from "@theme";
@@ -99,8 +100,9 @@ const HOURLY_AXIS = [0, 6, 12, 18, 23].map(formatHour);
 // --- Screen -------------------------------------------------------------------
 
 /**
- * Personal study analytics. A tab: the add-post circle moved from the tab bar
- * to the Feed, which freed the slot.
+ * Personal study analytics, opened from "See Advanced Analytics" under the
+ * Study tab's weekly card. A push rather than a tab: the week at a glance
+ * lives on Study, and this is where you go for the rest of it.
  *
  * Every number comes from GET /api/analytics/me; nothing is computed here
  * beyond formatting. Keeping the arithmetic on the server is what lets the
@@ -109,8 +111,8 @@ const HOURLY_AXIS = [0, 6, 12, 18, 23].map(formatHour);
 const AnalyticsScreen = () => {
   const { colors } = useTheme();
   const styles = useAnalyticsStyles();
-  // What the floating tab bar covers, inset included - see useTabBarClearance.
-  const tabBarClearance = useTabBarClearance();
+  // A pushed screen covers the tab bar, so only the home indicator needs room.
+  const insets = useSafeAreaInsets();
   const [range, setRange] = useState<AnalyticsRange>("7d");
   const { analytics, isLoading, loadError, reload } = useAnalytics(range);
 
@@ -119,7 +121,7 @@ const AnalyticsScreen = () => {
       <StatusBar barStyle={colors.statusBarStyle} translucent backgroundColor="transparent" />
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarClearance + 24 }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
@@ -131,8 +133,16 @@ const AnalyticsScreen = () => {
             />
           }
         >
-          {/* No back button: a tab is somewhere you are, not somewhere you went. */}
+          {/* Its own back button, because the root Stack hides every header. */}
           <View style={styles.header}>
+            <Pressable
+              style={({ pressed }) => [styles.back, pressed && { opacity: 0.6 }]}
+              onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+            >
+              <Feather name="chevron-left" size={ANALYTICS_BACK_ICON_SIZE} color={colors.text} />
+            </Pressable>
             <Text style={styles.screenTitle}>Analytics</Text>
           </View>
 

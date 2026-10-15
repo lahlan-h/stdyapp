@@ -107,6 +107,7 @@ export { useKeyboardLift, type KeyboardLift } from "./useKeyboardLift";
 export {
   createAnalyticsStyles,
   ANALYTICS_ICON_SIZE,
+  ANALYTICS_BACK_ICON_SIZE,
   DAILY_CHART_HEIGHT,
   HOURLY_CHART_HEIGHT,
   MIN_VISIBLE_BAR,

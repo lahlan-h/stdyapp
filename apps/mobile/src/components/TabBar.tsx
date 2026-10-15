@@ -36,9 +36,9 @@ type TabConfig =
     });
 
 /**
- * The tabs, in bar order. The add-post circle that used to sit in the middle
- * now lives on the Feed itself, which freed the slot Analytics takes. Settings
- * moved behind a gear on the profile and is a pushed screen now, not a tab.
+ * The tabs, in bar order. Analytics and Settings were tabs once and are pushed
+ * screens now - Analytics from the Study tab, Settings from a gear on the
+ * profile.
  *
  * The Feed is still the `index` route - renaming the file would change every
  * deep link to "/" - so only its label changed.
@@ -46,7 +46,6 @@ type TabConfig =
 export const TABS: TabConfig[] = [
   { name: "index", label: "Feed", family: "AntDesign", icon: "home" },
   { name: "study", label: "Study", family: "Feather", icon: "book" },
-  { name: "analytics", label: "Analytics", family: "Feather", icon: "bar-chart-2" },
   { name: "profile", label: "Profile", family: "FontAwesome5", icon: "user" },
 ];
 

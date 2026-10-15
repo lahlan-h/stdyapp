@@ -5,6 +5,13 @@ import { StyleSheet } from "react-native";
 const ANALYTICS_ICON_SIZE = 16;
 
 /**
+ * The back control - the same 40px circle and 18px chevron as every other
+ * pushed screen, so the way back looks and sits the same everywhere.
+ */
+const BACK_SIZE = 40;
+const ANALYTICS_BACK_ICON_SIZE = 18;
+
+/**
  * Plot heights. Fixed rather than proportional to the screen, so a bar of a
  * given value is the same height on every phone and the two charts can be
  * compared by eye.
@@ -50,6 +57,16 @@ export const createAnalyticsStyles = (colors: ColorScheme) => {
       alignItems: "center",
       gap: 12,
       paddingTop: 8,
+    },
+    back: {
+      width: BACK_SIZE,
+      height: BACK_SIZE,
+      borderRadius: BACK_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     screenTitle: {
       fontFamily: "PlusJakartaSans_700Bold",
@@ -291,6 +308,7 @@ export const createAnalyticsStyles = (colors: ColorScheme) => {
 /** Re-exported so the screen can size icons and compute bar heights to match. */
 export {
   ANALYTICS_ICON_SIZE,
+  ANALYTICS_BACK_ICON_SIZE,
   DAILY_CHART_HEIGHT,
   HOURLY_CHART_HEIGHT,
   MIN_VISIBLE_BAR,

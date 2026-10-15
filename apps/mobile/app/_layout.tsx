@@ -66,9 +66,11 @@ export default function RootLayout() {
           <Stack.Screen name="settings" />
           {/*
             A push, for the same reason - opened from the Study tab's Routines
-            view. Analytics and the routines list are tabs now, not screens.
+            view. The routines list itself lives under Study.
           */}
           <Stack.Screen name="routine/[id]" />
+          {/* The full analytics page, a push from the Study tab's weekly card. */}
+          <Stack.Screen name="analytics" />
           {/* A push from the Study tab's Groups view, for routine/[id]'s reason. */}
           <Stack.Screen name="group/[id]" />
           {/*

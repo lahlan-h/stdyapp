@@ -134,7 +134,7 @@ const Settings = () => {
             />
           </SettingsSection>
 
-          {/* Analytics is a tab now, and Routines lives under Study. */}
+          {/* Analytics and Routines both live under the Study tab. */}
           {/*
             Edit profile and Sign out are live. Privacy and Delete account are
             still placeholders: the API stores isPrivate but nothing enforces it
