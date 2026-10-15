@@ -51,9 +51,14 @@ export default function RootLayout() {
           {/*
             A modal, not a tab: composing a post is something you finish or
             abandon, which is also why the screen carries its own discard button
-            rather than relying on a back arrow.
+            rather than relying on a back arrow. No swipe-down either: for a
+            session that just ended, leaving without posting deletes it, and
+            that has to be a deliberate tap, never a stray drag.
           */}
-          <Stack.Screen name="new-post" options={{ presentation: "modal" }} />
+          <Stack.Screen
+            name="new-post"
+            options={{ presentation: "modal", gestureEnabled: false }}
+          />
           {/*
             A push, not a modal: reading a post and its thread is somewhere you
             go and come back from, where composing is finish-or-abandon. It still

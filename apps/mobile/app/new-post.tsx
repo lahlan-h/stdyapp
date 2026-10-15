@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   StatusBar,
   ActivityIndicator,
   Alert,
+  BackHandler,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -26,6 +28,7 @@ import {
   useCreatePost,
   useSessionDetail,
   useSessionRating,
+  useDiscardSession,
   MAX_PHOTO_BYTES,
   MAX_CAPTION_LENGTH,
   MAX_TITLE_LENGTH,
@@ -39,6 +42,7 @@ import {
 } from "@components/LinkPicker";
 import { NONE, formatSeconds } from "@components/sessionFormat";
 import RatingSheet from "@components/RatingSheet";
+import { confirmDiscardSession } from "@components/confirmDiscardSession";
 
 /** What the API's magic-byte sniff will accept. GIF is deliberately not in it. */
 const ACCEPTED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -115,6 +119,11 @@ const LinkRow = ({
  * no other way in, since a post is about a session. A photo and a title
  * are required - Post.photoUrl is not nullable, so there is no text-only post
  * to fall back to - and the caption is the optional half.
+ *
+ * POST OR DISCARD. For a session that just ended there are exactly two ways
+ * out, as on Hevy's save screen: publish it, or discard it, which deletes the
+ * session. The swipe-down that would otherwise dismiss the modal is switched
+ * off in the root layout, and Android's back button asks to discard.
  */
 const NewPost = () => {
   const { colors } = useTheme();
@@ -137,6 +146,33 @@ const NewPost = () => {
    */
   const { rating, rate, error: ratingError } = useSessionRating(finishedId);
   const [ratingOpen, setRatingOpen] = useState(Boolean(finishedId));
+
+  const { discard, isDiscarding, error: discardError } = useDiscardSession();
+
+  /** The X: deletes a just-finished session, after asking; otherwise just closes. */
+  const leave = () => {
+    if (!finishedId) {
+      router.back();
+      return;
+    }
+    confirmDiscardSession(async () => {
+      if (await discard(finishedId)) router.back();
+    });
+  };
+
+  // Android's back button is a way out too, so it gets the same question
+  // rather than quietly leaving the session posted nowhere. Android only:
+  // nothing else has the button, and react-native-web logs an error for every
+  // subscription. No dependency list: re-subscribing each render keeps the
+  // handler calling the current leave(), which closes over the latest state.
+  useEffect(() => {
+    if (!finishedId || Platform.OS !== "android") return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      leave();
+      return true;
+    });
+    return () => subscription.remove();
+  });
 
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
@@ -222,9 +258,11 @@ const NewPost = () => {
           // top padding does not move an absolutely positioned child, so a bare
           // top: 8 put this button under the status bar.
           style={[newPostStyles.exit, { top: insets.top + 8 }]}
-          onPress={() => router.back()}
+          onPress={leave}
+          disabled={isDiscarding}
           accessibilityRole="button"
-          accessibilityLabel="Discard post"
+          accessibilityLabel={finishedId ? "Discard session" : "Discard post"}
+          accessibilityState={{ disabled: isDiscarding, busy: isDiscarding }}
         >
           <Feather name="x" size={EXIT_ICON_SIZE} color={colors.danger} />
         </Pressable>
@@ -364,10 +402,12 @@ const NewPost = () => {
             </LinearGradient>
           </View>
 
-          {error || ratingError ? (
+          {error || ratingError || discardError ? (
             <View style={newPostStyles.error}>
               <Feather name="alert-circle" size={18} color={colors.danger} />
-              <Text style={newPostStyles.errorText}>{error ?? ratingError}</Text>
+              <Text style={newPostStyles.errorText}>
+                {error ?? discardError ?? ratingError}
+              </Text>
             </View>
           ) : null}
         </ScrollView>

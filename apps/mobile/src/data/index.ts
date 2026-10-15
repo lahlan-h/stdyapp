@@ -203,3 +203,4 @@ export {
 } from "./useAnalytics";
 export { toWeekComparison, type WeekComparison } from "./weekComparison";
 export { useSessionRating, type SessionRatingState } from "./useSessionRating";
+export { useDiscardSession, type DiscardSessionState } from "./useDiscardSession";
