@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  Animated,
   View,
   Text,
   TextInput,
@@ -21,6 +22,7 @@ import Feather from "@expo/vector-icons/Feather";
 import {
   useTheme,
   useNewPostStyles,
+  useKeyboardLift,
   EXIT_ICON_SIZE,
   NEW_POST_ROW_ICON_SIZE,
 } from "@theme";
@@ -148,6 +150,14 @@ const NewPost = () => {
   const [ratingOpen, setRatingOpen] = useState(Boolean(finishedId));
 
   const { discard, isDiscarding, error: discardError } = useDiscardSession();
+
+  /**
+   * The Post button rides up with the keyboard, as the comment box on a post
+   * does, so it can be tapped without closing the keyboard first. No gap: the
+   * footer is a bar of its own and sits flush on the keys.
+   */
+  const footer = useRef<View>(null);
+  const { lift: keyboardLift, isLifted } = useKeyboardLift(footer, 0);
 
   /** The X: deletes a just-finished session, after asking; otherwise just closes. */
   const leave = () => {
@@ -426,10 +436,19 @@ const NewPost = () => {
           ) : null}
         </ScrollView>
 
-        <View
+        <Animated.View
+          ref={footer}
           style={[
             newPostStyles.footer,
-            { paddingBottom: 12 + insets.bottom },
+            {
+              // marginBottom rather than a transform, for post/[id]'s reason:
+              // it shortens the form above, so the field being typed in stays
+              // in view instead of sliding under the button.
+              marginBottom: keyboardLift,
+              // The inset clears the home indicator, which the keyboard
+              // already covers while it is up.
+              paddingBottom: 12 + (isLifted ? 0 : insets.bottom),
+            },
           ]}
         >
           <Pressable
@@ -457,7 +476,7 @@ const NewPost = () => {
               )}
             </LinearGradient>
           </Pressable>
-        </View>
+        </Animated.View>
         {picker === "session" ? (
           <SessionLinkPicker
             selectedId={session?.id}
