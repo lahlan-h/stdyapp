@@ -331,35 +331,8 @@ export const createStudyStyles = (colors: ColorScheme) => {
     },
 
     /**
-     * The mark at the top of the recap.
-     *
-     * A vector icon rather than an emoji: emoji render differently on every
-     * platform, cannot take a palette colour, and drift from the rest of the
-     * icon set.
-     */
-    heroBadge: {
-      width: 62,
-      height: 62,
-      borderRadius: 20,
-      alignSelf: "center",
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.successTint,
-      borderWidth: 1,
-      borderColor: colors.successEdge,
-    },
-
-    recapHeader: { alignItems: "center", gap: 3 },
-    recapTitle: {
-      fontSize: 26,
-      fontWeight: "700",
-      color: colors.text,
-      letterSpacing: -0.5,
-    },
-    recapSubtitle: { fontSize: 14, color: colors.textMuted },
-
-    /**
-     * ONE CARD PER METRIC, rather than rows inside a single card.
+     * ONE CARD PER METRIC, rather than rows inside a single card - used by a
+     * past session's detail screen.
      *
      * Each number is a separate thing the user might care about, and separate
      * cards let the eye land on one without reading the others. A grouped list
@@ -397,22 +370,6 @@ export const createStudyStyles = (colors: ColorScheme) => {
     },
     bandPillText: { fontSize: 13, fontWeight: "600" },
     bandDot: { width: 7, height: 7, borderRadius: 3.5 },
-
-    // ---- rewards ---------------------------------------------------------
-    rewardRow: { flexDirection: "row", gap: 10 },
-    rewardCard: {
-      flex: 1,
-      gap: 3,
-      paddingVertical: 14,
-      paddingHorizontal: 14,
-      borderRadius: 16,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    rewardTop: { flexDirection: "row", alignItems: "center", gap: 7 },
-    rewardValue: { fontSize: 17, fontWeight: "700", fontVariant: ["tabular-nums"] },
-    rewardCaption: { fontSize: 12, color: colors.textMuted },
 
     // ---- trace -----------------------------------------------------------
     traceCard: {
