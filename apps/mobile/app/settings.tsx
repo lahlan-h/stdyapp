@@ -136,9 +136,10 @@ const Settings = () => {
 
           {/* Analytics and Routines both live under the Study tab. */}
           {/*
-            Edit profile and Sign out are live. Privacy and Delete account are
-            still placeholders: the API stores isPrivate but nothing enforces it
-            yet, and account deletion needs its own confirm-with-password flow.
+            Edit profile, Session history and Sign out are live. Privacy and
+            Delete account are still placeholders: the API stores isPrivate but
+            nothing enforces it yet, and account deletion needs its own
+            confirm-with-password flow.
           */}
           <SettingsSection title="Account">
             <SettingsRow
@@ -147,6 +148,15 @@ const Settings = () => {
               label="Edit profile"
               description="Name, username and bio"
               onPress={() => router.push("/edit-profile")}
+              right={<Feather name="chevron-right" size={ROW_ICON_SIZE} color={colors.textMuted} />}
+            />
+            {/* Here rather than on the profile, which keeps to the design's
+                card and posts. */}
+            <SettingsRow
+              icon="clock"
+              label="Session history"
+              description="Every session, with its focus estimate"
+              onPress={() => router.push("/sessions")}
               right={<Feather name="chevron-right" size={ROW_ICON_SIZE} color={colors.textMuted} />}
             />
             <SettingsRow

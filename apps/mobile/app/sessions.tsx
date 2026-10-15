@@ -43,7 +43,7 @@ const groupByDay = (sessions: SessionHistoryItem[]): DaySection[] => {
 };
 
 /**
- * The caller's past study sessions, grouped by day. Opened from the profile.
+ * The caller's past study sessions, grouped by day. Opened from Settings.
  *
  * A push over the tabs, like routine/[id]: you go there and come back, so it
  * carries its own back button - the root Stack hides every header.

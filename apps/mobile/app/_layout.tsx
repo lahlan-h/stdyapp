@@ -85,7 +85,7 @@ export default function RootLayout() {
           */}
           <Stack.Screen name="user/[id]" />
           {/*
-            Session history, opened from the profile, and one session's
+            Session history, opened from Settings, and one session's
             recap-style detail opened from it. Pushes, for post/[id]'s reason.
           */}
           <Stack.Screen name="sessions" />
