@@ -7,7 +7,6 @@ import {
   useTabBarClearance,
   useTheme,
   useStyles,
-  PROFILE_ACTION_ICON_SIZE,
   PROFILE_SETTINGS_ICON_SIZE,
 } from "@theme";
 import {
@@ -28,7 +27,7 @@ import { useSessionBarClearance } from "@components/SessionBar";
  * The screen itself is ProfileView, shared with app/user/[id].tsx, which shows
  * anyone else opened from search. What is THIS screen's alone is its reads -
  * /api/auth/me and the session totals, both of which only ever answer for the
- * caller - and its actions, edit and sign out, which mean nothing on someone
+ * caller - and its one action, edit profile, which means nothing on someone
  * else's profile. The settings gear is the same: settings are yours alone.
  */
 const Profile = () => {
@@ -110,23 +109,7 @@ const Profile = () => {
       sessions={totals?.completed}
       followers={summary?.followers}
       following={summary?.following}
-      actions={
-        <>
-          <ProfileActions />
-          {/* Session history: a push to app/sessions.tsx. */}
-          <View style={styles.actions}>
-            <Pressable
-              onPress={() => router.push("/sessions")}
-              accessibilityRole="button"
-              accessibilityLabel="Session history"
-              style={({ pressed }) => [styles.actionButton, pressed ? { opacity: 0.6 } : undefined]}
-            >
-              <Feather name="clock" size={PROFILE_ACTION_ICON_SIZE} color={colors.text} />
-              <Text style={styles.actionLabel}>Session history</Text>
-            </Pressable>
-          </View>
-        </>
-      }
+      actions={<ProfileActions />}
       topBar={topBar}
       bottomPadding={tabBarClearance}
     />
