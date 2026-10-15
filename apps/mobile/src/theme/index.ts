@@ -31,6 +31,8 @@ export {
   TASK_ICON_SIZE,
   TOUCH_MIN,
   STUDY_FOOTER_ROOM,
+  WEEK_CHART_HEIGHT,
+  WEEK_PILL_ICON_SIZE,
 } from "./study.styles";
 export {
   createSettingsStyles,

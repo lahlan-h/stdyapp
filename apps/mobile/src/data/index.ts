@@ -197,3 +197,4 @@ export {
   type AnalyticsState,
   type GoalHitRate,
 } from "./useAnalytics";
+export { toWeekComparison, type WeekComparison } from "./weekComparison";

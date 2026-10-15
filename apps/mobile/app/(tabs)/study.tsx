@@ -33,6 +33,7 @@ import RoutineList from "@components/RoutineList";
 import { focusBand, focusBandColor } from "@components/focusBand";
 import GroupList from "@components/GroupList";
 import SessionHistory from "@components/SessionHistory";
+import WeeklyStudyCard from "@components/WeeklyStudyCard";
 import RoomParticipants from "@components/RoomParticipants";
 import { confirmGroupAction } from "@components/confirmGroup";
 
@@ -368,6 +369,8 @@ const Study = () => {
           {/* ---------------- set up ---------------- */}
           {showingSessions && phase === "idle" ? (
             <>
+              <WeeklyStudyCard />
+
               <View style={styles.dialWrap}>
                 <FocusDial progress={0} color={colors.primary}>
                   <Text style={styles.dialValue}>
