@@ -19,9 +19,9 @@ import {
   useTheme,
   useStyles,
   useTabBarClearance,
+  useTabBarInset,
   useReducedMotion,
   HOME_PANEL_HEIGHT,
-  BAR_HEIGHT,
 } from "@theme";
 import {
   usePosts,
@@ -86,6 +86,8 @@ const Index = () => {
   // screen explaining why.
   const sessionBarClearance = useSessionBarClearance();
   const tabBarClearance = useTabBarClearance() + sessionBarClearance;
+  // Where the bar's top edge is - the drop-down page stops there.
+  const tabBarInset = useTabBarInset() + sessionBarClearance;
 
   /**
    * The feed's filter. Screen state rather than module state: the tab stays
@@ -487,7 +489,7 @@ const Index = () => {
         <HomeDropSheet
           mode={sheet}
           top={panelBottom}
-          bottom={BAR_HEIGHT + insets.bottom + sessionBarClearance}
+          bottom={tabBarInset}
           onClose={closeSheet}
           onBack={sheetBack}
         >

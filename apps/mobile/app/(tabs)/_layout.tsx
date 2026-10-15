@@ -1,4 +1,4 @@
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { NativeTabs } from "expo-router/unstable-native-tabs";
 import { router, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -72,7 +72,14 @@ const TabsNavigator = () => {
           </NativeTabs.BottomAccessory>
         ) : null}
         {TABS.map(({ name, label, sf, android }) => (
-          <NativeTabs.Trigger key={name} name={name}>
+          // iOS: no automatic content insets - they cleared the bar on some
+          // tabs and not others. Each tab pads itself instead; see
+          // useTabBarClearance. Android keeps its own, which is consistent.
+          <NativeTabs.Trigger
+            key={name}
+            name={name}
+            disableAutomaticContentInsets={Platform.OS === "ios"}
+          >
             <NativeTabs.Trigger.Label>{label}</NativeTabs.Trigger.Label>
             <NativeTabs.Trigger.Icon sf={sf} src={android} />
           </NativeTabs.Trigger>

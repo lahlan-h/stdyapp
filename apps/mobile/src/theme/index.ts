@@ -42,7 +42,7 @@ export {
   SETTINGS_FOOTER_ROOM,
   SETTINGS_BACK_ICON_SIZE,
 } from "./settings.styles";
-export { useTabBarClearance } from "./useTabBarClearance";
+export { useTabBarClearance, useTabBarInset } from "./useTabBarClearance";
 export {
   createTabBarStyles,
   TAB_ICON_SIZE,
