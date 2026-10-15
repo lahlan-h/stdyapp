@@ -252,7 +252,11 @@ export interface FocusSessionState {
   reset: () => void;
 }
 
-export const useFocusSession = (): FocusSessionState => {
+/**
+ * The session's state and controls. Called ONCE, by FocusSessionProvider -
+ * screens read it through useFocusSession(), so every tab sees the same clock.
+ */
+export const useFocusSessionState = (): FocusSessionState => {
   const [phase, setPhase] = useState<FocusPhase>("idle");
   const [elapsedSec, setElapsedSec] = useState(0);
   // Open-ended by default: the Study tab's "Normal / Unlimited" is a stopwatch
@@ -462,9 +466,8 @@ export const useFocusSession = (): FocusSessionState => {
     };
   }, [sendSample, settleAway, startMotion, stopMotion, startPhoneDown, stopPhoneDown, wasPhoneDownRecently]);
 
-  // Nothing may outlive the screen: an interval still posting samples after
-  // the user has navigated away would keep writing to a session they think
-  // they left.
+  // Nothing may outlive the provider: an interval still posting samples after
+  // sign-out would keep writing to a session nobody can see any more.
   useEffect(() => () => stopTimers.current(), []);
 
   /**

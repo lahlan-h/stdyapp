@@ -63,10 +63,10 @@ const VIEWS: { key: StudyView; label: string }[] = [
  * Every colour is a palette token; the screen holds no hex of its own.
  *
  * THREE VIEWS, ONE SESSION. A switch at the top flips between Sessions,
- * Routines and Groups, but useFocusSession stays mounted in this screen
- * whichever is showing - so a running session keeps its timer, samples and
- * away-tracking while the user checks a routine or a group. Only the rendered
- * content swaps.
+ * Routines and Groups, and the session itself lives above the tabs in
+ * FocusSessionProvider - so a running session keeps its timer, samples and
+ * away-tracking while the user checks a routine, a group or another tab. Only
+ * the rendered content swaps.
  */
 
 const clock = (totalSec: number) => {
