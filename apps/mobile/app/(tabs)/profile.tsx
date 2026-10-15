@@ -68,9 +68,16 @@ const Profile = () => {
    *
    * Shown on the error screen too, because Settings is also where you sign out
    * - a profile that will not load must not trap you in the account.
+   *
+   * The username is the screen's title, as the design has it. Until the
+   * profile has loaded there is no name to show, so the title holds its place
+   * empty and the gear stays in its corner.
    */
   const topBar = (
-    <View style={[styles.topBar, styles.topBarEnd]}>
+    <View style={styles.topBar}>
+      <Text style={styles.topBarTitle} numberOfLines={1}>
+        {profile?.username ?? ""}
+      </Text>
       <Pressable
         style={({ pressed }) => [styles.settingsButton, pressed && { opacity: 0.6 }]}
         onPress={() => router.push("/settings")}

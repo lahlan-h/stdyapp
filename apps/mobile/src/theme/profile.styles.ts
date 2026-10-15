@@ -134,10 +134,13 @@ export const createProfileStyles = (colors: ColorScheme) => {
       flexDirection: "row",
       alignItems: "center",
     },
-    // Your own profile has nothing to go back to, so its one control sits at
-    // the far end.
-    topBarEnd: {
-      justifyContent: "flex-end",
+    // Your own profile's title: the username, as the design draws it. It takes
+    // the row, which is what pushes the gear to the far end.
+    topBarTitle: {
+      flex: 1,
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 32,
+      color: colors.text,
     },
     // The back control's footprint without its circle, so the tap target
     // stays 40px even though only the glyph is drawn.
