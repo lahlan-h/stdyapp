@@ -24,6 +24,7 @@ import {
 } from "@theme";
 import {
   useCreatePost,
+  useSessionDetail,
   MAX_PHOTO_BYTES,
   MAX_CAPTION_LENGTH,
   MAX_TITLE_LENGTH,
@@ -35,6 +36,7 @@ import {
   RoutineLinkPicker,
   type LinkChoice,
 } from "@components/LinkPicker";
+import { NONE, formatSeconds } from "@components/sessionFormat";
 
 /** What the API's magic-byte sniff will accept. GIF is deliberately not in it. */
 const ACCEPTED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -117,9 +119,13 @@ const NewPost = () => {
   const newPostStyles = useNewPostStyles();
   const insets = useSafeAreaInsets();
   const { createPost, isSubmitting, error, reset } = useCreatePost();
-  // Set when the Study tab's recap opens this screen to share the session it
-  // just finished, so the post arrives already linked.
+  // Set when the Study tab opens this screen for the session that just ended,
+  // so the post arrives already linked.
   const params = useLocalSearchParams<{ sessionId?: string }>();
+  const finishedId = params.sessionId;
+  // Read back from the server rather than passed in, so the duration shown is
+  // the one the session was saved with.
+  const { session: finished } = useSessionDetail(finishedId);
 
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
@@ -237,6 +243,17 @@ const NewPost = () => {
             </Text>
           </View>
 
+          {/* What the post is about, up top - the way Hevy opens its save
+              screen with the workout's numbers. */}
+          {finishedId ? (
+            <View style={newPostStyles.sessionStats}>
+              <Text style={newPostStyles.sessionStatLabel}>Duration</Text>
+              <Text style={newPostStyles.sessionStatValue}>
+                {finished ? formatSeconds(finished.totalSec) : NONE}
+              </Text>
+            </View>
+          ) : null}
+
           <View style={newPostStyles.section}>
             <Text style={newPostStyles.sectionTitle}>Photo</Text>
 
@@ -299,6 +316,11 @@ const NewPost = () => {
             Both optional, and either, both or neither may be set. Only the
             user's own sessions and routines are offered - linking anyone
             else's is a 403 - and the pickers load only when opened.
+
+            No session row when this screen was opened for a session that just
+            ended: that session is what the post is about, and its duration is
+            already at the top. Swapping it for another would leave the one
+            just studied posted nowhere.
           */}
           <View style={newPostStyles.section}>
             <Text style={newPostStyles.sectionTitle}>Links</Text>
@@ -309,14 +331,16 @@ const NewPost = () => {
               start={{ x: 0.5, y: 0 }}
               end={{ x: 0.5, y: 1 }}
             >
-              <LinkRow
-                icon="clock"
-                label="Link a session"
-                hint="Adds time and focus to your post"
-                choice={session}
-                onPress={() => setPicker("session")}
-                onClear={() => setSession(null)}
-              />
+              {finishedId ? null : (
+                <LinkRow
+                  icon="clock"
+                  label="Link a session"
+                  hint="Adds time and focus to your post"
+                  choice={session}
+                  onPress={() => setPicker("session")}
+                  onClear={() => setSession(null)}
+                />
+              )}
               <LinkRow
                 icon="repeat"
                 label="Link a routine"
@@ -324,7 +348,7 @@ const NewPost = () => {
                 choice={routine}
                 onPress={() => setPicker("routine")}
                 onClear={() => setRoutine(null)}
-                divider
+                divider={!finishedId}
               />
             </LinearGradient>
           </View>
