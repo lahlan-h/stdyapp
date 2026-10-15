@@ -33,6 +33,7 @@ export {
   STUDY_FOOTER_ROOM,
   WEEK_CHART_HEIGHT,
   WEEK_PILL_ICON_SIZE,
+  ADVANCED_ANALYTICS_ICON_SIZE,
 } from "./study.styles";
 export {
   createSettingsStyles,

@@ -34,6 +34,7 @@ import { focusBand, focusBandColor } from "@components/focusBand";
 import GroupList from "@components/GroupList";
 import SessionHistory from "@components/SessionHistory";
 import WeeklyStudyCard from "@components/WeeklyStudyCard";
+import AdvancedAnalyticsRow from "@components/AdvancedAnalyticsRow";
 import RoomParticipants from "@components/RoomParticipants";
 import { confirmGroupAction } from "@components/confirmGroup";
 
@@ -370,6 +371,7 @@ const Study = () => {
           {showingSessions && phase === "idle" ? (
             <>
               <WeeklyStudyCard />
+              <AdvancedAnalyticsRow />
 
               <View style={styles.dialWrap}>
                 <FocusDial progress={0} color={colors.primary}>

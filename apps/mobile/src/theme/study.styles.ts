@@ -49,6 +49,9 @@ const WEEK_BAR_WIDTH = 10;
 /** The arrow in the "vs last week" pill. */
 export const WEEK_PILL_ICON_SIZE = 14;
 
+/** The chart and lock glyphs either side of "See Advanced Analytics". */
+export const ADVANCED_ANALYTICS_ICON_SIZE = 24;
+
 export const createStudyStyles = (colors: ColorScheme) => {
   const styles = StyleSheet.create({
     container: { flex: 1 },
@@ -859,6 +862,25 @@ export const createStudyStyles = (colors: ColorScheme) => {
       fontFamily: "PlusJakartaSans_400Regular",
       fontSize: 13,
       color: colors.textMuted,
+    },
+
+    // ---- "See Advanced Analytics" ---------------------------------------
+    // The weekly card's shape, so the two read as a pair.
+    advancedRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 20,
+      paddingHorizontal: 20,
+    },
+    advancedLabel: {
+      flex: 1,
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 17,
+      color: colors.text,
     },
   });
 
