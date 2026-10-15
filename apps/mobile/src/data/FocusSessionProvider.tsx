@@ -5,6 +5,15 @@ import { useFocusSessionState, type FocusSessionState } from "./useFocusSession"
 const FocusSessionContext = createContext<FocusSessionState | null>(null);
 
 /**
+ * Whether a session is running, on its own.
+ *
+ * Split from the full state because that changes every second while the clock
+ * runs. A screen that only needs to know "is there a session bar" - to leave
+ * room for it - would otherwise re-render its whole list once a second.
+ */
+const SessionRunningContext = createContext(false);
+
+/**
  * Holds the ONE study session for everything under the tabs.
  *
  * It used to live inside the Study screen, which was fine while only that
@@ -18,7 +27,13 @@ const FocusSessionContext = createContext<FocusSessionState | null>(null);
  */
 export const FocusSessionProvider = ({ children }: { children: ReactNode }) => {
   const session = useFocusSessionState();
-  return <FocusSessionContext.Provider value={session}>{children}</FocusSessionContext.Provider>;
+  return (
+    <FocusSessionContext.Provider value={session}>
+      <SessionRunningContext.Provider value={session.phase === "running"}>
+        {children}
+      </SessionRunningContext.Provider>
+    </FocusSessionContext.Provider>
+  );
 };
 
 /** The running (or idle) study session. Only valid under FocusSessionProvider. */
@@ -31,3 +46,6 @@ export const useFocusSession = (): FocusSessionState => {
   }
   return session;
 };
+
+/** True while a session is running. Changes only when one starts or stops. */
+export const useIsSessionRunning = (): boolean => useContext(SessionRunningContext);

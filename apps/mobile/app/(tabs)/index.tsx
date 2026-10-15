@@ -42,6 +42,7 @@ import {
 import PostCard from "@components/PostCard";
 import LoadingSpinner from "@components/LoadingSpinner";
 import EmptyFeed from "@components/EmptyFeed";
+import { useSessionBarClearance } from "@components/SessionBar";
 import ReportDialog from "@components/ReportDialog";
 import HomeSearchPanel, { type HomeSheetMode } from "@components/HomeSearchPanel";
 import HomeDropSheet from "@components/HomeDropSheet";
@@ -75,10 +76,12 @@ const Index = () => {
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const navigation = useNavigation<TabNavigation>();
-  // What the floating tab bar covers, inset included. Without it the last
-  // card's like, comment and report buttons sit behind the bar, drawn but
-  // untappable, with nothing on screen explaining why.
-  const tabBarClearance = useTabBarClearance();
+  // What the floating tab bar covers, inset included - and the session bar
+  // above it while one runs. Without it the last card's like, comment and
+  // report buttons sit behind the bar, drawn but untappable, with nothing on
+  // screen explaining why.
+  const sessionBarClearance = useSessionBarClearance();
+  const tabBarClearance = useTabBarClearance() + sessionBarClearance;
 
   /**
    * The feed's filter. Screen state rather than module state: the tab stays
@@ -452,7 +455,7 @@ const Index = () => {
         <HomeDropSheet
           mode={sheet}
           top={panelBottom}
-          bottom={BAR_HEIGHT + insets.bottom}
+          bottom={BAR_HEIGHT + insets.bottom + sessionBarClearance}
           onClose={closeSheet}
           onBack={sheetBack}
         >

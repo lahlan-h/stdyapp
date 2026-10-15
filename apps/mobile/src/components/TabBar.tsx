@@ -7,6 +7,9 @@ import type { ComponentProps } from "react";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 
 import { useTheme, useTabBarStyles, TAB_ICON_SIZE } from "@theme";
+import { useIsSessionRunning } from "@data";
+
+import SessionBar from "./SessionBar";
 
 interface TabBase {
   name: string;
@@ -78,6 +81,12 @@ const renderIcon = (tab: TabConfig, color: string) => {
 const TabBar = ({ state, navigation, insets }: BottomTabBarProps) => {
   const { colors, isDarkMode } = useTheme();
   const tabBarStyles = useTabBarStyles();
+  const sessionRunning = useIsSessionRunning();
+
+  // Not on Study: that tab IS the session, with its clock and End button
+  // already on screen.
+  const showSessionBar =
+    sessionRunning && state.routes[state.index]?.name !== "study";
 
   const renderTab = (tab: TabConfig) => {
     const route = state.routes.find((candidate) => candidate.name === tab.name);
@@ -131,6 +140,8 @@ const TabBar = ({ state, navigation, insets }: BottomTabBarProps) => {
       style={[tabBarStyles.container, { paddingBottom: insets.bottom }]}
       pointerEvents="box-none"
     >
+      {showSessionBar ? <SessionBar onExpand={() => navigation.navigate("study")} /> : null}
+
       <View style={tabBarStyles.pill}>
         <BlurView
           intensity={40}

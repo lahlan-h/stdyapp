@@ -82,7 +82,11 @@ export {
 export { toUserSummary } from "./userSummary";
 export { useFollow, type FollowState } from "./useFollow";
 export { useMotionVariance, type MotionSource } from "./useMotionVariance";
-export { FocusSessionProvider, useFocusSession } from "./FocusSessionProvider";
+export {
+  FocusSessionProvider,
+  useFocusSession,
+  useIsSessionRunning,
+} from "./FocusSessionProvider";
 export {
   type FocusSessionState,
   type FocusResult,

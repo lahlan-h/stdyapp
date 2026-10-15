@@ -20,6 +20,7 @@ import {
 
 import ProfileView, { ProfileLoading, ProfileMessage } from "@components/ProfileView";
 import ProfileActions from "@components/ProfileActions";
+import { useSessionBarClearance } from "@components/SessionBar";
 
 /**
  * The signed-in user's profile.
@@ -31,9 +32,10 @@ import ProfileActions from "@components/ProfileActions";
  * else's profile. The settings gear is the same: settings are yours alone.
  */
 const Profile = () => {
-  // What the floating tab bar covers, inset included - without it the last
-  // card's buttons sit behind the bar, drawn but untappable.
-  const tabBarClearance = useTabBarClearance();
+  // What the floating tab bar covers, inset included, plus the session bar
+  // while one runs - without it the last card's buttons sit behind the bar,
+  // drawn but untappable.
+  const tabBarClearance = useTabBarClearance() + useSessionBarClearance();
   const { colors } = useTheme();
   const styles = useStyles("profile");
 
