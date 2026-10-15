@@ -76,13 +76,26 @@ export interface FeedRoutine {
   title: string;
 }
 
+/**
+ * One photo on a post. width / height are what the app measured when it was
+ * uploaded, so its frame can be sized before the image loads; absent for
+ * photos from before they were recorded, which the app measures itself.
+ */
+export interface FeedPhoto {
+  id: string;
+  url: string;
+  width?: number;
+  height?: number;
+}
+
 export interface FeedPost {
   id: string;
   /** The headline, and the only text a post must have. */
   title: string;
   /** Optional supporting text below the title. */
   caption?: string;
-  imageUrl?: string;
+  /** Up to four, in display order. Empty for a text-only post. */
+  photos: FeedPhoto[];
   likeCount: number;
   /**
    * Whether the CURRENT viewer has liked it - what decides the heart's colour.

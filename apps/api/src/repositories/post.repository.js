@@ -1,17 +1,52 @@
 import { prisma } from "@stdyapp/core";
 
-export const createPost = ({
+/**
+ * Creates a post and claims its photos, in ONE transaction.
+ *
+ * Each photo is claimed with a conditional update - still this author's, still
+ * unattached - and the whole post rolls back if any claim misses. That closes
+ * two races at once: two posts claiming the same upload, and the abandoned-
+ * upload sweep deleting one between the service's checks and this write.
+ * deleteUnattachedPhotos takes the same "postId IS NULL" condition from the
+ * other side, so exactly one of them wins for each row.
+ *
+ * @param {{ userId: string, sessionId: string | null, routineId: string | null,
+ *           title: string, caption: string | null, photoIds: string[] }} input -
+ *           photoIds in display order
+ * @returns {Promise<object | null>} the post, or null when a photo could not
+ *   be claimed
+ */
+export const createPostWithPhotos = ({
   userId,
   sessionId,
   routineId,
   title,
   caption,
-  photoUrl,
-}) => {
-  return prisma.post.create({
-    data: { userId, sessionId, routineId, title, caption, photoUrl },
-  });
-};
+  photoIds,
+}) =>
+  prisma
+    .$transaction(async (tx) => {
+      const post = await tx.post.create({
+        data: { userId, sessionId, routineId, title, caption },
+      });
+
+      for (const [position, id] of photoIds.entries()) {
+        const { count } = await tx.postPhoto.updateMany({
+          where: { id, userId, postId: null },
+          data: { postId: post.id, position },
+        });
+        if (count !== 1) throw new PhotoClaimFailed();
+      }
+
+      return post;
+    })
+    .catch((err) => {
+      if (err instanceof PhotoClaimFailed) return null;
+      throw err;
+    });
+
+/** Rolls the transaction back; never leaves this module. */
+class PhotoClaimFailed extends Error {}
 
 export const findPostById = (id) => {
   return prisma.post.findUnique({ where: { id } });
@@ -131,6 +166,12 @@ const postInclude = (viewerId) => ({
   // this session hosted a group room, `hostSession` (its owner, plus everyone
   // else who joined) when it joined one. toViewerPost flattens both into one
   // `studiedWith` list - see there.
+  // In display order, with the dimensions the app measured so it can size the
+  // frame before the image loads. Ids too, for keys in a list.
+  photos: {
+    orderBy: { position: "asc" },
+    select: { id: true, url: true, width: true, height: true },
+  },
   session: {
     select: {
       startedAt: true,
@@ -310,54 +351,21 @@ export const deletePost = (id) => {
 };
 
 /**
- * The ids of one user's posts, for cache invalidation.
- *
- * Must be read BEFORE deletePostsByUser runs: afterwards the rows are gone and
- * there is nothing left to work out which caches went stale. The same ordering
- * requirement findCommentTargetsByUser and findLikeTargetsByUser document.
- *
- * The two columns a bulk delete needs, and no more.
- *
- * id drives cache invalidation; photoUrl is the ONLY way to work out which R2
- * objects to reclaim, and it stops existing the moment the rows do - so like
- * findPostRefsBySession below, this MUST be read before the delete.
- *
- * It deliberately still does not reuse findPostsByUser. photoUrl is bounded at a
- * couple of hundred bytes, whereas caption is unbounded TEXT, so clearing a
- * heavy account still avoids materialising the expensive half of every row.
+ * The ids of every post by this user - read BEFORE deletePostsByUser runs, for
+ * cache invalidation, since afterwards there is nothing left to read. Their
+ * photos are read separately (findPhotosOfPosts in postPhoto.repository.js),
+ * for the same reason.
  *
  * Named to match findPostRefsBySession / findPostRefsByRoutine below, which
- * return multi-column refs for exactly the same read-before-delete reason.
+ * return refs for exactly the same read-before-delete reason.
  *
- * @returns {Promise<Array<{ id: string, photoUrl: string }>>}
+ * @returns {Promise<Array<{ id: string }>>}
  */
 export const findPostRefsByUser = (userId) => {
   return prisma.post.findMany({
     where: { userId },
-    select: { id: true, photoUrl: true },
+    select: { id: true },
   });
-};
-
-/**
- * Does any of this user's REMAINING posts still point at this photo?
- *
- * Asked on the delete path, immediately before reclaiming the object, and the
- * answer decides whether the object is still referenced. Deleting it while
- * another row points at it would leave that post with a broken image.
- *
- * Scoped by userId, and not merely as an optimisation: parseOwnedKey has already
- * established the object belongs to this user, so any row that could reference
- * it is theirs. It also lets Postgres use the (userId, createdAt) index to bound
- * the scan to one author instead of the whole table - photoUrl is not indexed,
- * so the filter itself is evaluated per candidate row.
- *
- * Only worth paying on the single delete. deleteMyPosts skips it entirely: every
- * post of that user is going, so no reference can survive.
- *
- * @returns {Promise<number>}
- */
-export const countPostsByPhotoUrl = ({ userId, photoUrl }) => {
-  return prisma.post.count({ where: { userId, photoUrl } });
 };
 
 /**

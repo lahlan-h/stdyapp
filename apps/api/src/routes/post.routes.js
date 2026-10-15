@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   create,
+  createPhotoUploads,
   getOne,
   listMine,
   listByUser,
@@ -14,14 +15,13 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { validate } from "../middleware/validate.js";
 import { rateLimit } from "../middleware/rateLimit.js";
 import { cache } from "../middleware/cache.js";
-import { uploadImage } from "../middleware/uploadImage.js";
 import {
   createPostSchema,
+  createPhotoUploadsSchema,
   updatePostSchema,
   postIdParamSchema,
   listAllPostsQuerySchema,
 } from "../validation/post.validation.js";
-import { IMAGE_MIME_TYPES, MAX_POST_PHOTO_BYTES } from "../config/upload.js";
 import {
   postContentVersionKey,
   postAuthorVersionKey,
@@ -58,10 +58,8 @@ const readLimit = rateLimit({ name: "post-read", ...RATE_LIMIT_READ });
 const writeLimit = rateLimit({ name: "post-write", ...RATE_LIMIT_WRITE });
 const bulkLimit = rateLimit({ name: "post-bulk", ...RATE_LIMIT_BULK });
 
-// A fourth bucket on its own tier. POST / is a small JSON body again now that
-// the bytes moved to POST /photo, so the tight tier belongs on the route that
-// actually carries megabytes - and, unlike an avatar upload, one that leaves an
-// object behind whether or not a post ever references it. See
+// A fourth bucket on its own tier, for POST /photos: each call can leave up to
+// four objects in R2 whether or not a post ever claims them. See
 // RATE_LIMIT_POST_PHOTO_WRITE.
 const photoLimit = rateLimit({ name: "post-photo", ...RATE_LIMIT_POST_PHOTO_WRITE });
 
@@ -154,36 +152,22 @@ router.delete("/user/me", bulkLimit, removeMine);
 router.get("/all", readLimit, validate({ query: listAllPostsQuerySchema }), listAll);
 
 /**
- * Create a post: ONE multipart request carrying the title, and a photo and/or a
- * caption. The photo part is optional - a text-only post sends none - but at
- * least one of the two is required, which post.service.js enforces.
+ * Photos go straight to R2: POST /photos signs an upload URL per photo, the app
+ * PUTs to them, and POST / then names them by id. The API never holds the bytes
+ * - see photoUpload.service.js for the whole flow.
  *
- * uploadImage BEFORE validate, which inverts the rule this router follows
- * everywhere else and is not a style choice: multer is what populates req.body
- * from the form fields, so there is nothing for validate() to read until it has
- * run. See the ordering note in middleware/uploadImage.js.
- *
- * The limiter still runs first, per the rule users.routes.js documents - do not
- * buffer megabytes into process memory for a request already over budget. There
- * is no ownership gate to run in between: the object lands under the caller's own
- * id, and whether they may link the given session or routine is a question only
- * post.service.js can answer.
- *
- * photoLimit rather than writeLimit because this route carries up to 5 MB - see
- * RATE_LIMIT_POST_PHOTO_WRITE.
+ * /photos is registered before the /:id routes, which would otherwise read
+ * "photos" as a post id. It is a POST and they are GET/PATCH/DELETE, so the
+ * order is belt and braces rather than load-bearing.
  */
 router.post(
-  "/",
+  "/photos",
   photoLimit,
-  uploadImage({
-    field: "photo",
-    types: IMAGE_MIME_TYPES,
-    limit: MAX_POST_PHOTO_BYTES,
-    optional: true,
-  }),
-  validate({ body: createPostSchema }),
-  create,
+  validate({ body: createPhotoUploadsSchema }),
+  createPhotoUploads,
 );
+
+router.post("/", writeLimit, validate({ body: createPostSchema }), create);
 
 router.get("/", readLimit, cacheMyList, listMine);
 // validate() sits before cache() on the read, which is new to this router and

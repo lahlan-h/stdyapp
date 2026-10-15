@@ -6,8 +6,8 @@
  * Anything in between - a 16:9 slide, a 4:3 photo - shows whole. The full-size
  * viewer shows everything, whatever its shape.
  *
- * Shared by the feed (PostPhoto) and the compose screen's preview, so what you
- * see before posting is the frame everyone else will see.
+ * Used by PostPhotos, on the feed card and the post page, which frames a post
+ * by its first photo.
  */
 export const TALLEST_PHOTO_RATIO = 4 / 5;
 export const WIDEST_PHOTO_RATIO = 2;

@@ -102,6 +102,36 @@ export const createHomeStyles = (colors: ColorScheme) => {
       fontFamily: "PlusJakartaSans_600SemiBold",
       color: colors.text,
     },
+    // --- A post's photos: one, or a swipeable row (PostPhotos) ---
+    // Shared with the post detail screen, whose frame differs only in its own
+    // outer style.
+    carouselPhoto: {
+      height: "100%",
+    },
+    // Over the photo itself, so it carries the lightbox's fixed black and white
+    // rather than theme colours, which would vanish on a dark or light image.
+    carouselDots: {
+      position: "absolute",
+      bottom: 10,
+      alignSelf: "center",
+      flexDirection: "row",
+      gap: 5,
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+      borderRadius: 999,
+      backgroundColor: colors.lightbox.control,
+    },
+    carouselDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.lightbox.text,
+      opacity: 0.45,
+    },
+    carouselDotActive: {
+      opacity: 1,
+    },
+
     // --- Badges a session earned ("Personal best"...) ---
     // Shared with the post detail screen through the PostHighlights component.
     highlights: {
@@ -134,7 +164,7 @@ export const createHomeStyles = (colors: ColorScheme) => {
     },
     postCardImage: {
       width: "100%",
-      // Square only until the photo's own shape is known - PostPhoto
+      // Square only until the first photo's shape is known - PostPhotos
       // replaces this with it, within 4:5 and 2:1.
       aspectRatio: 1,
       borderColor: colors.border,

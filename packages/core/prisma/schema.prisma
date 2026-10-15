@@ -94,6 +94,7 @@ model User {
   refreshTokens RefreshToken[]
   passwordResetCodes PasswordResetCode[]
   posts         Post[]
+  postPhotos    PostPhoto[]
   likes         Like[]
   comments      Comment[]
   bookmarks     Bookmark[]
@@ -479,11 +480,12 @@ model Post {
   // migration, which moved that text across and cleared this column.
   caption   String?
 
-  // Optional too, but not independently: a post must have a photo OR a
-  // caption, so a title is never left standing alone. The database cannot say
-  // "one of two", so post.service.js enforces it on create and on edit. Was NOT
-  // NULL until text-only posts existed - see make_post_photo_optional.
-  photoUrl  String?
+  // Up to MAX_POST_PHOTOS, in order - see PostPhoto. Optional, but not
+  // independently: a post must have a photo OR a caption, so a title is never
+  // left standing alone. The database cannot say "one of two", so
+  // post.service.js enforces it on create and on edit. Replaced the single
+  // photoUrl column - see add_post_photos.
+  photos    PostPhoto[]
   createdAt DateTime     @default(now())
 
   likes     Like[]
@@ -900,6 +902,51 @@ model Subscription {
   updatedAt        DateTime           @updatedAt
 
   @@map("subscriptions")
+}
+
+/// One photo on a post, uploaded by the app STRAIGHT TO R2 through a presigned
+/// URL - the API never holds the bytes. See photoUpload.service.js.
+///
+/// A row exists BEFORE its post does. POST /api/posts/photos creates it
+/// unattached (postId null) and hands back the upload URL; POST /api/posts then
+/// verifies the object that actually arrived and attaches it. Anything still
+/// unattached after PHOTO_UPLOAD_TTL is abandoned - the app closed between
+/// picking and posting - and jobs/photoUploadSweep.js deletes the row and the
+/// object. Hard deletion throughout: no soft-delete state to purge later.
+///
+/// No key column: the R2 key is derived from `url` by keyFromOwnedUrl, which is
+/// also the ownership check, so a stored key would be a second source of truth
+/// that could disagree with it.
+model PostPhoto {
+  id        String   @id @default(uuid())
+
+  /// The uploader, who must also be the author of the post it is attached to.
+  /// Cascade: an unattached upload is worthless without its owner.
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Null while unattached. Cascade with the post - the service collects the
+  /// R2 keys BEFORE deleting, since the rows cannot be read afterwards.
+  postId    String?
+  post      Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  url       String
+
+  /// As the app measured them before upload, so the feed can size each frame
+  /// before the image loads. Display-only and unverified - nothing trusts them
+  /// for anything but layout. Null on photos from before this table existed.
+  width     Int?
+  height    Int?
+
+  /// 0 first, in the order the author picked them.
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  // A post's photos, in order - every feed read.
+  @@index([postId, position])
+  // The sweep: unattached rows by age.
+  @@index([postId, createdAt])
+  @@map("post_photos")
 }
 
 /// What happened, for a notification. An enum for GoalPeriod's reason, and one

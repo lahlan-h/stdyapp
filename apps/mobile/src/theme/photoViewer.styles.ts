@@ -50,6 +50,13 @@ export const createPhotoViewerStyles = (colors: ColorScheme) => {
       backgroundColor: colors.lightbox.control,
     },
     controlBusy: { opacity: 0.6 },
+    // "2 / 4", between the two buttons, on a post with several photos.
+    counter: {
+      alignSelf: "center",
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 15,
+      color: colors.lightbox.text,
+    },
 
     // --- Status ("Saved to Photos", an error) ---
     status: {

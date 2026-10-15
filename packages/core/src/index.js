@@ -20,4 +20,7 @@ export {
   deleteFile,
   deleteFiles,
   getFile,
+  createUploadUrl,
+  headFile,
+  readFileStart,
 } from "./storage.js";

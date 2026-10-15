@@ -10,6 +10,8 @@ const EXIT_ICON_SIZE = 18;
 /** Leading icon on a link row, and the box reserved for it. */
 const ROW_ICON_SIZE = 20;
 const ROW_ICON_BOX = 28;
+/** One thumbnail on the compose screen. The strip wraps, so a narrow phone shows two rows. */
+const PHOTO_THUMB_SIZE = 96;
 
 export const createNewPostStyles = (colors: ColorScheme) => {
   const styles = StyleSheet.create({
@@ -134,10 +136,8 @@ export const createNewPostStyles = (colors: ColorScheme) => {
       overflow: "hidden",
     },
 
-    // --- Photo ---
-    // Square while empty. Once a photo is picked the screen sets its own
-    // aspect ratio, the same frame the feed will give it (photoRatio.ts), so
-    // what you see here is what everyone else will see.
+    // --- Photos ---
+    // The empty state: one big square to tap, until the first photo is picked.
     photoWell: {
       width: "100%",
       aspectRatio: 1,
@@ -150,10 +150,6 @@ export const createNewPostStyles = (colors: ColorScheme) => {
       overflow: "hidden",
       gap: 10,
     },
-    photo: {
-      width: "100%",
-      height: "100%",
-    },
     photoPrompt: {
       fontFamily: "PlusJakartaSans_600SemiBold",
       fontSize: 16,
@@ -164,26 +160,56 @@ export const createNewPostStyles = (colors: ColorScheme) => {
       fontSize: 13,
       color: colors.textMuted,
     },
-    // Sits on the chosen photo, which is an arbitrary image, so it carries its
-    // own surface rather than relying on contrast with whatever is underneath.
-    photoChange: {
-      position: "absolute",
-      right: 12,
-      bottom: 12,
+    // Once there are photos: a row of square thumbnails in posting order, and
+    // an Add tile while there is room for more.
+    photoStrip: {
       flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    thumb: {
+      width: PHOTO_THUMB_SIZE,
+      height: PHOTO_THUMB_SIZE,
+      borderRadius: 14,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    thumbImage: {
+      width: "100%",
+      height: "100%",
+    },
+    // Sits on an arbitrary image, so it carries its own surface rather than
+    // relying on contrast with whatever is underneath.
+    thumbRemove: {
+      position: "absolute",
+      top: 6,
+      right: 6,
+      width: 26,
+      height: 26,
+      borderRadius: 13,
       alignItems: "center",
-      gap: 6,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 999,
+      justifyContent: "center",
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
     },
-    photoChangeLabel: {
+    addTile: {
+      width: PHOTO_THUMB_SIZE,
+      height: PHOTO_THUMB_SIZE,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderStyle: "dashed",
+      borderColor: colors.border,
+      backgroundColor: colors.backgrounds.editInput,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 4,
+    },
+    addTileLabel: {
       fontFamily: "PlusJakartaSans_600SemiBold",
-      fontSize: 13,
-      color: colors.text,
+      fontSize: 12,
+      color: colors.textMuted,
     },
 
     // --- Link rows ---

@@ -532,7 +532,7 @@ export const bookmarkStatusKey = (viewerId, postId, version) =>
  *
  * THE COHERENCE HOLE IS CLOSED FROM BOTH SIDES, which makes this the only entity
  * in this file that needs both walks. A report payload embeds a reported USER's
- * username and avatarUrl AND a reported POST's caption and photoUrl, where the
+ * username and avatarUrl AND a reported POST's caption and photos, where the
  * block payload carries only people and the bookmark payload only posts:
  *   - findReporterIdsByPosts, called by invalidatePostFanout in post.service.js,
  *     covers an edited or deleted post;

@@ -1,5 +1,5 @@
 import { REPORT_REASONS, type ReportReason } from "./reportReasons";
-import type { FeedAuthor, FeedPost, FeedSession, PostHighlight } from "./types";
+import type { FeedAuthor, FeedPhoto, FeedPost, FeedSession, PostHighlight } from "./types";
 
 /**
  * One row as GET /api/posts/all returns it.
@@ -20,7 +20,8 @@ export interface RawFeedRow {
   id: string;
   title: string;
   caption: string | null;
-  photoUrl: string | null;
+  /** In display order. Absent from an API that predates multi-photo posts. */
+  photos?: { id: string; url: string; width: number | null; height: number | null }[];
   createdAt: string;
   user: RawUser;
   session: {
@@ -170,7 +171,14 @@ export const toFeedPost = (row: RawFeedRow): FeedPost => {
     id: row.id,
     title: row.title,
     caption: row.caption ?? undefined,
-    imageUrl: row.photoUrl ?? undefined,
+    photos: (row.photos ?? []).map(
+      (photo): FeedPhoto => ({
+        id: photo.id,
+        url: photo.url,
+        width: photo.width ?? undefined,
+        height: photo.height ?? undefined,
+      }),
+    ),
     likeCount: row._count.likes,
     isLiked: row.isLiked,
     isReported: row.isReported,

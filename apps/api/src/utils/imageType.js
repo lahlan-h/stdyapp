@@ -99,3 +99,23 @@ export const detectImageType = (buffer) => {
  * @type {string[]}
  */
 export const IMAGE_EXTENSIONS = SIGNATURES.map(({ ext }) => ext);
+
+/**
+ * The file extension for a Content-Type this module can identify, or null.
+ *
+ * For a presigned upload, where the key - and so its extension - is chosen
+ * BEFORE any bytes exist. The bytes are still sniffed once they arrive, and
+ * must agree with it; see verifyUploadedPhoto in photoStorage.service.js.
+ *
+ * @param {string} mime
+ * @returns {string | null}
+ */
+export const extensionForMime = (mime) =>
+  SIGNATURES.find((signature) => signature.mime === mime)?.ext ?? null;
+
+/**
+ * How many leading bytes detectImageType needs to recognise every format here -
+ * WebP's form type ends at byte 12. A ranged read of this much is enough to
+ * check an object without downloading it.
+ */
+export const SNIFF_BYTES = 16;

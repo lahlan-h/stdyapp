@@ -23,11 +23,12 @@ import { findMembership, findMemberIds } from "../repositories/studyGroup.reposi
 // which objects a caller may touch at all.
 import {
   POST_PREFIX,
-  uploadPhoto,
+  verifyUploadedPhoto,
   keyFromOwnedUrl,
-  deleteQuietly,
   deleteManyQuietly,
 } from "./photoStorage.service.js";
+import * as postPhotoRepo from "../repositories/postPhoto.repository.js";
+import { MAX_POST_PHOTO_BYTES } from "../config/upload.js";
 import {
   bumpVersions,
   postContentVersionKey,
@@ -131,7 +132,7 @@ const invalidatePost = async ({ postIds = [], authorId }) => {
  *
  * THE REPORT HALF IS THE EXCEPTION TO THAT EXCEPTION, and the only entity here
  * that fans out both ways. A report payload embeds a reported POST's caption and
- * photoUrl AND a reported USER's username and avatarUrl, so collectUserVersionKeys
+ * photos AND a reported USER's username and avatarUrl, so collectUserVersionKeys
  * DOES have a report counterpart walk where it has no bookmark one. Note also
  * that its rows key on reporterId rather than userId, which is why its map reads
  * differently from the three above it.
@@ -198,24 +199,33 @@ export const invalidateDetachedPosts = async (posts) => {
 /** A post is a title plus at least one of these. */
 const NEEDS_PHOTO_OR_CAPTION = "A post needs a photo or a caption";
 
+/** The R2 keys behind some photo rows - null for any not in our bucket. */
+const keysOf = (photos) =>
+  photos.map(({ url, userId }) => keyFromOwnedUrl(url, { prefix: POST_PREFIX, ownerId: userId }));
+
 /**
- * Creates a post and stores its photo, in one request.
+ * Creates a post from photos the app has ALREADY uploaded straight to R2.
  *
  * ORDER, and none of it is arbitrary:
  *
- *   ownership checks  ->  upload  ->  write the row  ->  reclaim on failure
+ *   rules  ->  link ownership  ->  find the uploads  ->  verify each in R2
+ *     ->  create the post and claim the photos, in one transaction
  *
- * The checks come first so a 403 never leaves an object behind. The upload comes
- * before the write so the row never points at something that does not exist. And
- * the write is wrapped so a failed insert takes the orphan with it.
+ * The cheap checks run first, so a 400 or 403 never costs a round trip to R2.
+ * Verification is where the guarantees the old multipart upload got from
+ * holding the bytes are re-established - see verifyUploadedPhoto. A photo that
+ * fails it is deleted on the spot (row and object), since it can never be
+ * used; the app is told which one, by its position.
+ *
+ * Photos that pass but whose post is refused for another reason stay as they
+ * are: the app may retry with them, and the sweep collects them otherwise.
  *
  * @param {{ userId: string, sessionId?: string, routineId?: string,
- *           title: string, caption?: string, photo?: Buffer }} input - photo is
- *           the parsed file part, size-capped and non-empty when present (see
- *           uploadImage()), and absent for a text-only post
+ *           title: string, caption?: string, photoIds?: string[] }} input -
+ *           photoIds from POST /api/posts/photos, in display order
  * @returns {Promise<object>} the created post
- * @throws 400 with neither a photo nor a caption, 403 when a link is not the
- *         caller's, 415 for non-image bytes, 502 R2 down
+ * @throws 400 with neither a photo nor a caption, or an unusable photo;
+ *         403 when a link is not the caller's; 502 when R2 cannot be reached
  */
 export const createPost = async ({
   userId,
@@ -223,57 +233,70 @@ export const createPost = async ({
   routineId,
   title,
   caption,
-  photo,
+  photoIds = [],
 }) => {
-  // Before anything else: a title alone is not a post. caption has already
-  // been trimmed and refused when empty by createPostSchema, so presence is the
-  // whole test.
-  if (!photo && !caption) throw new HttpError(400, NEEDS_PHOTO_OR_CAPTION);
+  // A title alone is not a post. caption has already been trimmed and refused
+  // when empty by createPostSchema, so presence is the whole test.
+  if (photoIds.length === 0 && !caption) throw new HttpError(400, NEEDS_PHOTO_OR_CAPTION);
 
-  // FIRST, before a byte reaches R2. Both checks hit the database, so they are
-  // not free - but they are far cheaper than an upload, and doing them first
-  // means a 403 leaves nothing behind to reclaim.
   const checks = [];
   if (sessionId) checks.push(assertOwnsSession(sessionId, userId));
   if (routineId) checks.push(assertOwnsRoutine(routineId, userId));
   await Promise.all(checks);
 
-  // The bytes decide the format, never the Content-Type multer accepted - see
-  // uploadPhoto, and utils/imageType.js for why that distinction is the security
-  // boundary rather than a detail.
-  // Text-only posts skip storage entirely, and have nothing to reclaim below.
-  const { key: postKey, url: photoUrl } = photo
-    ? await uploadPhoto({ prefix: POST_PREFIX, ownerId: userId, buffer: photo })
-    : { key: null, url: null };
+  const uploads = await postPhotoRepo.findUnattachedPhotos({ ids: photoIds, userId });
+  if (uploads.length !== photoIds.length) {
+    // Someone else's, already on a post, or swept after sitting too long.
+    throw new HttpError(400, "A photo is no longer available - pick it again");
+  }
 
-  let post;
-  try {
-    post = await postRepo.createPost({
-      userId,
-      // Explicit null rather than undefined, matching createRoutine's
-      // `sourceRoutineId ?? null` — the column is nullable and the intent is
-      // "no link", not "field omitted".
-      sessionId: sessionId ?? null,
-      routineId: routineId ?? null,
-      title,
-      // Same reasoning: the column is nullable and an omitted caption means
-      // "no caption", not "field missing".
-      caption: caption ?? null,
-      photoUrl,
-    });
-  } catch (err) {
-    // This request uploaded the object moments ago and no row references it, so
-    // drop it rather than leaking one on every failed insert. Safe here in a way
-    // it would not be under a two-step upload, where the bytes arrived in an
-    // earlier request and a client might still retry with them - exactly the
-    // shape setAvatar uses in avatar.service.js, for the same reason.
-    if (postKey) await deleteQuietly(postKey, "database write failed");
+  const byId = new Map(uploads.map((upload) => [upload.id, upload]));
+  const problems = await Promise.all(
+    photoIds.map((id) =>
+      verifyUploadedPhoto({
+        url: byId.get(id).url,
+        prefix: POST_PREFIX,
+        ownerId: userId,
+        maxBytes: MAX_POST_PHOTO_BYTES,
+      }),
+    ),
+  );
+
+  const failed = photoIds.flatMap((id, index) =>
+    problems[index] ? [{ id, position: index, reason: problems[index] }] : [],
+  );
+  if (failed.length > 0) {
+    const deletedIds = await postPhotoRepo.deleteUnattachedPhotos(failed.map(({ id }) => id));
+    const deleted = uploads.filter(({ id }) => deletedIds.includes(id));
+    await deleteManyQuietly(
+      keysOf(deleted.map(({ url }) => ({ url, userId }))),
+      "failed upload verification",
+    );
+
+    const [first] = failed;
+    const err = new HttpError(400, `Photo ${first.position + 1} ${first.reason}`);
+    // Which ones, so the app can drop exactly those and keep the rest. Spread
+    // into the error body by index.js, as joinSession's groupId is.
+    err.data = { failedPhotoIds: failed.map(({ id }) => id) };
     throw err;
   }
 
+  const post = await postRepo.createPostWithPhotos({
+    userId,
+    // Explicit null rather than undefined: the columns are nullable and the
+    // intent is "no link" / "no caption", not "field omitted".
+    sessionId: sessionId ?? null,
+    routineId: routineId ?? null,
+    title,
+    caption: caption ?? null,
+    photoIds,
+  });
+  // A claim missed inside the transaction: the sweep or a concurrent post took
+  // a photo between the checks above and the write. Nothing was created.
+  if (!post) throw new HttpError(400, "A photo is no longer available - pick it again");
+
   // Author list only. The post is new, so nothing can be cached under its own
-  // id yet, and no comment or like can reference it — the fan-out would be
-  // two guaranteed-empty queries.
+  // id yet, and no comment or like can reference it.
   await invalidatePost({ authorId: userId });
 
   return post;
@@ -451,6 +474,9 @@ export const deleteMyPosts = async (userId) => {
   // is no way left to work out which caches just went stale — deleteMyLikes
   // does exactly this, for exactly this reason.
   const targets = await postRepo.findPostRefsByUser(userId);
+  // Their photos too, for the same reason: the rows cascade away with the posts
+  // and the R2 objects do not.
+  const photos = await postPhotoRepo.findPhotosOfPosts({ authorId: userId });
 
   const result = await postRepo.deletePostsByUser(userId);
 
@@ -461,20 +487,10 @@ export const deleteMyPosts = async (userId) => {
     userId,
   );
 
-  // No reference check here, unlike deletePost, and none is needed: every post
-  // this user has is being deleted, so no surviving row can point at any of
-  // these objects. That makes the expensive half of the single-post path free on
-  // the bulk one.
-  //
   // Batched rather than looped - one request per 1000 keys instead of one per
-  // post. Non-ours (the seeded cdn.example.com fixtures, any third-party URL)
+  // photo. Non-ours (the seeded cdn.example.com fixtures, any third-party URL)
   // resolve to null and are dropped by deleteManyQuietly.
-  await deleteManyQuietly(
-    targets.map((target) =>
-      keyFromOwnedUrl(target.photoUrl, { prefix: POST_PREFIX, ownerId: userId }),
-    ),
-    "posts bulk deleted",
-  );
+  await deleteManyQuietly(keysOf(photos), "posts bulk deleted");
 
   return result;
 };
@@ -505,7 +521,7 @@ export const updatePost = async (
   // Clearing the caption (null) of a post with no photo would leave a title
   // alone, which createPost refuses - so this must too. The photo is fixed at
   // creation, so the stored row is the whole answer.
-  if (caption === null && !existing.photoUrl) {
+  if (caption === null && (await postPhotoRepo.findPhotosOfPosts({ postId })).length === 0) {
     throw new HttpError(400, NEEDS_PHOTO_OR_CAPTION);
   }
 
@@ -530,36 +546,23 @@ export const updatePost = async (
 };
 
 export const deletePost = async (postId, requesterId) => {
-  // Its return value used to be discarded. It carries photoUrl, which is the
-  // only way to work out which object to reclaim, and it stops being readable
-  // the moment the row is gone.
-  const post = await getOwnedPostOrThrow(postId, requesterId);
-  const photoKey = keyFromOwnedUrl(post.photoUrl, {
-    prefix: POST_PREFIX,
-    ownerId: requesterId,
-  });
+  await getOwnedPostOrThrow(postId, requesterId);
+  // Read BEFORE the delete: the photo rows cascade away with the post, and
+  // their urls are the only way to work out which R2 objects to reclaim.
+  const photos = await postPhotoRepo.findPhotosOfPosts({ postId });
 
   const result = await postRepo.deletePost(postId);
 
   // BEFORE the object delete, not after. The bump must follow the write for the
   // reason bumpVersions documents, and it must also come before the R2 call:
-  // deleteFile crosses the internet, and letting it delay invalidation widens
+  // deleting crosses the internet, and letting it delay invalidation widens
   // the window in which a live cached payload advertises an image that is
   // already gone.
   await invalidatePostFanout([postId], requesterId);
 
-  // Only reclaim an object nothing else points at. A photoKey can only ever be
-  // used once - promotePhoto deletes the staged source - but a row could have
-  // been seeded or copied, and breaking a surviving post's image is far worse
-  // than leaving one object behind.
-  if (photoKey) {
-    const stillReferenced = await postRepo.countPostsByPhotoUrl({
-      userId: requesterId,
-      photoUrl: post.photoUrl,
-    });
-
-    if (stillReferenced === 0) await deleteQuietly(photoKey, "post deleted");
-  }
+  // No reference check, unlike when posts held a bare photoUrl: every upload
+  // gets its own uuid key and its own row, so no other post can point at these.
+  await deleteManyQuietly(keysOf(photos), "post deleted");
 
   return result;
 };

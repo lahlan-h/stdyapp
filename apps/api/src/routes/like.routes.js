@@ -141,8 +141,8 @@ router.get("/", readLimit, cacheMyList, listMine);
 // No PATCH, and its absence next to post.routes.js is deliberate rather than an
 // oversight. Every column on a like is either the primary key or half the row's
 // identity: rewriting userId or postId does not EDIT a like, it makes it a
-// different one — a delete plus a create. Post has a PATCH because caption and
-// photoUrl are editable content; a like has no such field. If a reaction type
+// different one — a delete plus a create. Post has a PATCH because its title,
+// caption and links are editable content; a like has no such field. If a reaction type
 // is ever added, that is when a PATCH earns its place.
 
 export default router;

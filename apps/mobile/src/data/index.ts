@@ -8,7 +8,14 @@
  * API anywhere outside src/data is a bug, and so is a component that knows what
  * `_count` or `photoUrl` means.
  */
-export type { FeedAuthor, FeedPost, FeedSession, FeedRoutine, PostHighlight } from "./types";
+export type {
+  FeedAuthor,
+  FeedPhoto,
+  FeedPost,
+  FeedSession,
+  FeedRoutine,
+  PostHighlight,
+} from "./types";
 export {
   useIsSignedIn,
   useSessionRestored,
@@ -164,13 +171,15 @@ export { consumeFeedStale } from "./feedSignal";
 export {
   useCreatePost,
   MAX_PHOTO_BYTES,
+  MAX_POST_PHOTOS,
   MAX_CAPTION_LENGTH,
   MAX_TITLE_LENGTH,
   type NewPost,
-  type NewPostPhoto,
   type CreatedPost,
   type CreatePostState,
+  type CreatePostStage,
 } from "./useCreatePost";
+export { preparePhoto, type PreparedPhoto } from "./preparePhoto";
 export {
   useNotificationPreferences,
   DEFAULT_NOTIFICATION_PREFERENCES,

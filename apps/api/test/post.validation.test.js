@@ -1,7 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { listAllPostsQuerySchema } from "../src/validation/post.validation.js";
+import {
+  listAllPostsQuerySchema,
+  createPhotoUploadsSchema,
+  createPostSchema,
+} from "../src/validation/post.validation.js";
 
 const GROUP_ID = "8a4b7c1e-2f3d-4e5a-9b6c-7d8e9f0a1b2c";
 
@@ -46,5 +50,74 @@ describe("listAllPostsQuerySchema.audience", () => {
       listAllPostsQuerySchema.safeParse({ audience: "group", groupId: "not-a-uuid" }).success,
       false,
     );
+  });
+});
+
+describe("createPhotoUploadsSchema", () => {
+  const photo = (overrides = {}) => ({ mimeType: "image/jpeg", sizeBytes: 500_000, ...overrides });
+
+  it("accepts one to four photos, with or without dimensions", () => {
+    assert.equal(createPhotoUploadsSchema.safeParse({ photos: [photo()] }).success, true);
+    assert.equal(
+      createPhotoUploadsSchema.safeParse({
+        photos: [photo({ width: 2048, height: 1536 }), photo(), photo(), photo()],
+      }).success,
+      true,
+    );
+  });
+
+  it("refuses none, or more than four", () => {
+    assert.equal(createPhotoUploadsSchema.safeParse({ photos: [] }).success, false);
+    assert.equal(
+      createPhotoUploadsSchema.safeParse({ photos: [photo(), photo(), photo(), photo(), photo()] })
+        .success,
+      false,
+    );
+  });
+
+  it("refuses a type the sniffer cannot identify, and anything over 5 MB", () => {
+    assert.equal(
+      createPhotoUploadsSchema.safeParse({ photos: [photo({ mimeType: "image/heic" })] }).success,
+      false,
+    );
+    assert.equal(
+      createPhotoUploadsSchema.safeParse({ photos: [photo({ sizeBytes: 5 * 1024 * 1024 + 1 })] })
+        .success,
+      false,
+    );
+  });
+
+  it("refuses anything that would name an object - there is no url or key field", () => {
+    assert.equal(
+      createPhotoUploadsSchema.safeParse({ photos: [photo({ url: "https://evil.example/x.jpg" })] })
+        .success,
+      false,
+    );
+  });
+});
+
+describe("createPostSchema.photoIds", () => {
+  const id = (n) => `3f2504e0-4f89-41d3-9a0c-0305e82c330${n}`;
+
+  it("is optional, so a text-only post sends none", () => {
+    assert.equal(createPostSchema.safeParse({ title: "Notes", caption: "Done" }).success, true);
+  });
+
+  it("accepts up to four distinct ids", () => {
+    assert.equal(
+      createPostSchema.safeParse({ title: "Desk", photoIds: [id(1), id(2), id(3), id(4)] }).success,
+      true,
+    );
+  });
+
+  it("refuses a fifth, a repeat, a non-uuid, and a photoUrl", () => {
+    for (const body of [
+      { title: "Desk", photoIds: [id(1), id(2), id(3), id(4), id(5)] },
+      { title: "Desk", photoIds: [id(1), id(1)] },
+      { title: "Desk", photoIds: ["not-a-uuid"] },
+      { title: "Desk", photoUrl: "https://cdn.example.com/x.jpg" },
+    ]) {
+      assert.equal(createPostSchema.safeParse(body).success, false, JSON.stringify(body));
+    }
   });
 });
