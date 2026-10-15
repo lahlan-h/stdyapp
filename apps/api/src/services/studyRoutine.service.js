@@ -108,6 +108,11 @@ export const updateRoutine = async (routineId, requesterId, { title }) => {
   // in every row of findRoutinesByUser.
   await invalidateRoutine({ routineIds: [routineId], ownerIds: [requesterId] });
 
+  // And every post that links it: postInclude embeds the routine's title, so a
+  // cached post would otherwise show the old name. Not "detached" in this case,
+  // but the keys a post's content lives under are the same either way.
+  await invalidateDetachedPosts(await findPostRefsByRoutine(routineId));
+
   return updated;
 };
 

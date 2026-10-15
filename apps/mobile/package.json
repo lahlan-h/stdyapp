@@ -35,6 +35,7 @@
     "expo-keep-awake": "~57.0.2",
     "expo-linear-gradient": "~57.0.1",
     "expo-linking": "~57.0.9",
+    "expo-media-library": "~57.0.5",
     "expo-router": "~57.0.19",
     "expo-secure-store": "~57.0.4",
     "expo-sensors": "~57.0.3",

@@ -114,6 +114,7 @@ export const createPostDetailStyles = (colors: ColorScheme) => {
 
     photo: {
       width: "100%",
+      // Square only until the photo's own shape is known - see PostPhoto.
       aspectRatio: 1,
       borderColor: colors.border,
       borderTopWidth: 1,

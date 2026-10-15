@@ -43,6 +43,7 @@ import {
   type LinkChoice,
 } from "@components/LinkPicker";
 import { NONE, formatSeconds } from "@components/sessionFormat";
+import { clampPhotoRatio } from "@components/photoRatio";
 import RatingSheet from "@components/RatingSheet";
 import { confirmDiscardSession } from "@components/confirmDiscardSession";
 
@@ -118,9 +119,9 @@ const LinkRow = ({
  * Compose a post.
  *
  * Presented as a modal from the Study tab when a session finishes - there is
- * no other way in, since a post is about a session. A photo and a title
- * are required - Post.photoUrl is not nullable, so there is no text-only post
- * to fall back to - and the caption is the optional half.
+ * no other way in, since a post is about a session. A title is required, plus
+ * a photo OR a caption - either, or both. A title alone is not a post, and the
+ * API refuses one with a 400 (see createPost in post.service.js).
  *
  * POST OR DISCARD. For a session that just ended there are exactly two ways
  * out, as on Hevy's save screen: publish it, or discard it, which deletes the
@@ -187,13 +188,17 @@ const NewPost = () => {
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
   const [photo, setPhoto] = useState<NewPostPhoto | null>(null);
+  // The picked photo's frame shape, as the feed will show it - see photoRatio.
+  const [photoRatio, setPhotoRatio] = useState(1);
   const [session, setSession] = useState<LinkChoice | null>(
     params.sessionId ? { id: params.sessionId, label: "The session you just finished" } : null,
   );
   const [routine, setRoutine] = useState<LinkChoice | null>(null);
   const [picker, setPicker] = useState<"session" | "routine" | null>(null);
 
-  const canSubmit = Boolean(photo) && title.trim().length > 0 && !isSubmitting;
+  // Mirrors the API's rule: a title, plus a photo or a caption.
+  const hasBody = Boolean(photo) || caption.trim().length > 0;
+  const canSubmit = title.trim().length > 0 && hasBody && !isSubmitting;
 
   const pickPhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -207,10 +212,17 @@ const NewPost = () => {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
-      // Square, because that is how the feed crops it - what you pick here is
-      // what everyone else sees.
-      allowsEditing: true,
-      aspect: [1, 1],
+      // No crop step: the photo goes up whole, in its own shape. The feed
+      // frames each one at its own aspect ratio now - see PostPhoto - so there
+      // is no square to fit it to any more.
+      //
+      // Compatible, because without the crop step iOS hands back the ORIGINAL
+      // file, which is usually HEIC - and the API takes only JPEG, PNG and
+      // WebP. This has iOS convert it to JPEG on the way out.
+      preferredAssetRepresentationMode:
+        ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+      // Re-encoded at 0.8 so an uncropped full-resolution photo still fits
+      // under the API's 5 MB limit.
       quality: 0.8,
     });
 
@@ -233,15 +245,16 @@ const NewPost = () => {
 
     reset();
     setPhoto({ uri: asset.uri, mimeType, fileName: asset.fileName ?? undefined });
+    setPhotoRatio(clampPhotoRatio(asset.width, asset.height));
   };
 
   const submit = async () => {
-    if (!photo) return;
+    if (!canSubmit) return;
 
     const created = await createPost({
       title,
       caption,
-      photo,
+      photo: photo ?? undefined,
       sessionId: session?.id,
       routineId: routine?.id,
     });
@@ -327,7 +340,8 @@ const NewPost = () => {
             <Text style={newPostStyles.sectionTitle}>Photo</Text>
 
             <Pressable
-              style={newPostStyles.photoWell}
+              // Square while empty; the photo's own feed frame once picked.
+              style={[newPostStyles.photoWell, photo && { aspectRatio: photoRatio }]}
               onPress={pickPhoto}
               accessibilityRole="button"
               accessibilityLabel={photo ? "Change photo" : "Add a photo"}
@@ -360,9 +374,6 @@ const NewPost = () => {
             <View style={newPostStyles.fieldHeader}>
               <View style={newPostStyles.fieldLabelRow}>
                 <Text style={newPostStyles.fieldLabel}>Caption</Text>
-                <View style={newPostStyles.badge}>
-                  <Text style={newPostStyles.badgeText}>OPTIONAL</Text>
-                </View>
               </View>
               <Text style={newPostStyles.counter}>
                 {caption.length} / {MAX_CAPTION_LENGTH}

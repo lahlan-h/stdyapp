@@ -28,6 +28,78 @@ export const findPostById = (id) => {
  *
  * @param {string} viewerId - the caller's own id; guaranteed by requireAuth
  */
+/**
+ * A person a session was studied WITH - someone else in the same group room -
+ * as a post's "Studied with" line shows them.
+ *
+ * The public allowlist the post author already uses, plus two relations that
+ * answer "is there a block between this person and the viewer", filtered to
+ * the viewer so each is at most one row. toViewerPost drops anyone either
+ * returns and strips both before the payload leaves the service: they exist so
+ * a block hides a name, never so a client can learn who blocked whom. See the
+ * note on User.blockedBy in schema.prisma.
+ *
+ * @param {string} viewerId
+ */
+/** Interruptions that mean the phone took over - see InterruptionType. */
+const PHONE_INTERRUPTION_TYPES = ["APP_EXIT", "DEVICE_MOTION"];
+
+/**
+ * How many finished sessions a user needs BEFORE one for it to count as a
+ * personal best. Without a floor, everyone's first sessions are all "bests".
+ */
+export const PERSONAL_BEST_MIN_EARLIER = 3;
+
+/**
+ * Which of these sessions beat every earlier session by the same user, on
+ * focus points - the "Personal best" badge on a post.
+ *
+ * Judged AT THE TIME: only sessions that ended before each one count, so a
+ * post keeps its badge after a later session beats it, as a Strava PR does.
+ * Strictly greater, so a tie is not a new best.
+ *
+ * One query for a whole page rather than one per post. Raw SQL because the
+ * comparison is per row against that row's own history, which Prisma's query
+ * API has no way to say. Served by @@index([userId, endedAt]) on sessions.
+ *
+ * @param {string[]} sessionIds
+ * @returns {Promise<Set<string>>}
+ */
+export const findPersonalBestSessionIds = async (sessionIds) => {
+  if (sessionIds.length === 0) return new Set();
+
+  const rows = await prisma.$queryRaw`
+    SELECT s.id
+    FROM sessions s
+    CROSS JOIN LATERAL (
+      SELECT COUNT(*) AS earlier, MAX(p."focusPoints") AS best
+      FROM sessions p
+      WHERE p."userId" = s."userId"
+        AND p."endedAt" IS NOT NULL
+        AND p."endedAt" < s."endedAt"
+    ) history
+    WHERE s.id = ANY(${sessionIds}::text[])
+      AND s."endedAt" IS NOT NULL
+      AND s."focusPoints" > 0
+      AND history.earlier >= ${PERSONAL_BEST_MIN_EARLIER}
+      AND s."focusPoints" > history.best
+  `;
+
+  return new Set(rows.map((row) => row.id));
+};
+
+const studyBuddySelect = (viewerId) => ({
+  select: {
+    id: true,
+    username: true,
+    avatarUrl: true,
+    firstName: true,
+    lastName: true,
+    blocking: { where: { blockedId: viewerId }, select: { blockerId: true } },
+    blockedBy: { where: { blockerId: viewerId }, select: { blockedId: true } },
+  },
+});
+
 const postInclude = (viewerId) => ({
   // The allowlist already used by findLikesByPost and listMembers. It is what
   // keeps passwordHash and email out of a public feed, so it must stay a select
@@ -46,8 +118,51 @@ const postInclude = (viewerId) => ({
   // this resolves. endedAt is null while a session is still running, which is
   // not the same as a duration of zero, so it is passed through rather than
   // flattened here.
+  //
+  // tasksTotal / tasksCompleted are null for a session that never had a task
+  // list, which the card shows as a dash rather than "0/0".
+  //
+  // focusScore and plannedMinutes feed the Focus stat and the "Hit the plan"
+  // badge; the interruption count is only the PHONE kinds (leaving the app,
+  // picking the phone up), for the "Phone-free" badge - a break the user
+  // logged themselves is not a distraction. See services/postSession.js.
+  //
+  // The two room relations are who it was studied WITH: `participants` when
+  // this session hosted a group room, `hostSession` (its owner, plus everyone
+  // else who joined) when it joined one. toViewerPost flattens both into one
+  // `studiedWith` list - see there.
   session: {
-    select: { startedAt: true, endedAt: true, focusPoints: true },
+    select: {
+      startedAt: true,
+      endedAt: true,
+      focusPoints: true,
+      tasksTotal: true,
+      tasksCompleted: true,
+      focusScore: true,
+      plannedMinutes: true,
+      _count: {
+        select: {
+          interruptions: { where: { type: { in: PHONE_INTERRUPTION_TYPES } } },
+        },
+      },
+      participants: { select: { user: studyBuddySelect(viewerId) } },
+      hostSession: {
+        select: {
+          user: studyBuddySelect(viewerId),
+          participants: { select: { user: studyBuddySelect(viewerId) } },
+        },
+      },
+    },
+  },
+  // Null whenever the post has no routine, or it was deleted - routineId is
+  // nullable and SetNull, as sessionId is. Just enough for the card's "Routine"
+  // chip: the tasks themselves come from GET /api/routines/:id/preview when the
+  // chip is opened, which is block-gated, so a feed row never carries them.
+  //
+  // The title is cached on every post that links it, so renaming a routine
+  // must invalidate those posts - see updateRoutine in studyRoutine.service.js.
+  routine: {
+    select: { id: true, title: true },
   },
   // Answers a question _count cannot: that is a total over everyone, so a heart
   // rendered from it has no way to know its own colour. This one is filtered to

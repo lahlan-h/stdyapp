@@ -8,7 +8,7 @@
  * API anywhere outside src/data is a bug, and so is a component that knows what
  * `_count` or `photoUrl` means.
  */
-export type { FeedAuthor, FeedPost, FeedSession } from "./types";
+export type { FeedAuthor, FeedPost, FeedSession, FeedRoutine, PostHighlight } from "./types";
 export {
   useIsSignedIn,
   useSessionRestored,
@@ -142,6 +142,11 @@ export {
 // hook to take it from. Same function usePosts hands back - there is one array.
 export { setLiked as setPostLiked } from "./postStore";
 export { useLikePost, type LikePostState } from "./useLikePost";
+export {
+  usePhotoSave,
+  type PhotoSaveState,
+  type PhotoSaveStatus,
+} from "./usePhotoSave";
 export { useReportPost, type ReportPostState } from "./useReportPost";
 export {
   REPORT_REASONS,
@@ -199,6 +204,11 @@ export {
   type LiveSession,
 } from "./groupTypes";
 export { useRoutine, type RoutineState, type TodoEdit } from "./useRoutine";
+export {
+  useRoutinePreview,
+  type RoutinePreview,
+  type RoutinePreviewState,
+} from "./useRoutinePreview";
 export {
   MAX_ROUTINE_TITLE_LENGTH,
   MAX_TODO_TITLE_LENGTH,

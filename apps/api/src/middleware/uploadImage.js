@@ -72,7 +72,7 @@ const MAX_FIELDS = 10;
 const MAX_PARTS = MAX_FIELDS + 2;
 
 /**
- * @param {{ field: string, types: string[], limit: number }} options
+ * @param {{ field: string, types: string[], limit: number, optional?: boolean }} options
  *   field - the form field carrying the file, e.g. "photo"
  *   types - acceptable Content-Type values FOR THE FILE PART. This gates the
  *   parser only; the bytes are re-identified from their magic bytes in
@@ -81,9 +81,14 @@ const MAX_PARTS = MAX_FIELDS + 2;
  *   limit - maximum file size in bytes, enforced while the part is still
  *   streaming, so an oversized upload is aborted rather than buffered and then
  *   measured.
+ *   optional - a multipart request with NO file part passes through, with
+ *   req.file undefined, rather than answering "<field> is required". The
+ *   body must still be multipart: the text fields arrive as form parts, and a
+ *   JSON body would reach validate() empty. Everything else - type, size, an
+ *   empty part - is checked exactly as before when a file IS sent.
  * @returns {import("express").RequestHandler}
  */
-export const uploadImage = ({ field, types, limit }) => {
+export const uploadImage = ({ field, types, limit, optional = false }) => {
   const accepted = types.join(", ");
 
   // Built once at mount time rather than per request, matching how rateLimit
@@ -161,6 +166,7 @@ export const uploadImage = ({ field, types, limit }) => {
           );
         }
 
+        if (optional) return next();
         return next(new HttpError(400, `${field} is required`));
       }
 

@@ -147,3 +147,4 @@ export {
   PLANS_BACK_ICON_SIZE,
   PLANS_ICON_SIZE,
 } from "./plans.styles";
+export { createPhotoViewerStyles, PHOTO_VIEWER_ICON_SIZE } from "./photoViewer.styles";

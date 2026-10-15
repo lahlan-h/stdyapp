@@ -86,6 +86,11 @@ export default function RootLayout() {
             view. The routines list itself lives under Study.
           */}
           <Stack.Screen name="routine/[id]" />
+          {/*
+            Someone else's routine, read only, from the chip on their post -
+            a push for the same reason, with Save to my routines on it.
+          */}
+          <Stack.Screen name="routine-preview/[id]" />
           {/* The full analytics page, a push from the Study tab's weekly card. */}
           <Stack.Screen name="analytics" />
           {/* A push from the Study tab's Groups view, for routine/[id]'s reason. */}

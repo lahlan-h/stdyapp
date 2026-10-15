@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { Platform } from "react-native";
 import { File } from "expo-file-system";
 
 import { ApiError, request } from "./api";
@@ -21,7 +22,11 @@ export interface NewPost {
   title: string;
   /** Omitted entirely when the user typed nothing - see createPost. */
   caption?: string;
-  photo: NewPostPhoto;
+  /**
+   * Optional - but a post needs this OR a caption. A text-only post sends no
+   * file part at all, and the API refuses a post with neither.
+   */
+  photo?: NewPostPhoto;
   /** One of the user's own sessions. Anyone else's is a 403. */
   sessionId?: string;
   /** One of the user's own routines. Anyone else's is a 403. */
@@ -56,6 +61,35 @@ export interface CreatedPost {
  */
 const toFilePart = (photo: NewPostPhoto): File => new File(photo.uri);
 
+/**
+ * Adds the photo to the form, the way this platform can.
+ *
+ * ⚠ expo-file-system's File DOES NOT WORK ON WEB - there it is a stub that only
+ * warns "not supported on web", so the upload died before any request went
+ * out and the screen showed its generic "Could not publish". The browser does
+ * not need it: the image picker hands back a blob: (or data:) URL, which
+ * fetch() turns into a real Blob that the browser's own FormData accepts.
+ *
+ * The Blob is re-typed when the browser left its type empty, because multer's
+ * allowlist reads the part's Content-Type before the API sniffs the bytes.
+ */
+const appendPhoto = async (formData: FormData, photo: NewPostPhoto): Promise<void> => {
+  if (Platform.OS !== "web") {
+    // Cast because expo-file-system's File implements Blob structurally
+    // rather than extending it, so TypeScript's DOM lib does not see them as
+    // the same type. The encoder checks the shape, not the prototype.
+    formData.append("photo", toFilePart(photo) as unknown as Blob);
+    return;
+  }
+
+  const blob = await (await fetch(photo.uri)).blob();
+  formData.append(
+    "photo",
+    blob.type ? blob : new Blob([blob], { type: photo.mimeType }),
+    photo.fileName ?? "photo",
+  );
+};
+
 export interface CreatePostState {
   createPost: (post: NewPost) => Promise<CreatedPost | null>;
   isSubmitting: boolean;
@@ -67,8 +101,10 @@ export interface CreatePostState {
 /**
  * Creates a post, photo and all, in one multipart request.
  *
- * The photo is mandatory: Post.photoUrl is not nullable and the route answers
- * 400 without a file part. There is no separate upload step - the API takes the
+ * The photo is optional, but a post needs it OR a caption - the route answers
+ * 400 with neither. A text-only post is still multipart, just without a file
+ * part, since the API reads its fields from the form. There is no separate
+ * upload step - the API takes the
  * bytes, sniffs them, writes to R2 and inserts the row, reclaiming the object
  * if the insert fails.
  */
@@ -83,10 +119,7 @@ export const useCreatePost = (): CreatePostState => {
     try {
       const formData = new FormData();
 
-      // Cast because expo-file-system's File implements Blob structurally
-      // rather than extending it, so TypeScript's DOM lib does not see them as
-      // the same type. The encoder checks the shape, not the prototype.
-      formData.append("photo", toFilePart(post.photo) as unknown as Blob);
+      if (post.photo) await appendPhoto(formData, post.photo);
 
       formData.append("title", post.title.trim());
 

@@ -36,6 +36,11 @@ import {
 import { formatRelativeTime, formatDuration } from "@stdyapp/shared";
 
 import ReportDialog from "@components/ReportDialog";
+import PostRoutineLink from "@components/PostRoutineLink";
+import PostPhoto from "@components/PostPhoto";
+import StudiedWith from "@components/StudiedWith";
+import PostHighlights from "@components/PostHighlights";
+import { focusBand, focusBandColor } from "@components/focusBand";
 
 /** Stands in for a number that is not known yet, rather than inventing one. */
 const PLACEHOLDER = "—";
@@ -166,15 +171,24 @@ const PostDetail = () => {
             </View>
 
             {post.imageUrl && (
-              <Image
-                style={styles.photo}
-                source={{ uri: post.imageUrl }}
-                resizeMode="cover"
-              />
+              <PostPhoto uri={post.imageUrl} title={post.title} style={styles.photo} />
             )}
 
             {post.caption ? (
               <Text style={styles.caption}>{post.caption}</Text>
+            ) : null}
+
+            <StudiedWith
+              people={post.session?.studiedWith ?? []}
+              style={{ marginHorizontal: 16, marginTop: 16 }}
+            />
+
+            {post.routine ? (
+              <PostRoutineLink
+                routine={post.routine}
+                isMine={post.isMine}
+                style={{ marginHorizontal: 16, marginTop: 16 }}
+              />
             ) : null}
 
             <View style={styles.statsRow}>
@@ -183,12 +197,29 @@ const PostDetail = () => {
                 <Text style={styles.statValue}>{durationOf(post)}</Text>
               </View>
               <View>
-                <Text style={styles.statLabel}>Goals Reached</Text>
-                {/* Never derivable per post: a Goal is one row per user per
-                    period and is never attached to a session. */}
-                <Text style={styles.statValue}>{PLACEHOLDER}</Text>
+                <Text style={styles.statLabel}>Focus</Text>
+                {/* The band's word too, which the card has no room for. */}
+                <Text
+                  style={[
+                    styles.statValue,
+                    post.session?.focusScore != null && {
+                      color: focusBandColor(focusBand(post.session.focusScore).key, colors),
+                    },
+                  ]}
+                >
+                  {focusOf(post)}
+                </Text>
+              </View>
+              <View>
+                <Text style={styles.statLabel}>Tasks</Text>
+                <Text style={styles.statValue}>{tasksOf(post)}</Text>
               </View>
             </View>
+
+            <PostHighlights
+              highlights={post.session?.highlights ?? []}
+              style={{ marginHorizontal: 16, marginBottom: 16 }}
+            />
 
             <View style={styles.actions}>
               <Pressable
@@ -371,6 +402,16 @@ const PostDetail = () => {
     </LinearGradient>
   );
 };
+
+/** "82 · Deep focus", or a dash when the session was not measured. */
+const focusOf = (post: FeedPost): string => {
+  const score = post.session?.focusScore ?? null;
+  return score === null ? PLACEHOLDER : `${score} · ${focusBand(score).label}`;
+};
+
+/** "4/5" tasks ticked off, or a dash when the session had no task list. */
+const tasksOf = (post: FeedPost): string =>
+  post.session?.tasks ? `${post.session.tasks.done}/${post.session.tasks.total}` : PLACEHOLDER;
 
 /** Null session, running session and finished session are three states, not two. */
 const durationOf = (post: FeedPost): string => {

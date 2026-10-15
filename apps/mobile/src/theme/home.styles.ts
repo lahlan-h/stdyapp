@@ -75,6 +75,56 @@ export const createHomeStyles = (colors: ColorScheme) => {
       // and caption wrap.
       alignItems: "stretch",
     },
+    // --- "Studied with" - who else was in the session's group room ---
+    // Shared with the post detail screen through the StudiedWith component.
+    studiedWith: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    studiedWithAvatars: { flexDirection: "row" },
+    studiedWithAvatar: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      // A ring in the card's own colour, so overlapping faces stay separate.
+      borderWidth: 2,
+      borderColor: colors.surface,
+    },
+    studiedWithAvatarOverlap: { marginLeft: -8 },
+    studiedWithText: {
+      flex: 1,
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.textMuted,
+    },
+    studiedWithName: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      color: colors.text,
+    },
+    // --- Badges a session earned ("Personal best"...) ---
+    // Shared with the post detail screen through the PostHighlights component.
+    highlights: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+    },
+    highlight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.bg,
+    },
+    highlightText: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 12,
+      color: colors.text,
+    },
     statsContainer: {
       paddingHorizontal: 12,
       paddingTop: 10,
@@ -84,7 +134,9 @@ export const createHomeStyles = (colors: ColorScheme) => {
     },
     postCardImage: {
       width: "100%",
-      aspectRatio: 1 / 1,
+      // Square only until the photo's own shape is known - PostPhoto
+      // replaces this with it, within 4:5 and 2:1.
+      aspectRatio: 1,
       borderColor: colors.border,
       borderTopWidth: 1,
       borderBottomWidth: 1,
