@@ -31,6 +31,7 @@ import TaskChecklist from "@components/TaskChecklist";
 import RoutineList from "@components/RoutineList";
 import { focusBand, focusBandColor } from "@components/focusBand";
 import GroupList from "@components/GroupList";
+import { formatClock } from "@components/sessionFormat";
 import WeeklyStudyCard from "@components/WeeklyStudyCard";
 import AdvancedAnalyticsRow from "@components/AdvancedAnalyticsRow";
 import BeginCard from "@components/BeginCard";
@@ -69,15 +70,6 @@ const VIEWS: { key: StudyView; label: string }[] = [
  * the rendered content swaps.
  */
 
-const clock = (totalSec: number) => {
-  const s = Math.max(0, Math.round(totalSec));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
-    : `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-};
 
 const short = (totalSec: number) => {
   const m = Math.round(totalSec / 60);
@@ -444,7 +436,7 @@ const Study = () => {
               <View style={styles.dialWrap}>
                 <FocusDial progress={dialProgress} color={bandColor}>
                   <Text style={styles.dialValue}>
-                    {clock(remainingSec ?? elapsedSec)}
+                    {formatClock(remainingSec ?? elapsedSec)}
                   </Text>
                   <Text style={styles.dialCaption}>
                     {remainingSec === null ? "elapsed" : "left"}
