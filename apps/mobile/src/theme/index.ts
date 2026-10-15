@@ -19,12 +19,7 @@ export {
   type ThemePreference,
 } from "./useTheme";
 export { lightColors, darkColors, type ColorScheme } from "./colors";
-export {
-  createHomeStyles,
-  FEED_FAB_ICON_SIZE,
-  FEED_FAB_MARGIN,
-  FEED_FAB_CLEARANCE,
-} from "./home.styles";
+export { createHomeStyles } from "./home.styles";
 export {
   createStudyStyles,
   DIAL_SIZE,

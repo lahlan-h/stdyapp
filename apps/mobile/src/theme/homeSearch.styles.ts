@@ -231,8 +231,8 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
       paddingTop: 18,
       paddingBottom: 8,
     },
-    // Nothing overhangs the tab bar any more - the add-post button moved onto
-    // the feed - so the foot needs only its own breathing room above the bar.
+    // Nothing overhangs the tab bar any more - the add-post button is gone -
+    // so the foot needs only its own breathing room above the bar.
     sheetFoot: {
       alignItems: "center",
       gap: 4,

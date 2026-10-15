@@ -107,7 +107,8 @@ const LinkRow = ({
 /**
  * Compose a post.
  *
- * Presented as a modal from the tab bar's centre button. A photo and a title
+ * Presented as a modal from the Study tab when a session finishes - there is
+ * no other way in, since a post is about a session. A photo and a title
  * are required - Post.photoUrl is not nullable, so there is no text-only post
  * to fall back to - and the caption is the optional half.
  */
