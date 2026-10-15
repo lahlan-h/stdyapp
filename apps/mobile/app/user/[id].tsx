@@ -8,7 +8,6 @@ import {
   useUser,
   useUserPosts,
   useFollowCounts,
-  useStreak,
   useFollow,
   toUserSummary,
 } from "@data";
@@ -39,7 +38,7 @@ const UserProfile = () => {
   const { posts, isLoading: postsLoading, setLiked, reload: reloadPosts } =
     useUserPosts(id);
   const { summary, reload: reloadCounts } = useFollowCounts(id);
-  const { streak } = useStreak(id);
+
   const follow = useFollow(id, summary, reloadCounts);
   const styles = useStyles("profile");
 
@@ -64,8 +63,7 @@ const UserProfile = () => {
       postsLoading={postsLoading}
       setLiked={setLiked}
       reloadPosts={reloadPosts}
-      streak={streak}
-      showTotals={false}
+      showSessions={false}
       followers={summary?.followers}
       following={summary?.following}
       actions={

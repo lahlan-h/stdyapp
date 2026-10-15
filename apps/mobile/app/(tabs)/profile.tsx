@@ -14,7 +14,7 @@ import {
   useProfile,
   useUserPosts,
   useFollowCounts,
-  useStreak,
+
   useStudySessions,
 } from "@data";
 
@@ -44,7 +44,6 @@ const Profile = () => {
   const { posts, isLoading: postsLoading, setLiked, reload: reloadPosts } =
     useUserPosts();
   const { summary } = useFollowCounts();
-  const { streak } = useStreak();
   const { totals } = useStudySessions();
 
   /**
@@ -108,8 +107,7 @@ const Profile = () => {
       postsLoading={postsLoading}
       setLiked={setLiked}
       reloadPosts={reloadPosts}
-      streak={streak}
-      totals={totals}
+      sessions={totals?.completed}
       followers={summary?.followers}
       following={summary?.following}
       actions={

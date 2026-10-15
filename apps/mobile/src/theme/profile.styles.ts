@@ -4,6 +4,9 @@ import { StyleSheet } from "react-native";
 /** Diameter of the profile avatar. Larger than the feed's, which is AVATAR_SIZE in home.styles. */
 const AVATAR_SIZE = 96;
 
+/** The avatar inside the profile card, sized to sit beside the name and counts. */
+const CARD_AVATAR_SIZE = 64;
+
 /** Leading icon on an action button. */
 export const PROFILE_ACTION_ICON_SIZE = 16;
 
@@ -268,14 +271,76 @@ export const createProfileStyles = (colors: ColorScheme) => {
       zIndex: 1,
     },
 
-    // --- Posts ---
-    sectionTitle: {
+    // --- The profile card: avatar, name, counts and bio ---
+    card: {
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 18,
+      gap: 16,
+    },
+    cardTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 16,
+    },
+    cardAvatar: {
+      width: CARD_AVATAR_SIZE,
+      height: CARD_AVATAR_SIZE,
+      borderRadius: CARD_AVATAR_SIZE / 2,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    cardIdentity: {
+      flex: 1,
+      gap: 8,
+    },
+    cardName: {
       fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 18,
+      color: colors.text,
+    },
+    cardStats: {
+      flexDirection: "row",
+      gap: 22,
+    },
+    // Label over value, as the design stacks them.
+    cardStat: {
+      gap: 2,
+    },
+    cardStatLabel: {
+      fontFamily: "PlusJakartaSans_400Regular",
       fontSize: 13,
-      letterSpacing: 0.8,
-      textTransform: "uppercase",
+      color: colors.textMuted,
+    },
+    cardStatValue: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 17,
+      color: colors.text,
+    },
+    cardField: {
+      gap: 2,
+    },
+    cardFieldLabel: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.textMuted,
+    },
+    cardFieldValue: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 15,
+      lineHeight: 21,
+      color: colors.text,
+    },
+
+    // --- Posts ---
+    // Title case and muted, as the design labels the list.
+    sectionTitle: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 15,
       color: colors.textMuted,
       paddingHorizontal: 4,
+      paddingTop: 8,
     },
     postList: {
       gap: 10,

@@ -4,21 +4,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useTheme, useStyles } from "@theme";
-import {
-  useLikePost,
-  type FeedPost,
-  type PublicProfile,
-  type SetLiked,
-  type Streak,
-  type StudyTotals,
-} from "@data";
+import { useLikePost, type FeedPost, type PublicProfile, type SetLiked } from "@data";
 
 import PostCard from "./PostCard";
 import LoadingSpinner from "./LoadingSpinner";
 import ReportDialog from "./ReportDialog";
-import ProfileHeader from "./ProfileHeader";
-import ProfileStats from "./ProfileStats";
-import ProfileStudyBubble from "./ProfileStudyBubble";
+import ProfileCard from "./ProfileCard";
 
 interface ProfileViewProps {
   profile: PublicProfile;
@@ -27,10 +18,10 @@ interface ProfileViewProps {
   /** The posts hook's own setter - see SetLiked. */
   setLiked: SetLiked;
   reloadPosts: () => void;
-  streak?: Streak;
-  totals?: StudyTotals;
-  /** False on someone else's profile - see ProfileStudyBubble. */
-  showTotals?: boolean;
+  /** Completed sessions - see ProfileCard. */
+  sessions?: number;
+  /** False on someone else's profile, whose sessions this app cannot read. */
+  showSessions?: boolean;
   followers?: number;
   following?: number;
   /** The buttons under the header: edit and sign out for you, follow for anyone else. */
@@ -60,9 +51,8 @@ const ProfileView = ({
   postsLoading,
   setLiked,
   reloadPosts,
-  streak,
-  totals,
-  showTotals = true,
+  sessions,
+  showSessions = true,
   followers,
   following,
   actions,
@@ -106,30 +96,19 @@ const ProfileView = ({
           ListHeaderComponent={
             <View style={styles.postList}>
               {topBar}
-              {/*
-                The bubble is absolutely positioned against THIS wrapper, which
-                is what keeps the avatar centred on the screen: a sibling in a
-                row would push it off-centre by half the bubble's width.
-                Rendered after the header so it draws on top of it.
-              */}
-              <View style={styles.headerArea}>
-                <ProfileHeader profile={profile} />
-                <ProfileStudyBubble
-                  streak={streak}
-                  totals={totals}
-                  showTotals={showTotals}
-                />
-              </View>
-              {actions}
-              <ProfileStats
-                posts={posts.length}
+              <ProfileCard
+                profile={profile}
+                sessions={sessions}
+                showSessions={showSessions}
                 followers={followers}
                 following={following}
               />
+              {actions}
               {likeError ? (
                 <Text style={styles.message}>{likeError}</Text>
               ) : null}
-              <Text style={styles.sectionTitle}>Posts</Text>
+              {/* "Sessions", as the design labels it: every post here is one. */}
+              <Text style={styles.sectionTitle}>Sessions</Text>
             </View>
           }
           ListEmptyComponent={
