@@ -24,15 +24,16 @@ import {
 } from "@theme";
 import { useFocusSession, consumeStudyRequest, MAX_JOIN_CODE_LENGTH } from "@data";
 
-import DurationPicker from "@components/DurationPicker";
 import FocusDial from "@components/FocusDial";
 import FocusTrace from "@components/FocusTrace";
-import RatingSheet from "@components/RatingSheet";
 import TaskChecklist from "@components/TaskChecklist";
 import RoutineList from "@components/RoutineList";
 import { focusBand, focusBandColor } from "@components/focusBand";
 import GroupList from "@components/GroupList";
-import SessionHistory from "@components/SessionHistory";
+import { formatClock } from "@components/sessionFormat";
+import WeeklyStudyCard from "@components/WeeklyStudyCard";
+import AdvancedAnalyticsRow from "@components/AdvancedAnalyticsRow";
+import BeginCard from "@components/BeginCard";
 import RoomParticipants from "@components/RoomParticipants";
 import { confirmGroupAction } from "@components/confirmGroup";
 
@@ -46,7 +47,8 @@ const VIEWS: { key: StudyView; label: string }[] = [
 ];
 
 /**
- * The focus session screen: set up, run, recap.
+ * The focus session screen: set up and run. Ending a session opens the
+ * composer rather than a recap here - see the effect on phase below.
  *
  * WRITTEN SHORT ON PURPOSE. The audience already knows how an app works, so
  * every sentence of explanation here is one they will not read. The controls
@@ -54,29 +56,18 @@ const VIEWS: { key: StudyView; label: string }[] = [
  * survives is the line saying the score is an estimate, because that claim is
  * the one we may not leave implied.
  *
- * THE DIAL IS FOR THE LIVE SESSION ONLY. Once the session ends it goes: a
- * countdown with nothing left to count is decoration, and the recap is about
- * numbers you compare, not one you watch. Each of those gets its own card so
- * the eye can land on a single figure without reading the rest.
+ * THE DIAL IS FOR THE LIVE SESSION ONLY. Setting up shows the week instead,
+ * and a finished session is summed up where it is posted.
  *
  * Every colour is a palette token; the screen holds no hex of its own.
  *
  * THREE VIEWS, ONE SESSION. A switch at the top flips between Sessions,
- * Routines and Groups, but useFocusSession stays mounted in this screen
- * whichever is showing - so a running session keeps its timer, samples and
- * away-tracking while the user checks a routine or a group. Only the rendered
- * content swaps.
+ * Routines and Groups, and the session itself lives above the tabs in
+ * FocusSessionProvider - so a running session keeps its timer, samples and
+ * away-tracking while the user checks a routine, a group or another tab. Only
+ * the rendered content swaps.
  */
 
-const clock = (totalSec: number) => {
-  const s = Math.max(0, Math.round(totalSec));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
-    : `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-};
 
 const short = (totalSec: number) => {
   const m = Math.round(totalSec / 60);
@@ -94,20 +85,12 @@ const Study = () => {
     elapsedSec,
     remainingSec,
     plannedSec,
-    setPlannedSec,
     liveFocus,
     awaySec,
     phoneDownSec,
     isPhoneDown,
-    trace,
     liveTimeline,
-    result,
-    rating,
-    streakDays,
     tasks,
-    draftTasks,
-    addDraftTask,
-    removeDraftTask,
     addTask,
     toggleTask,
     removeTask,
@@ -122,11 +105,9 @@ const Study = () => {
     start,
     join,
     end,
-    rate,
     reset,
   } = useFocusSession();
 
-  const [sheetOpen, setSheetOpen] = useState(false);
   const [view, setView] = useState<StudyView>("sessions");
   const [inviteDraft, setInviteDraft] = useState("");
 
@@ -215,7 +196,7 @@ const Study = () => {
   };
 
   const running = phase === "running";
-  const score = running ? liveFocus : (result?.focusScore ?? null);
+  const score = running ? liveFocus : null;
   // Shared with the session history, so a score reads the same in both.
   const scoreBand = focusBand(score);
   const bandColor = focusBandColor(scoreBand.key, colors);
@@ -230,79 +211,24 @@ const Study = () => {
     : (liveFocus ?? 0) / 100;
 
   /**
-   * The sheet comes up on its own when the recap lands, because a rating asked
-   * for is a rating given and one hidden behind a button is not. Only once:
-   * flicking it away must not have it spring straight back, so this keys on
-   * the phase rather than on whether a rating exists.
+   * Ending a session goes straight to the composer, the way finishing a Hevy
+   * workout goes straight to saving it: a session is wrapped up by posting it,
+   * or discarding it there, so there is no recap screen in between. The focus
+   * rating asked for at the end moved with it.
+   *
+   * Reset before navigating, so coming back - posted or discarded - lands on
+   * Begin rather than on a session that is already over. The id is read
+   * first, because reset() clears it.
    */
   useEffect(() => {
-    if (phase === "recap") setSheetOpen(true);
-    else setSheetOpen(false);
-  }, [phase]);
-
-  /**
-   * A session that ends while Routines or Groups is showing brings Sessions back, so the
-   * recap and its rating sheet are not opened behind another list.
-   */
-  useEffect(() => {
-    if (phase === "recap") setView("sessions");
-  }, [phase]);
+    if (phase !== "recap" || !sessionId) return;
+    const finished = sessionId;
+    reset();
+    setView("sessions");
+    router.push({ pathname: "/new-post", params: { sessionId: finished } });
+  }, [phase, sessionId, reset]);
 
   const showingSessions = view === "sessions";
-
-  const finish = () => {
-    setSheetOpen(false);
-    reset();
-  };
-
-  /**
-   * Opens the composer AND clears the session.
-   *
-   * Without the reset, coming back from the composer landed on the same recap
-   * with no obvious way forward - the session was over but the screen still
-   * behaved as though it were not.
-   */
-  const share = () => {
-    // Read before reset() clears it, so the composer opens already linked.
-    const finished = sessionId;
-    setSheetOpen(false);
-    reset();
-    router.push(
-      finished ? { pathname: "/new-post", params: { sessionId: finished } } : "/new-post",
-    );
-  };
-
-  const Metric = ({
-    icon,
-    tint,
-    label,
-    onPress,
-    accessibilityLabel,
-    children,
-  }: {
-    icon: keyof typeof Feather.glyphMap;
-    tint: string;
-    label: string;
-    onPress?: () => void;
-    accessibilityLabel?: string;
-    children: React.ReactNode;
-  }) => (
-    // Pressable only when it does something - a card that highlights under the
-    // finger and then does nothing is worse than a plain one.
-    <Pressable
-      style={styles.metricCard}
-      onPress={onPress}
-      disabled={!onPress}
-      accessibilityRole={onPress ? "button" : undefined}
-      accessibilityLabel={accessibilityLabel}
-    >
-      <View style={styles.metricIcon}>
-        <Feather name={icon} size={17} color={tint} />
-      </View>
-      <Text style={styles.metricLabel}>{label}</Text>
-      {children}
-    </Pressable>
-  );
 
   return (
     <LinearGradient colors={colors.gradients.background} style={styles.container}>
@@ -368,28 +294,12 @@ const Study = () => {
           {/* ---------------- set up ---------------- */}
           {showingSessions && phase === "idle" ? (
             <>
-              <View style={styles.dialWrap}>
-                <FocusDial progress={0} color={colors.primary}>
-                  <Text style={styles.dialValue}>
-                    {plannedSec ? clock(plannedSec) : "\u221e"}
-                  </Text>
-                  <Text style={styles.dialCaption}>
-                    {plannedSec ? "planned" : "no limit"}
-                  </Text>
-                </FocusDial>
-              </View>
+              <WeeklyStudyCard />
+              <AdvancedAnalyticsRow />
 
-              {/* Zero across all three wheels is an open-ended session, so
-                  there is no separate "no limit" control. */}
-              <DurationPicker seconds={plannedSec} onChange={setPlannedSec} />
-
-              <TaskChecklist
-                drafts={draftTasks}
-                onAdd={addDraftTask}
-                onRemoveDraft={removeDraftTask}
-              />
-
-              {/* Chosen from a group's screen; clearing it makes Start solo again. */}
+              {/* Chosen from a group's screen; clearing it makes the next
+                  session solo again. Above Begin, because it changes what
+                  Begin starts. */}
               {selectedGroup ? (
                 <View style={styles.groupChip}>
                   <Feather name="users" size={TASK_ICON_SIZE} color={colors.primary} />
@@ -408,16 +318,10 @@ const Study = () => {
                 </View>
               ) : null}
 
-              <Pressable
-                style={[styles.action, busy && styles.actionDisabled]}
-                disabled={busy}
-                onPress={start}
-                accessibilityRole="button"
-                accessibilityLabel="Start session"
-              >
-                <Feather name="play" size={STUDY_ICON_SIZE} color={colors.surface} />
-                <Text style={styles.actionText}>Start</Text>
-              </Pressable>
+              {/* No length to pick and no checklist to fill first: a session
+                  starts the moment a mode is chosen. Tasks can still be added
+                  once it is running. */}
+              <BeginCard busy={busy} onStartNormal={start} />
 
               <Text style={styles.helpText}>
                 Focus is an estimate, not a measurement.
@@ -458,7 +362,8 @@ const Study = () => {
                 </Text>
               </View>
 
-              <SessionHistory />
+              {/* Past sessions live behind the profile's Session history
+                  button; the weekly card is this tab's look back. */}
             </>
           ) : null}
 
@@ -468,7 +373,7 @@ const Study = () => {
               <View style={styles.dialWrap}>
                 <FocusDial progress={dialProgress} color={bandColor}>
                   <Text style={styles.dialValue}>
-                    {clock(remainingSec ?? elapsedSec)}
+                    {formatClock(remainingSec ?? elapsedSec)}
                   </Text>
                   <Text style={styles.dialCaption}>
                     {remainingSec === null ? "elapsed" : "left"}
@@ -584,137 +489,8 @@ const Study = () => {
             </>
           ) : null}
 
-          {/* ---------------- recap: no dial, cards only ---------------- */}
-          {showingSessions && phase === "recap" && result ? (
-            <>
-              {/*
-                A vector mark, not an emoji: emoji render differently on every
-                platform and cannot take a palette colour, so they drift from
-                the rest of the icon set.
-              */}
-              <View style={styles.heroBadge}>
-                <Feather name="award" size={28} color={colors.success} />
-              </View>
-              <View style={styles.recapHeader}>
-                <Text style={styles.recapTitle}>Session complete</Text>
-                <Text style={styles.recapSubtitle}>Nice work, keep it up.</Text>
-              </View>
-
-              <Metric icon="clock" tint={colors.success} label="Total time">
-                <Text style={styles.metricValue}>{short(result.totalSec)}</Text>
-              </Metric>
-
-              <Metric
-                icon="target"
-                tint={colors.warning}
-                label="Focus estimate"
-                onPress={() => setSheetOpen(true)}
-                accessibilityLabel="Rate this session"
-              >
-                <View
-                  style={[styles.bandPill, { backgroundColor: colors.successTint }]}
-                >
-                  <View style={[styles.bandDot, { backgroundColor: bandColor }]} />
-                  <Text style={[styles.bandPillText, { color: bandColor }]}>
-                    {scoreBand.label}
-                  </Text>
-                </View>
-                <Text style={[styles.metricValue, { color: bandColor }]}>
-                  {result.focusScore ?? "—"}
-                </Text>
-              </Metric>
-
-              {result.tasksTotal > 0 ? (
-                <Metric
-                  icon="check-square"
-                  tint={colors.primary}
-                  label="Tasks done"
-                >
-                  <Text
-                    style={[
-                      styles.metricValue,
-                      result.tasksCompleted === result.tasksTotal
-                        ? { color: colors.success }
-                        : null,
-                    ]}
-                  >
-                    {result.tasksCompleted}/{result.tasksTotal}
-                  </Text>
-                </Metric>
-              ) : null}
-
-              <Metric icon="zap-off" tint={colors.danger} label="Distractions">
-                <Text style={styles.metricValue}>
-                  {result.interruptionCount}
-                  {result.awaySeconds > 0 ? ` · ${short(result.awaySeconds)}` : ""}
-                </Text>
-              </Metric>
-
-              {trace ? <FocusTrace timeline={trace} /> : null}
-
-              <View style={styles.rewardRow}>
-                <View style={styles.rewardCard}>
-                  <View style={styles.rewardTop}>
-                    <Feather name="star" size={16} color={colors.primary} />
-                    <Text style={[styles.rewardValue, { color: colors.primary }]}>
-                      +{result.focusPoints} XP
-                    </Text>
-                  </View>
-                  <Text style={styles.rewardCaption}>Banked to your total.</Text>
-                </View>
-
-                <View style={styles.rewardCard}>
-                  <View style={styles.rewardTop}>
-                    <Feather name="trending-up" size={16} color={colors.warning} />
-                    <Text style={[styles.rewardValue, { color: colors.warning }]}>
-                      {streakDays} {streakDays === 1 ? "day" : "days"}
-                    </Text>
-                  </View>
-                  <Text style={styles.rewardCaption}>Keep the streak alive.</Text>
-                </View>
-              </View>
-
-              {/* Opens the composer with this session already linked. */}
-              <Pressable
-                style={styles.action}
-                onPress={share}
-                accessibilityRole="button"
-                accessibilityLabel="Share to feed"
-              >
-                <Feather name="share-2" size={STUDY_ICON_SIZE} color={colors.surface} />
-                <Text style={styles.actionText}>Share to feed</Text>
-              </Pressable>
-
-              {/*
-                The way back to the start screen, and the only one - so it is a
-                button, not a faint link. Both actions end the recap, because a
-                finished session the user cannot leave is a dead end.
-              */}
-              <Pressable
-                style={styles.actionSecondary}
-                onPress={finish}
-                accessibilityRole="button"
-                accessibilityLabel="Done"
-              >
-                <Feather name="check" size={STUDY_ICON_SIZE} color={colors.text} />
-                <Text style={styles.actionSecondaryText}>Done</Text>
-              </Pressable>
-            </>
-          ) : null}
         </ScrollView>
 
-        {/*
-          Over the recap rather than replacing it, so the numbers stay visible
-          while the question is answered - and a flick down is a cheap way out,
-          which matters because a rating someone felt cornered into is worse
-          data than no rating.
-        */}
-        <RatingSheet
-          visible={sheetOpen}
-          value={rating}
-          onRate={rate}
-          onClose={() => setSheetOpen(false)}
-        />
       </SafeAreaView>
 
       {/* Face-down mode: nobody can see the screen, so it goes black. */}

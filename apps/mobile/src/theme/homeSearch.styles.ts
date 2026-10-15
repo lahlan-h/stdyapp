@@ -31,6 +31,10 @@ const NOTIFICATION_CIRCLE_SIZE = 44;
 const PANEL_PADDING_TOP = 8;
 const PANEL_PADDING_BOTTOM = 12;
 
+/** The "Following ⌄" title row above the search row - the feed's audience menu. */
+const PANEL_TITLE_HEIGHT = 48;
+const PANEL_TITLE_ICON_SIZE = 24;
+
 /**
  * The pinned panel's height BELOW the status bar.
  *
@@ -39,7 +43,8 @@ const PANEL_PADDING_BOTTOM = 12;
  * render one frame with the first card hidden under the panel and the page
  * opening from the wrong place, then jump.
  */
-const HOME_PANEL_HEIGHT = PANEL_PADDING_TOP + CONTROL_HEIGHT + PANEL_PADDING_BOTTOM;
+const HOME_PANEL_HEIGHT =
+  PANEL_TITLE_HEIGHT + PANEL_PADDING_TOP + CONTROL_HEIGHT + PANEL_PADDING_BOTTOM;
 
 const HOME_SEARCH_ICON_SIZE = 20;
 const SEARCH_ROW_ICON_SIZE = 18;
@@ -99,6 +104,92 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
       paddingHorizontal: 12,
       paddingTop: PANEL_PADDING_TOP,
       paddingBottom: PANEL_PADDING_BOTTOM,
+    },
+
+    // --- Title: whose posts the feed shows ---
+    panelTitleRow: {
+      height: PANEL_TITLE_HEIGHT,
+      flexDirection: "row",
+      alignItems: "flex-end",
+      paddingHorizontal: 16,
+    },
+    // Wraps text and arrow, so the whole title is the target, not the icon.
+    panelTitle: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      maxWidth: "100%",
+    },
+    panelTitleText: {
+      flexShrink: 1,
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 28,
+      color: colors.text,
+    },
+
+    // --- The audience menu, dropped from the title ---
+    // Clear, not the scrim: the menu is small and anchored, and dimming the
+    // whole feed for it would make a light choice feel heavy.
+    audienceBackdrop: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+    },
+    audienceMenu: {
+      position: "absolute",
+      left: 12,
+      width: 280,
+      maxHeight: 420,
+      padding: 6,
+      borderRadius: 18,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    audienceSection: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 12,
+      letterSpacing: 0.8,
+      textTransform: "uppercase",
+      color: colors.textMuted,
+      paddingHorizontal: 12,
+      paddingTop: 12,
+      paddingBottom: 4,
+    },
+    audienceOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: CONTROL_HEIGHT,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+    },
+    audienceOptionSelected: {
+      backgroundColor: colors.primaryTint,
+    },
+    audienceOptionText: {
+      flex: 1,
+      gap: 1,
+    },
+    audienceOptionLabel: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 15,
+      color: colors.text,
+    },
+    audienceOptionCaption: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 12,
+      color: colors.textMuted,
+    },
+    audienceNote: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.textMuted,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
     },
     // Whatever the two fixed-width buttons leave - the design's 80% split no
     // longer fits three objects, and the search box is the one that can give.
@@ -231,8 +322,8 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
       paddingTop: 18,
       paddingBottom: 8,
     },
-    // Nothing overhangs the tab bar any more - the add-post button moved onto
-    // the feed - so the foot needs only its own breathing room above the bar.
+    // Nothing overhangs the tab bar any more - the add-post button is gone -
+    // so the foot needs only its own breathing room above the bar.
     sheetFoot: {
       alignItems: "center",
       gap: 4,
@@ -550,6 +641,7 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
 
 export {
   HOME_PANEL_HEIGHT,
+  PANEL_TITLE_ICON_SIZE,
   HOME_SEARCH_ICON_SIZE,
   SEARCH_ROW_ICON_SIZE,
   SHEET_CLOSE_ICON_SIZE,

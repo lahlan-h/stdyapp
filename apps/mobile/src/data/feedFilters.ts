@@ -23,6 +23,33 @@ export type FeedSort =
   | "least_commented";
 
 /**
+ * Whose posts the feed shows - the "Home" title's menu, not the filter page.
+ *
+ * Mirrors FEED_AUDIENCES in apps/api/src/validation/post.validation.js. Kept
+ * apart from FeedFilters on purpose: the filter page's Reset clears filters,
+ * and switching to a study group's feed is not a filter to be reset away.
+ *
+ * A group carries its name as well as its id, so the title can say which
+ * group without a second request.
+ */
+export type FeedAudience =
+  | { kind: "following" }
+  | { kind: "everyone" }
+  | { kind: "group"; groupId: string; groupName: string };
+
+/**
+ * Where the feed opens: you and the people you follow. Everyone's posts are
+ * one tap away in the menu.
+ */
+export const DEFAULT_FEED_AUDIENCE: FeedAudience = { kind: "following" };
+
+/** The audience as GET /api/posts/all's parameters, joined like toFeedQuery's. */
+export const toAudienceQuery = (audience: FeedAudience): string =>
+  audience.kind === "group"
+    ? `audience=group&groupId=${encodeURIComponent(audience.groupId)}`
+    : `audience=${audience.kind}`;
+
+/**
  * Any time, a span of days, or one day.
  *
  * All three keep their dates even when not selected, so flicking from Range to

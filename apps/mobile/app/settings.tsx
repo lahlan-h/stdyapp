@@ -1,4 +1,5 @@
 import {
+  Pressable,
   ScrollView,
   StatusBar,
   Switch,
@@ -6,7 +7,7 @@ import {
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Feather from "@expo/vector-icons/Feather";
 import Constants from "expo-constants";
 import { router } from "expo-router";
@@ -14,8 +15,8 @@ import { router } from "expo-router";
 import {
   useTheme,
   useStyles,
-  useTabBarClearance,
   SETTINGS_FOOTER_ROOM,
+  SETTINGS_BACK_ICON_SIZE,
   ROW_ICON_SIZE,
 } from "@theme";
 import { useNotificationPreferences } from "@data";
@@ -31,10 +32,19 @@ import ThemeSegmentedControl from "@components/ThemeSegmentedControl";
  */
 const APP_VERSION = Constants.expoConfig?.version ?? "unknown";
 
+/**
+ * Opened from the gear on your own profile.
+ *
+ * A push over the tabs rather than a tab of its own: settings are visited
+ * rarely, so they gave their slot on the bar to screens used every day. Like
+ * every pushed screen it carries its own back button - the root Stack hides
+ * every header - and it pads for the home indicator rather than the tab bar,
+ * which a pushed screen covers.
+ */
 const Settings = () => {
   const { colors } = useTheme();
   const settingsStyles = useStyles("settings");
-  const tabBarClearance = useTabBarClearance();
+  const insets = useSafeAreaInsets();
   const { preferences, setPreference } = useNotificationPreferences();
 
   /**
@@ -55,11 +65,21 @@ const Settings = () => {
         <ScrollView
           contentContainerStyle={[
             settingsStyles.scrollContent,
-            { paddingBottom: tabBarClearance + SETTINGS_FOOTER_ROOM },
+            { paddingBottom: insets.bottom + SETTINGS_FOOTER_ROOM },
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={settingsStyles.screenTitle}>Settings</Text>
+          <View style={settingsStyles.header}>
+            <Pressable
+              style={({ pressed }) => [settingsStyles.back, pressed && { opacity: 0.6 }]}
+              onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+            >
+              <Feather name="chevron-left" size={SETTINGS_BACK_ICON_SIZE} color={colors.text} />
+            </Pressable>
+            <Text style={settingsStyles.screenTitle}>Settings</Text>
+          </View>
 
           <SettingsSection title="Appearance">
             <ThemeSegmentedControl />
@@ -114,7 +134,7 @@ const Settings = () => {
             />
           </SettingsSection>
 
-          {/* Analytics is a tab now, and Routines lives under Study. */}
+          {/* Analytics and Routines both live under the Study tab. */}
           {/*
             Edit profile, Manage subscription and Sign out are live. Privacy and Delete account are
             still placeholders: the API stores isPrivate but nothing enforces it

@@ -63,9 +63,14 @@ export default function RootLayout() {
           {/*
             A modal, not a tab: composing a post is something you finish or
             abandon, which is also why the screen carries its own discard button
-            rather than relying on a back arrow.
+            rather than relying on a back arrow. No swipe-down either: for a
+            session that just ended, leaving without posting deletes it, and
+            that has to be a deliberate tap, never a stray drag.
           */}
-          <Stack.Screen name="new-post" options={{ presentation: "modal" }} />
+          <Stack.Screen
+            name="new-post"
+            options={{ presentation: "modal", gestureEnabled: false }}
+          />
           {/*
             A push, not a modal: reading a post and its thread is somewhere you
             go and come back from, where composing is finish-or-abandon. It still
@@ -74,11 +79,15 @@ export default function RootLayout() {
           <Stack.Screen name="post/[id]" />
           {/* A push, for post/[id]'s reason: you go there and come back. */}
           <Stack.Screen name="edit-profile" />
+          {/* A push from the gear on your own profile, for the same reason. */}
+          <Stack.Screen name="settings" />
           {/*
             A push, for the same reason - opened from the Study tab's Routines
-            view. Analytics and the routines list are tabs now, not screens.
+            view. The routines list itself lives under Study.
           */}
           <Stack.Screen name="routine/[id]" />
+          {/* The full analytics page, a push from the Study tab's weekly card. */}
+          <Stack.Screen name="analytics" />
           {/* A push from the Study tab's Groups view, for routine/[id]'s reason. */}
           <Stack.Screen name="group/[id]" />
           {/*
@@ -93,6 +102,8 @@ export default function RootLayout() {
           */}
           <Stack.Screen name="sessions" />
           <Stack.Screen name="session/[id]" />
+          {/* A push from the Analytics header, for post/[id]'s reason. */}
+          <Stack.Screen name="leaderboard" />
           {/*
             Manage subscription, from Settings - a push, for edit-profile's
             reason. Also where Stripe Checkout returns to on web.

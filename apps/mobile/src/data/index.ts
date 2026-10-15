@@ -64,9 +64,11 @@ export {
   isRangeInvalid,
   toDayKey,
   fromDayKey,
+  DEFAULT_FEED_AUDIENCE,
   type FeedFilters,
   type FeedSort,
   type FeedDateMode,
+  type FeedAudience,
 } from "./feedFilters";
 export {
   useUserSearch,
@@ -95,7 +97,11 @@ export { toUserSummary } from "./userSummary";
 export { useFollow, type FollowState } from "./useFollow";
 export { useMotionVariance, type MotionSource } from "./useMotionVariance";
 export {
+  FocusSessionProvider,
   useFocusSession,
+  useIsSessionRunning,
+} from "./FocusSessionProvider";
+export {
   type FocusSessionState,
   type FocusResult,
   type FocusPhase,
@@ -209,3 +215,16 @@ export {
   type AnalyticsState,
   type GoalHitRate,
 } from "./useAnalytics";
+export { toWeekComparison, type WeekComparison } from "./weekComparison";
+export { useSessionRating, type SessionRatingState } from "./useSessionRating";
+export { useDiscardSession, type DiscardSessionState } from "./useDiscardSession";
+export {
+  useLeaderboard,
+  type Leaderboard,
+  type LeaderboardEntry,
+  type LeaderboardMe,
+  type LeaderboardMetric,
+  type LeaderboardRange,
+  type LeaderboardScope,
+  type LeaderboardState,
+} from "./useLeaderboard";

@@ -120,17 +120,41 @@ export const listSamplesQuerySchema = z.strictObject({
     .default(DEFAULT_PAGE_SIZE),
 });
 
+/** What a board ranks by. Mirrors METRICS in services/focusLeaderboard.js. */
+export const LEADERBOARD_METRICS = ["weightedMinutes", "focusScore", "tasksCompleted"];
+
+/** Who a board is about: the people the caller follows plus the caller, or everyone. */
+export const LEADERBOARD_SCOPES = ["following", "global"];
+
 /**
  * GET /api/focus/leaderboard.
  *
  * `days` rather than `weeks` so "today" and "yesterday" boards are expressible
  * without a second parameter; 7 is the default because the weekly board is the
- * one in the pitch. Capped at a term's worth - an all-time board is a different
- * query with different indexing needs, and should be its own route rather than
- * this one with a large number.
+ * one in the pitch. A number is capped at a term's worth; the literal "all" is
+ * the all-time board. That is a word rather than a large number so there is
+ * exactly one spelling of it, and the default "following" scope bounds what it
+ * reads to one person's follow list.
+ *
+ * `scope` defaults to "following" because comparing yourself with your friends
+ * is the social loop; a global board of strangers is the opt-in.
  */
 export const leaderboardQuerySchema = z.strictObject({
-  days: z.coerce.number().int().min(1).max(120).default(7),
+  scope: z
+    .enum(LEADERBOARD_SCOPES, {
+      message: `scope must be one of ${LEADERBOARD_SCOPES.join(", ")}`,
+    })
+    .default("following"),
+  metric: z
+    .enum(LEADERBOARD_METRICS, {
+      message: `metric must be one of ${LEADERBOARD_METRICS.join(", ")}`,
+    })
+    .default("weightedMinutes"),
+  days: z
+    .union([z.literal("all"), z.coerce.number().int().min(1).max(120)], {
+      message: `days must be a whole number from 1 to 120, or "all"`,
+    })
+    .default(7),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 

@@ -10,6 +10,9 @@ import {
   MAX_SAMPLES_PER_BATCH,
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
+  leaderboardQuerySchema,
+  LEADERBOARD_METRICS,
+  LEADERBOARD_SCOPES,
 } from "../src/validation/focus.validation.js";
 
 /**
@@ -212,5 +215,55 @@ describe("listSamplesQuerySchema", () => {
 
   it("rejects a page below 1", () => {
     assert.equal(listSamplesQuerySchema.safeParse({ page: 0 }).success, false);
+  });
+});
+
+describe("leaderboardQuerySchema", () => {
+  it("defaults to this week's following board by weighted minutes", () => {
+    assert.deepEqual(leaderboardQuerySchema.parse({}), {
+      scope: "following",
+      metric: "weightedMinutes",
+      days: 7,
+      limit: 20,
+    });
+  });
+
+  it("accepts every metric and both scopes", () => {
+    for (const metric of LEADERBOARD_METRICS) {
+      for (const scope of LEADERBOARD_SCOPES) {
+        assert.equal(
+          leaderboardQuerySchema.safeParse({ metric, scope }).success,
+          true,
+          `${metric}/${scope} should be accepted`,
+        );
+      }
+    }
+  });
+
+  it("rejects an unknown metric or scope rather than silently ranking by the default", () => {
+    assert.equal(leaderboardQuerySchema.safeParse({ metric: "minutes" }).success, false);
+    assert.equal(leaderboardQuerySchema.safeParse({ scope: "friends" }).success, false);
+  });
+
+  it("coerces a query-string day count", () => {
+    assert.equal(leaderboardQuerySchema.parse({ days: "30" }).days, 30);
+  });
+
+  it('accepts "all" as the one spelling of all time', () => {
+    assert.equal(leaderboardQuerySchema.parse({ days: "all" }).days, "all");
+  });
+
+  it("rejects day counts outside the window and words other than all", () => {
+    for (const days of ["0", "121", "-7", "forever", "7.5"]) {
+      assert.equal(
+        leaderboardQuerySchema.safeParse({ days }).success,
+        false,
+        `days=${days} should have been rejected`,
+      );
+    }
+  });
+
+  it("refuses unknown keys, as every schema in this file does", () => {
+    assert.equal(leaderboardQuerySchema.safeParse({ range: "week" }).success, false);
   });
 });

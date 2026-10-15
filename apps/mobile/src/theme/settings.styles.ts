@@ -5,13 +5,20 @@ import { StyleSheet } from "react-native";
 const ROW_ICON_SIZE = 20;
 
 /**
- * Breathing room below the last settings row, ON TOP of the tab bar clearance.
+ * Breathing room below the last settings row, ON TOP of the safe-area inset.
  *
  * Settings ends in a footnote rather than a control, so it wants air under it
- * that the feed does not. Kept separate from the clearance so the two cannot be
- * confused: this is taste, the clearance is a hard requirement.
+ * that the feed does not. Kept separate from the inset so the two cannot be
+ * confused: this is taste, the inset is a hard requirement.
  */
 const SETTINGS_FOOTER_ROOM = 40;
+
+/**
+ * The back control - the same 40px circle and 18px chevron as every other
+ * pushed screen, so the way back looks and sits the same everywhere.
+ */
+const BACK_SIZE = 40;
+const SETTINGS_BACK_ICON_SIZE = 18;
 
 /**
  * Width of the box the leading icon sits in.
@@ -32,17 +39,32 @@ export const createSettingsStyles = (colors: ColorScheme) => {
     scrollContent: {
       paddingHorizontal: 16,
       paddingTop: 8,
-      // No paddingBottom: the footer has to clear the floating tab bar, and
-      // that distance depends on a runtime safe-area inset. The screen supplies
-      // it as useTabBarClearance() plus SETTINGS_FOOTER_ROOM.
+      // No paddingBottom: the footer has to clear the home indicator, and that
+      // distance is a runtime safe-area inset. The screen supplies it as
+      // insets.bottom plus SETTINGS_FOOTER_ROOM.
       gap: 22,
+    },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingTop: 8,
+      paddingBottom: 2,
+    },
+    back: {
+      width: BACK_SIZE,
+      height: BACK_SIZE,
+      borderRadius: BACK_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     screenTitle: {
       fontFamily: "PlusJakartaSans_700Bold",
       fontSize: 32,
       color: colors.text,
-      paddingTop: 8,
-      paddingBottom: 2,
     },
 
     // --- Section ---
@@ -178,4 +200,4 @@ export const createSettingsStyles = (colors: ColorScheme) => {
 };
 
 /** Re-exported so components can size their icons to match the stylesheet. */
-export { ROW_ICON_SIZE, SETTINGS_FOOTER_ROOM };
+export { ROW_ICON_SIZE, SETTINGS_FOOTER_ROOM, SETTINGS_BACK_ICON_SIZE };

@@ -14,7 +14,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect, useNavigation } from "expo-router";
 import type { BottomTabNavigationProp } from "expo-router/js-tabs";
-import Feather from "@expo/vector-icons/Feather";
 
 import {
   useTheme,
@@ -23,9 +22,6 @@ import {
   useReducedMotion,
   HOME_PANEL_HEIGHT,
   BAR_HEIGHT,
-  FEED_FAB_ICON_SIZE,
-  FEED_FAB_MARGIN,
-  FEED_FAB_CLEARANCE,
 } from "@theme";
 import {
   usePosts,
@@ -33,12 +29,14 @@ import {
   consumeFeedStale,
   defaultFeedFilters,
   isDefaultFilters,
+  DEFAULT_FEED_AUDIENCE,
   useNotifications,
   useRecentSearches,
   useConversations,
   consumeChatRequest,
   requestChat,
   type FeedFilters,
+  type FeedAudience,
   type FeedPost,
   type UserSummary,
 } from "@data";
@@ -46,6 +44,9 @@ import {
 import PostCard from "@components/PostCard";
 import LoadingSpinner from "@components/LoadingSpinner";
 import EmptyFeed from "@components/EmptyFeed";
+import FeedAudienceTitle from "@components/FeedAudienceTitle";
+import FeedAudienceMenu from "@components/FeedAudienceMenu";
+import { useSessionBarClearance } from "@components/SessionBar";
 import ReportDialog from "@components/ReportDialog";
 import HomeSearchPanel, { type HomeSheetMode } from "@components/HomeSearchPanel";
 import HomeDropSheet from "@components/HomeDropSheet";
@@ -79,10 +80,12 @@ const Index = () => {
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const navigation = useNavigation<TabNavigation>();
-  // What the floating tab bar covers, inset included. Without it the last
-  // card's like, comment and report buttons sit behind the bar, drawn but
-  // untappable, with nothing on screen explaining why.
-  const tabBarClearance = useTabBarClearance();
+  // What the floating tab bar covers, inset included - and the session bar
+  // above it while one runs. Without it the last card's like, comment and
+  // report buttons sit behind the bar, drawn but untappable, with nothing on
+  // screen explaining why.
+  const sessionBarClearance = useSessionBarClearance();
+  const tabBarClearance = useTabBarClearance() + sessionBarClearance;
 
   /**
    * The feed's filter. Screen state rather than module state: the tab stays
@@ -91,6 +94,12 @@ const Index = () => {
    * app expects to see.
    */
   const [filters, setFilters] = useState<FeedFilters>(defaultFeedFilters);
+  /**
+   * Whose posts, chosen from the title's menu. Screen state for the filter's
+   * reason, so a fresh launch opens on the people you follow.
+   */
+  const [audience, setAudience] = useState<FeedAudience>(DEFAULT_FEED_AUDIENCE);
+  const [audienceMenuOpen, setAudienceMenuOpen] = useState(false);
   const [sheet, setSheet] = useState<HomeSheetMode | null>(null);
   const [query, setQuery] = useState("");
 
@@ -106,7 +115,7 @@ const Index = () => {
     error,
     refresh,
     setLiked,
-  } = usePosts(filters);
+  } = usePosts(filters, audience);
   // usePosts owns the array, so the optimistic update is handed back to it
   // rather than kept a second time over there - see SetLiked.
   const { toggleLike, error: likeError } = useLikePost(setLiked);
@@ -346,9 +355,9 @@ const Index = () => {
     }).start();
   }, [isRefreshing, isLoading, reducedMotion, feedOpacity]);
 
-  // A new filter starts at the top of its results, not wherever the old ones
-  // happened to be scrolled to.
-  const filterKey = JSON.stringify(filters);
+  // A new filter or audience starts at the top of its results, not wherever
+  // the old ones happened to be scrolled to.
+  const filterKey = JSON.stringify([filters, audience]);
   useEffect(() => {
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   }, [filterKey]);
@@ -363,6 +372,9 @@ const Index = () => {
    * An empty feed means different things filtered and unfiltered. With no
    * filter it is a new app - EmptyFeed's "log a session". With one, posts exist
    * and the filter ruled them out, so it says that and offers the way back.
+   *
+   * The audience is the same question one level up: an empty Following feed
+   * usually means following nobody yet, so it points at Everyone.
    */
   const emptyFeed = hasFilters ? (
     <View style={homeStyles.emptyContainer}>
@@ -375,6 +387,25 @@ const Index = () => {
       >
         <Text style={[homeStyles.bold, { color: colors.primary }]}>Clear filters</Text>
       </Pressable>
+    </View>
+  ) : audience.kind === "following" ? (
+    <View style={homeStyles.emptyContainer}>
+      <Text style={homeStyles.bold}>Nothing from your people yet</Text>
+      <Text style={homeStyles.soft}>
+        Your posts and those of people you follow show up here.
+      </Text>
+      <Pressable
+        onPress={() => setAudience({ kind: "everyone" })}
+        accessibilityRole="button"
+        hitSlop={8}
+      >
+        <Text style={[homeStyles.bold, { color: colors.primary }]}>See everyone</Text>
+      </Pressable>
+    </View>
+  ) : audience.kind === "group" ? (
+    <View style={homeStyles.emptyContainer}>
+      <Text style={homeStyles.bold}>No posts in {audience.groupName} yet</Text>
+      <Text style={homeStyles.soft}>Sessions its members post will show up here.</Text>
     </View>
   ) : (
     <EmptyFeed />
@@ -416,12 +447,11 @@ const Index = () => {
               contentContainerStyle={[
                 homeStyles.postCardListContent,
                 // The first card starts below the panel rather than under it;
-                // later cards scroll up behind the blur. At the bottom, the bar
-                // AND the add-post circle above it: without the second, the
-                // last card's buttons would end up under the circle.
+                // later cards scroll up behind the blur, and the last one
+                // clears the tab bar.
                 {
                   paddingTop: panelBottom + FEED_TOP_GAP,
-                  paddingBottom: tabBarClearance + FEED_FAB_CLEARANCE,
+                  paddingBottom: tabBarClearance,
                 },
                 posts.length === 0 && { flexGrow: 1 },
               ]}
@@ -447,40 +477,17 @@ const Index = () => {
         )}
 
         {/*
-          The add-post circle. It lived in the middle of the tab bar; it is on
-          the Feed now because the Feed is where posts appear, and the bar
-          slot went to Analytics. Shown in every state, loading and empty
-          included - a first post is the cure for an empty feed. Drawn BEFORE
-          the drop-down page, so an open page covers it.
+          No add-post button here, deliberately. A post is what you write
+          about a study session once it ends - the Study tab opens the
+          composer when you finish one - so there is no free-standing way in.
         */}
-        <View
-          style={[homeStyles.fabWrap, { bottom: tabBarClearance + FEED_FAB_MARGIN }]}
-          pointerEvents="box-none"
-        >
-          <Pressable
-            style={({ pressed }) => [homeStyles.fabRing, pressed && { opacity: 0.6 }]}
-            onPress={() => router.push("/new-post")}
-            accessibilityRole="button"
-            accessibilityLabel="New post"
-          >
-            <LinearGradient
-              colors={colors.gradients.primary}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={homeStyles.fab}
-            >
-              {/* White in both themes: gradients.primary is the same blue in each. */}
-              <Feather name="plus" size={FEED_FAB_ICON_SIZE} color="#ffffff" />
-            </LinearGradient>
-          </Pressable>
-        </View>
 
         {/* Drawn AFTER the feed and BEFORE the panel: over the posts, but
             dropping out from behind the panel's edge. */}
         <HomeDropSheet
           mode={sheet}
           top={panelBottom}
-          bottom={BAR_HEIGHT + insets.bottom}
+          bottom={BAR_HEIGHT + insets.bottom + sessionBarClearance}
           onClose={closeSheet}
           onBack={sheetBack}
         >
@@ -518,6 +525,13 @@ const Index = () => {
         <HomeSearchPanel
           ref={inputRef}
           topInset={insets.top}
+          title={
+            <FeedAudienceTitle
+              audience={audience}
+              open={audienceMenuOpen}
+              onPress={() => setAudienceMenuOpen((open) => !open)}
+            />
+          }
           query={query}
           onChangeQuery={setQuery}
           onFocusSearch={openSearch}
@@ -529,6 +543,18 @@ const Index = () => {
           hasFilters={hasFilters}
           unread={unread}
         />
+
+        {audienceMenuOpen ? (
+          <FeedAudienceMenu
+            audience={audience}
+            top={panelBottom - 8}
+            onSelect={(next) => {
+              setAudience(next);
+              setAudienceMenuOpen(false);
+            }}
+            onClose={() => setAudienceMenuOpen(false)}
+          />
+        ) : null}
 
         {/* ONE dialog for the whole list, outside the FlatList. Inside a row it
             would be unmounted the moment that row scrolled out of the window. */}

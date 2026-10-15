@@ -100,8 +100,10 @@ export const getAccuracy = async (req, res) => {
 };
 
 /**
- * GET /api/focus/leaderboard - focus-weighted minutes over a recent window.
- * Defaults to the last 7 days.
+ * GET /api/focus/leaderboard - a ranked board of the caller and the people
+ * they follow (or everyone, with scope=global), by focus-weighted minutes,
+ * average focus estimate, or tasks completed. Defaults to the last 7 days;
+ * days=all is all time.
  */
 export const getLeaderboard = async (req, res) => {
   const board = await focusService.getLeaderboard(req.user.id, req.validated.query);
