@@ -26,7 +26,6 @@ import { useFocusSession, consumeStudyRequest, MAX_JOIN_CODE_LENGTH } from "@dat
 
 import FocusDial from "@components/FocusDial";
 import FocusTrace from "@components/FocusTrace";
-import RatingSheet from "@components/RatingSheet";
 import TaskChecklist from "@components/TaskChecklist";
 import RoutineList from "@components/RoutineList";
 import { focusBand, focusBandColor } from "@components/focusBand";
@@ -48,7 +47,8 @@ const VIEWS: { key: StudyView; label: string }[] = [
 ];
 
 /**
- * The focus session screen: set up, run, recap.
+ * The focus session screen: set up and run. Ending a session opens the
+ * composer rather than a recap here - see the effect on phase below.
  *
  * WRITTEN SHORT ON PURPOSE. The audience already knows how an app works, so
  * every sentence of explanation here is one they will not read. The controls
@@ -56,10 +56,8 @@ const VIEWS: { key: StudyView; label: string }[] = [
  * survives is the line saying the score is an estimate, because that claim is
  * the one we may not leave implied.
  *
- * THE DIAL IS FOR THE LIVE SESSION ONLY. Once the session ends it goes: a
- * countdown with nothing left to count is decoration, and the recap is about
- * numbers you compare, not one you watch. Each of those gets its own card so
- * the eye can land on a single figure without reading the rest.
+ * THE DIAL IS FOR THE LIVE SESSION ONLY. Setting up shows the week instead,
+ * and a finished session is summed up where it is posted.
  *
  * Every colour is a palette token; the screen holds no hex of its own.
  *
@@ -91,11 +89,7 @@ const Study = () => {
     awaySec,
     phoneDownSec,
     isPhoneDown,
-    trace,
     liveTimeline,
-    result,
-    rating,
-    streakDays,
     tasks,
     addTask,
     toggleTask,
@@ -111,11 +105,9 @@ const Study = () => {
     start,
     join,
     end,
-    rate,
     reset,
   } = useFocusSession();
 
-  const [sheetOpen, setSheetOpen] = useState(false);
   const [view, setView] = useState<StudyView>("sessions");
   const [inviteDraft, setInviteDraft] = useState("");
 
@@ -204,7 +196,7 @@ const Study = () => {
   };
 
   const running = phase === "running";
-  const score = running ? liveFocus : (result?.focusScore ?? null);
+  const score = running ? liveFocus : null;
   // Shared with the session history, so a score reads the same in both.
   const scoreBand = focusBand(score);
   const bandColor = focusBandColor(scoreBand.key, colors);
@@ -219,79 +211,24 @@ const Study = () => {
     : (liveFocus ?? 0) / 100;
 
   /**
-   * The sheet comes up on its own when the recap lands, because a rating asked
-   * for is a rating given and one hidden behind a button is not. Only once:
-   * flicking it away must not have it spring straight back, so this keys on
-   * the phase rather than on whether a rating exists.
+   * Ending a session goes straight to the composer, the way finishing a Hevy
+   * workout goes straight to saving it: a session is wrapped up by posting it,
+   * or discarding it there, so there is no recap screen in between. The focus
+   * rating asked for at the end moved with it.
+   *
+   * Reset before navigating, so coming back - posted or discarded - lands on
+   * Begin rather than on a session that is already over. The id is read
+   * first, because reset() clears it.
    */
   useEffect(() => {
-    if (phase === "recap") setSheetOpen(true);
-    else setSheetOpen(false);
-  }, [phase]);
-
-  /**
-   * A session that ends while Routines or Groups is showing brings Sessions back, so the
-   * recap and its rating sheet are not opened behind another list.
-   */
-  useEffect(() => {
-    if (phase === "recap") setView("sessions");
-  }, [phase]);
+    if (phase !== "recap" || !sessionId) return;
+    const finished = sessionId;
+    reset();
+    setView("sessions");
+    router.push({ pathname: "/new-post", params: { sessionId: finished } });
+  }, [phase, sessionId, reset]);
 
   const showingSessions = view === "sessions";
-
-  const finish = () => {
-    setSheetOpen(false);
-    reset();
-  };
-
-  /**
-   * Opens the composer AND clears the session.
-   *
-   * Without the reset, coming back from the composer landed on the same recap
-   * with no obvious way forward - the session was over but the screen still
-   * behaved as though it were not.
-   */
-  const share = () => {
-    // Read before reset() clears it, so the composer opens already linked.
-    const finished = sessionId;
-    setSheetOpen(false);
-    reset();
-    router.push(
-      finished ? { pathname: "/new-post", params: { sessionId: finished } } : "/new-post",
-    );
-  };
-
-  const Metric = ({
-    icon,
-    tint,
-    label,
-    onPress,
-    accessibilityLabel,
-    children,
-  }: {
-    icon: keyof typeof Feather.glyphMap;
-    tint: string;
-    label: string;
-    onPress?: () => void;
-    accessibilityLabel?: string;
-    children: React.ReactNode;
-  }) => (
-    // Pressable only when it does something - a card that highlights under the
-    // finger and then does nothing is worse than a plain one.
-    <Pressable
-      style={styles.metricCard}
-      onPress={onPress}
-      disabled={!onPress}
-      accessibilityRole={onPress ? "button" : undefined}
-      accessibilityLabel={accessibilityLabel}
-    >
-      <View style={styles.metricIcon}>
-        <Feather name={icon} size={17} color={tint} />
-      </View>
-      <Text style={styles.metricLabel}>{label}</Text>
-      {children}
-    </Pressable>
-  );
 
   return (
     <LinearGradient colors={colors.gradients.background} style={styles.container}>
@@ -552,137 +489,8 @@ const Study = () => {
             </>
           ) : null}
 
-          {/* ---------------- recap: no dial, cards only ---------------- */}
-          {showingSessions && phase === "recap" && result ? (
-            <>
-              {/*
-                A vector mark, not an emoji: emoji render differently on every
-                platform and cannot take a palette colour, so they drift from
-                the rest of the icon set.
-              */}
-              <View style={styles.heroBadge}>
-                <Feather name="award" size={28} color={colors.success} />
-              </View>
-              <View style={styles.recapHeader}>
-                <Text style={styles.recapTitle}>Session complete</Text>
-                <Text style={styles.recapSubtitle}>Nice work, keep it up.</Text>
-              </View>
-
-              <Metric icon="clock" tint={colors.success} label="Total time">
-                <Text style={styles.metricValue}>{short(result.totalSec)}</Text>
-              </Metric>
-
-              <Metric
-                icon="target"
-                tint={colors.warning}
-                label="Focus estimate"
-                onPress={() => setSheetOpen(true)}
-                accessibilityLabel="Rate this session"
-              >
-                <View
-                  style={[styles.bandPill, { backgroundColor: colors.successTint }]}
-                >
-                  <View style={[styles.bandDot, { backgroundColor: bandColor }]} />
-                  <Text style={[styles.bandPillText, { color: bandColor }]}>
-                    {scoreBand.label}
-                  </Text>
-                </View>
-                <Text style={[styles.metricValue, { color: bandColor }]}>
-                  {result.focusScore ?? "—"}
-                </Text>
-              </Metric>
-
-              {result.tasksTotal > 0 ? (
-                <Metric
-                  icon="check-square"
-                  tint={colors.primary}
-                  label="Tasks done"
-                >
-                  <Text
-                    style={[
-                      styles.metricValue,
-                      result.tasksCompleted === result.tasksTotal
-                        ? { color: colors.success }
-                        : null,
-                    ]}
-                  >
-                    {result.tasksCompleted}/{result.tasksTotal}
-                  </Text>
-                </Metric>
-              ) : null}
-
-              <Metric icon="zap-off" tint={colors.danger} label="Distractions">
-                <Text style={styles.metricValue}>
-                  {result.interruptionCount}
-                  {result.awaySeconds > 0 ? ` · ${short(result.awaySeconds)}` : ""}
-                </Text>
-              </Metric>
-
-              {trace ? <FocusTrace timeline={trace} /> : null}
-
-              <View style={styles.rewardRow}>
-                <View style={styles.rewardCard}>
-                  <View style={styles.rewardTop}>
-                    <Feather name="star" size={16} color={colors.primary} />
-                    <Text style={[styles.rewardValue, { color: colors.primary }]}>
-                      +{result.focusPoints} XP
-                    </Text>
-                  </View>
-                  <Text style={styles.rewardCaption}>Banked to your total.</Text>
-                </View>
-
-                <View style={styles.rewardCard}>
-                  <View style={styles.rewardTop}>
-                    <Feather name="trending-up" size={16} color={colors.warning} />
-                    <Text style={[styles.rewardValue, { color: colors.warning }]}>
-                      {streakDays} {streakDays === 1 ? "day" : "days"}
-                    </Text>
-                  </View>
-                  <Text style={styles.rewardCaption}>Keep the streak alive.</Text>
-                </View>
-              </View>
-
-              {/* Opens the composer with this session already linked. */}
-              <Pressable
-                style={styles.action}
-                onPress={share}
-                accessibilityRole="button"
-                accessibilityLabel="Share to feed"
-              >
-                <Feather name="share-2" size={STUDY_ICON_SIZE} color={colors.surface} />
-                <Text style={styles.actionText}>Share to feed</Text>
-              </Pressable>
-
-              {/*
-                The way back to the start screen, and the only one - so it is a
-                button, not a faint link. Both actions end the recap, because a
-                finished session the user cannot leave is a dead end.
-              */}
-              <Pressable
-                style={styles.actionSecondary}
-                onPress={finish}
-                accessibilityRole="button"
-                accessibilityLabel="Done"
-              >
-                <Feather name="check" size={STUDY_ICON_SIZE} color={colors.text} />
-                <Text style={styles.actionSecondaryText}>Done</Text>
-              </Pressable>
-            </>
-          ) : null}
         </ScrollView>
 
-        {/*
-          Over the recap rather than replacing it, so the numbers stay visible
-          while the question is answered - and a flick down is a cheap way out,
-          which matters because a rating someone felt cornered into is worse
-          data than no rating.
-        */}
-        <RatingSheet
-          visible={sheetOpen}
-          value={rating}
-          onRate={rate}
-          onClose={() => setSheetOpen(false)}
-        />
       </SafeAreaView>
 
       {/* Face-down mode: nobody can see the screen, so it goes black. */}
