@@ -248,6 +248,12 @@ export interface FocusSessionState {
    */
   join: (inviteCode: string, groupName?: string, options?: { switching?: boolean }) => void;
   end: () => void;
+  /**
+   * Throws the running session away: the row is deleted, so the time counts
+   * for nothing - no streak, no analytics, nothing to post. The floating
+   * session bar's bin. A failure leaves the session running and says so.
+   */
+  discard: () => void;
   rate: (value: number) => void;
   reset: () => void;
 }
@@ -942,6 +948,38 @@ export const useFocusSessionState = (): FocusSessionState => {
     setError(undefined);
   }, []);
 
+  const discard = useCallback(() => {
+    const sessionId = sessionIdRef.current;
+    if (busy || !sessionId) return;
+    setBusy(true);
+    setError(undefined);
+
+    void (async () => {
+      try {
+        // DELETE rather than end-then-delete: ending would bank the streak
+        // and points that discarding exists to refuse.
+        await withAuth((token) =>
+          request(`/api/sessions/${sessionId}`, { method: "DELETE", token }),
+        );
+      } catch (err) {
+        // Already gone is the outcome that was wanted. Anything else keeps
+        // the session running - the clock never stopped - so nothing is lost
+        // and the bin can be tapped again.
+        if (!(err instanceof ApiError && err.status === 404)) {
+          setError(describe(err));
+          setBusy(false);
+          return;
+        }
+      }
+
+      // Forgotten only once the row is gone: the RUNNING_KEY is what would
+      // otherwise have the next launch close it as a real session.
+      clearRunning();
+      reset();
+      setBusy(false);
+    })();
+  }, [busy, reset]);
+
   /**
    * Counts DOWN against a plan and up without one, matching what the dial
    * shows. Floored at zero rather than going negative: running over a plan is
@@ -984,6 +1022,7 @@ export const useFocusSessionState = (): FocusSessionState => {
     start,
     join,
     end,
+    discard,
     rate,
     reset,
   };
