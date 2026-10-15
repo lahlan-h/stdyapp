@@ -11,6 +11,7 @@ import PostCardStats from "./PostCardStats";
 import PostCardFooter from "./PostCardFooter";
 import PostRoutineLink from "./PostRoutineLink";
 import PostPhoto from "./PostPhoto";
+import StudiedWith from "./StudiedWith";
 
 interface PostCardProps {
   post: FeedPost;
@@ -67,6 +68,10 @@ const PostCard = ({ post, onToggleLike, onReport }: PostCardProps) => {
           createdAt={post.createdAt}
         />
         <PostCardBody title={post.title} caption={post.caption} />
+        <StudiedWith
+          people={post.session?.studiedWith ?? []}
+          style={{ marginHorizontal: 12, marginTop: 8 }}
+        />
         {/* Its own Pressable, nested: a tap on the chip opens the routine
             rather than the post. */}
         {post.routine ? (

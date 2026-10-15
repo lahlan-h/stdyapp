@@ -1,5 +1,5 @@
 import { REPORT_REASONS, type ReportReason } from "./reportReasons";
-import type { FeedPost, FeedSession } from "./types";
+import type { FeedAuthor, FeedPost, FeedSession } from "./types";
 
 /**
  * One row as GET /api/posts/all returns it.
@@ -7,23 +7,31 @@ import type { FeedPost, FeedSession } from "./types";
  * Declared structurally rather than generated from Prisma so replacing the
  * backend does not ripple outward. `_count` and `photoUrl` stop here.
  */
+/** A person as the API's public user allowlist sends them. */
+interface RawUser {
+  id: string;
+  username: string;
+  avatarUrl: string | null;
+  firstName: string | null;
+  lastName: string | null;
+}
+
 export interface RawFeedRow {
   id: string;
   title: string;
   caption: string | null;
   photoUrl: string | null;
   createdAt: string;
-  user: {
-    id: string;
-    username: string;
-    avatarUrl: string | null;
-    firstName: string | null;
-    lastName: string | null;
-  };
+  user: RawUser;
   session: {
     startedAt: string;
     endedAt: string | null;
     focusPoints: number;
+    /** Null when the session had no task list. */
+    tasksTotal?: number | null;
+    tasksCompleted?: number | null;
+    /** Absent from an API that predates group-room tagging. */
+    studiedWith?: RawUser[];
   } | null;
   /** Null when no routine is linked, or the linked one was deleted. */
   routine: { id: string; title: string } | null;
@@ -77,7 +85,8 @@ const toReportReason = (value: string | null): ReportReason | undefined => {
 const toSession = (row: RawFeedRow): FeedSession | undefined => {
   if (!row.session) return undefined;
 
-  const { startedAt, endedAt, focusPoints } = row.session;
+  const { startedAt, endedAt, focusPoints, tasksTotal, tasksCompleted, studiedWith } =
+    row.session;
 
   return {
     durationMinutes: endedAt
@@ -90,6 +99,8 @@ const toSession = (row: RawFeedRow): FeedSession | undefined => {
         )
       : null,
     focusPoints,
+    tasks: tasksTotal ? { done: tasksCompleted ?? 0, total: tasksTotal } : undefined,
+    studiedWith: (studiedWith ?? []).map(toAuthor),
   };
 };
 
@@ -108,6 +119,14 @@ export const toDisplayName = (
   username: string,
 ): string => [firstName, lastName].filter(Boolean).join(" ") || username;
 
+/** A person as the UI names and pictures them - the author, or a study buddy. */
+const toAuthor = (user: RawUser): FeedAuthor => ({
+  id: user.id,
+  username: user.username,
+  displayName: toDisplayName(user.firstName, user.lastName, user.username),
+  avatarUrl: user.avatarUrl ?? undefined,
+});
+
 /**
  * Lives here rather than inside usePosts because more than one screen needs it
  * now. Duplicating it would duplicate the rules this layer exists to contain -
@@ -115,8 +134,6 @@ export const toDisplayName = (
  * rather than null, and how a display name is built.
  */
 export const toFeedPost = (row: RawFeedRow): FeedPost => {
-  const { firstName, lastName, username } = row.user;
-
   return {
     id: row.id,
     title: row.title,
@@ -133,12 +150,7 @@ export const toFeedPost = (row: RawFeedRow): FeedPost => {
     isMine: row.isMine,
     commentCount: row._count.comments,
     createdAt: new Date(row.createdAt).getTime(),
-    author: {
-      id: row.user.id,
-      username,
-      displayName: toDisplayName(firstName, lastName, username),
-      avatarUrl: row.user.avatarUrl ?? undefined,
-    },
+    author: toAuthor(row.user),
     session: toSession(row),
     // `?? undefined` for the same reason as caption: an API that predates the
     // routine join sends no key at all, and the card must not crash on it.

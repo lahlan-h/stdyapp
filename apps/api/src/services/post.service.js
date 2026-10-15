@@ -2,6 +2,7 @@ import * as postRepo from "../repositories/post.repository.js";
 import * as sessionRepo from "../repositories/session.repository.js";
 import * as routineRepo from "../repositories/studyRoutine.repository.js";
 import { HttpError } from "../utils/httpError.js";
+import { toViewerSession } from "./studiedWith.js";
 // The only sanctioned way to reach prisma.user from here: user.service.js
 // declares itself the sole module in apps/api that touches that table, so its
 // column allowlist cannot be bypassed by accident. It also already throws the
@@ -308,6 +309,7 @@ const toViewerPost = (viewerId) => ({ likes, reports, ...post }) => {
 
   return {
     ...post,
+    session: toViewerSession(post.session, post.userId),
     isLiked: likes.length > 0,
     isReported,
     // Both only while the report is live. Handing back the id of a WITHDRAWN

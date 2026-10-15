@@ -28,6 +28,31 @@ export const findPostById = (id) => {
  *
  * @param {string} viewerId - the caller's own id; guaranteed by requireAuth
  */
+/**
+ * A person a session was studied WITH - someone else in the same group room -
+ * as a post's "Studied with" line shows them.
+ *
+ * The public allowlist the post author already uses, plus two relations that
+ * answer "is there a block between this person and the viewer", filtered to
+ * the viewer so each is at most one row. toViewerPost drops anyone either
+ * returns and strips both before the payload leaves the service: they exist so
+ * a block hides a name, never so a client can learn who blocked whom. See the
+ * note on User.blockedBy in schema.prisma.
+ *
+ * @param {string} viewerId
+ */
+const studyBuddySelect = (viewerId) => ({
+  select: {
+    id: true,
+    username: true,
+    avatarUrl: true,
+    firstName: true,
+    lastName: true,
+    blocking: { where: { blockedId: viewerId }, select: { blockerId: true } },
+    blockedBy: { where: { blockerId: viewerId }, select: { blockedId: true } },
+  },
+});
+
 const postInclude = (viewerId) => ({
   // The allowlist already used by findLikesByPost and listMembers. It is what
   // keeps passwordHash and email out of a public feed, so it must stay a select
@@ -46,8 +71,29 @@ const postInclude = (viewerId) => ({
   // this resolves. endedAt is null while a session is still running, which is
   // not the same as a duration of zero, so it is passed through rather than
   // flattened here.
+  //
+  // tasksTotal / tasksCompleted are null for a session that never had a task
+  // list, which the card shows as a dash rather than "0/0".
+  //
+  // The two room relations are who it was studied WITH: `participants` when
+  // this session hosted a group room, `hostSession` (its owner, plus everyone
+  // else who joined) when it joined one. toViewerPost flattens both into one
+  // `studiedWith` list - see there.
   session: {
-    select: { startedAt: true, endedAt: true, focusPoints: true },
+    select: {
+      startedAt: true,
+      endedAt: true,
+      focusPoints: true,
+      tasksTotal: true,
+      tasksCompleted: true,
+      participants: { select: { user: studyBuddySelect(viewerId) } },
+      hostSession: {
+        select: {
+          user: studyBuddySelect(viewerId),
+          participants: { select: { user: studyBuddySelect(viewerId) } },
+        },
+      },
+    },
   },
   // Null whenever the post has no routine, or it was deleted - routineId is
   // nullable and SetNull, as sessionId is. Just enough for the card's "Routine"

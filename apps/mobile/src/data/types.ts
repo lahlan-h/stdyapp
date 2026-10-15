@@ -35,6 +35,17 @@ export interface FeedSession {
   durationMinutes: number | null;
   /** Minutes studied, less 10 for each interruption over 20 minutes. */
   focusPoints: number;
+  /**
+   * Tasks ticked off during the session, out of how many it had. Absent when
+   * the session had no task list - not 0 of 0, which reads like a failure.
+   */
+  tasks?: { done: number; total: number };
+  /**
+   * Everyone else in the session's group room, in the order they joined.
+   * Empty for a solo session. The API has already removed the author and
+   * anyone with a block between them and the viewer.
+   */
+  studiedWith: FeedAuthor[];
 }
 
 /**

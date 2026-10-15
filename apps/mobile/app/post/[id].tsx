@@ -38,6 +38,7 @@ import { formatRelativeTime, formatDuration } from "@stdyapp/shared";
 import ReportDialog from "@components/ReportDialog";
 import PostRoutineLink from "@components/PostRoutineLink";
 import PostPhoto from "@components/PostPhoto";
+import StudiedWith from "@components/StudiedWith";
 
 /** Stands in for a number that is not known yet, rather than inventing one. */
 const PLACEHOLDER = "—";
@@ -175,6 +176,11 @@ const PostDetail = () => {
               <Text style={styles.caption}>{post.caption}</Text>
             ) : null}
 
+            <StudiedWith
+              people={post.session?.studiedWith ?? []}
+              style={{ marginHorizontal: 16, marginTop: 16 }}
+            />
+
             {post.routine ? (
               <PostRoutineLink
                 routine={post.routine}
@@ -189,10 +195,8 @@ const PostDetail = () => {
                 <Text style={styles.statValue}>{durationOf(post)}</Text>
               </View>
               <View>
-                <Text style={styles.statLabel}>Goals Reached</Text>
-                {/* Never derivable per post: a Goal is one row per user per
-                    period and is never attached to a session. */}
-                <Text style={styles.statValue}>{PLACEHOLDER}</Text>
+                <Text style={styles.statLabel}>Tasks</Text>
+                <Text style={styles.statValue}>{tasksOf(post)}</Text>
               </View>
             </View>
 
@@ -377,6 +381,10 @@ const PostDetail = () => {
     </LinearGradient>
   );
 };
+
+/** "4/5" tasks ticked off, or a dash when the session had no task list. */
+const tasksOf = (post: FeedPost): string =>
+  post.session?.tasks ? `${post.session.tasks.done}/${post.session.tasks.total}` : PLACEHOLDER;
 
 /** Null session, running session and finished session are three states, not two. */
 const durationOf = (post: FeedPost): string => {
