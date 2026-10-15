@@ -31,7 +31,6 @@ import TaskChecklist from "@components/TaskChecklist";
 import RoutineList from "@components/RoutineList";
 import { focusBand, focusBandColor } from "@components/focusBand";
 import GroupList from "@components/GroupList";
-import SessionHistory from "@components/SessionHistory";
 import WeeklyStudyCard from "@components/WeeklyStudyCard";
 import AdvancedAnalyticsRow from "@components/AdvancedAnalyticsRow";
 import BeginCard from "@components/BeginCard";
@@ -434,7 +433,8 @@ const Study = () => {
                 </Text>
               </View>
 
-              <SessionHistory />
+              {/* Past sessions live behind the profile's Session history
+                  button; the weekly card is this tab's look back. */}
             </>
           ) : null}
 
