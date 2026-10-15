@@ -62,6 +62,8 @@ export default function RootLayout() {
           <Stack.Screen name="post/[id]" />
           {/* A push, for post/[id]'s reason: you go there and come back. */}
           <Stack.Screen name="edit-profile" />
+          {/* A push from the gear on your own profile, for the same reason. */}
+          <Stack.Screen name="settings" />
           {/*
             A push, for the same reason - opened from the Study tab's Routines
             view. Analytics and the routines list are tabs now, not screens.

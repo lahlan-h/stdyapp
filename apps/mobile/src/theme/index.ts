@@ -41,6 +41,7 @@ export {
   createSettingsStyles,
   ROW_ICON_SIZE,
   SETTINGS_FOOTER_ROOM,
+  SETTINGS_BACK_ICON_SIZE,
 } from "./settings.styles";
 export { useTabBarClearance } from "./useTabBarClearance";
 export {
