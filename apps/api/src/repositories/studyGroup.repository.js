@@ -80,6 +80,16 @@ export const listMembers = (groupId) => {
   });
 };
 
+// Just the members' ids - the group feed's author list. listMembers would join
+// a user row per member for columns the feed never reads.
+export const findMemberIds = async (groupId) => {
+  const rows = await prisma.groupMembership.findMany({
+    where: { groupId },
+    select: { userId: true },
+  });
+  return rows.map((row) => row.userId);
+};
+
 export const createMembership = (userId, groupId) => {
   return prisma.groupMembership.create({ data: { userId, groupId } });
 };

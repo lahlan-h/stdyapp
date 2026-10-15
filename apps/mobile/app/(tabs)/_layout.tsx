@@ -1,6 +1,6 @@
 import { Tabs } from "expo-router/js-tabs";
 
-import { useNotificationStream } from "@data";
+import { FocusSessionProvider, useNotificationStream } from "@data";
 
 import TabBar, { TABS } from "@components/TabBar";
 
@@ -22,15 +22,19 @@ const TabsLayout = () => {
   // badge on Home is already right when someone comes back to it.
   useNotificationStream();
 
+  // The study session lives here for the same reason: the Study tab runs it,
+  // and the tab bar shows it on every other tab.
   return (
-    <Tabs
-      screenOptions={{ headerShown: false }}
-      tabBar={(props) => <TabBar {...props} />}
-    >
-      {TABS.map(({ name }) => (
-        <Tabs.Screen key={name} name={name} />
-      ))}
-    </Tabs>
+    <FocusSessionProvider>
+      <Tabs
+        screenOptions={{ headerShown: false }}
+        tabBar={(props) => <TabBar {...props} />}
+      >
+        {TABS.map(({ name }) => (
+          <Tabs.Screen key={name} name={name} />
+        ))}
+      </Tabs>
+    </FocusSessionProvider>
   );
 };
 

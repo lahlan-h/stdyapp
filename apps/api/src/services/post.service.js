@@ -13,6 +13,9 @@ import { findCommenterIdsByPosts } from "../repositories/comment.repository.js";
 import { findLikerIdsByPosts } from "../repositories/like.repository.js";
 import { findBookmarkerIdsByPosts } from "../repositories/bookmark.repository.js";
 import { findReporterIdsByPosts } from "../repositories/report.repository.js";
+// The feed's audiences, for who-wrote-it filtering - see feedAuthorIds.
+import { findFollowingIds } from "../repositories/follow.repository.js";
+import { findMembership, findMemberIds } from "../repositories/studyGroup.repository.js";
 // Object storage for post photos. This service owns WHEN an object is written or
 // reclaimed; photoStorage owns the key layout and the ownership rule that says
 // which objects a caller may touch at all.
@@ -320,9 +323,10 @@ const toViewerPost = (viewerId) => ({ likes, reports, ...post }) => {
 };
 
 /**
- * One page of the global feed — every post by everyone, newest first unless the
- * caller asked for another order, optionally narrowed to a date window. Both
- * arrive already validated by listAllPostsQuerySchema.
+ * One page of the feed — every post by everyone, or only by the audience the
+ * caller chose (see feedAuthorIds), newest first unless the caller asked for
+ * another order, optionally narrowed to a date window. All of it arrives
+ * already validated by listAllPostsQuerySchema.
  *
  * Deliberately has NO ownership gate, for the same reason listPostsByUser has
  * none: this IS the feed, and gating it on authorship would leave it showing
@@ -345,9 +349,31 @@ const toViewerPost = (viewerId) => ({ likes, reports, ...post }) => {
  * vector. Caching this route without a viewer dimension is therefore not a
  * performance trade-off to weigh; it is a privacy bug.
  */
-export const listAllPosts = async ({ page, limit, sort, from, to }, viewerId) => {
+/**
+ * Whose posts an audience covers, or undefined for everyone.
+ *
+ * The viewer is always in a following feed: your own posts belong in the feed
+ * of the people you keep up with, as they do on every other social app. They
+ * are in a group feed only by being a member, which is also the gate - a group
+ * feed is the group's posts, and someone outside it may not read them through
+ * here. 403 rather than 404 because the group's existence is not a secret: its
+ * screen and invite code already say it exists.
+ */
+const feedAuthorIds = async ({ audience, groupId }, viewerId) => {
+  if (audience === "following") {
+    return [viewerId, ...(await findFollowingIds(viewerId))];
+  }
+  if (audience === "group") {
+    if (!(await findMembership(viewerId, groupId))) throw forbidden("group");
+    return findMemberIds(groupId);
+  }
+  return undefined;
+};
+
+export const listAllPosts = async ({ page, limit, sort, from, to, audience, groupId }, viewerId) => {
+  const authorIds = await feedAuthorIds({ audience, groupId }, viewerId);
   const [rows, total] = await postRepo.findAllPosts(
-    { skip: (page - 1) * limit, take: limit, sort, from, to },
+    { skip: (page - 1) * limit, take: limit, sort, from, to, authorIds },
     viewerId,
   );
 

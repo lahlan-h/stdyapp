@@ -61,6 +61,16 @@ export const findFollowingByUser = (userId) => {
   });
 };
 
+// Just the ids of everyone this user follows - the "following" feed's author
+// list. Ids only, because the feed joins its own author columns per post.
+export const findFollowingIds = async (userId) => {
+  const rows = await prisma.follow.findMany({
+    where: { followerId: userId },
+    select: { followingId: true },
+  });
+  return rows.map((row) => row.followingId);
+};
+
 export const countFollowers = (userId) => {
   return prisma.follow.count({ where: { followingId: userId } });
 };

@@ -162,9 +162,17 @@ const FEED_ORDER = {
  * @param {string} viewerId - the caller's own id; guaranteed by requireAuth
  * @returns {Promise<[object[], number]>} the page, and the total row count
  */
-export const findAllPosts = ({ skip, take, sort = "recent", from, to }, viewerId) => {
-  // Undefined bounds are skipped by Prisma, so an absent end is no bound at all.
-  const where = from || to ? { createdAt: { gte: from, lt: to } } : undefined;
+/**
+ * @param {{ authorIds?: string[] }} query - authorIds narrows the feed to those
+ *   authors; absent means everyone. An EMPTY list matches nothing, which is the
+ *   right answer for an audience with no one in it.
+ */
+export const findAllPosts = ({ skip, take, sort = "recent", from, to, authorIds }, viewerId) => {
+  const where = {
+    // Undefined bounds are skipped by Prisma, so an absent end is no bound at all.
+    ...(from || to ? { createdAt: { gte: from, lt: to } } : {}),
+    ...(authorIds ? { userId: { in: authorIds } } : {}),
+  };
 
   return prisma.$transaction([
     prisma.post.findMany({

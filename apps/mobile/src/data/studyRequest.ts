@@ -2,7 +2,8 @@
  * A session another screen has asked the Study tab to start or join.
  *
  * The buttons live on a group's screen, pushed over the tabs, while the session
- * itself lives in the Study tab's useFocusSession. So the group screen leaves
+ * lives in FocusSessionProvider under the tabs - out of that screen's reach,
+ * and it is the Study tab that starts and joins. So the group screen leaves
  * the request here, navigates to Study, and Study takes it when it regains
  * focus - chatRequest's one-shot shape, for chatRequest's reason.
  *
