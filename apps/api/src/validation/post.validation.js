@@ -195,13 +195,34 @@ const instantSchema = z.iso
  * without a post at exactly 00:00 on the 7th landing on both days. Either end
  * may be given alone.
  */
+/**
+ * Whose posts the feed shows. Mirrors FeedAudience in the mobile app's
+ * feedFilters.ts.
+ *
+ *   everyone  - every post: the feed as it always was, and the DEFAULT, so a
+ *               client that predates this parameter sees no change at all
+ *   following - the viewer's own posts and those of everyone they follow
+ *   group     - the posts of one study group's members; needs groupId, and
+ *               the viewer must be a member (see listAllPosts)
+ */
+export const FEED_AUDIENCES = ["everyone", "following", "group"];
+
 export const listAllPostsQuerySchema = paginationQuerySchema
   .extend({
     sort: z.enum(FEED_SORTS).default("recent"),
     from: instantSchema.optional(),
     to: instantSchema.optional(),
+    audience: z.enum(FEED_AUDIENCES).default("everyone"),
+    groupId: z.uuid("groupId must be a UUID").optional(),
   })
   .refine((query) => !query.from || !query.to || query.from < query.to, {
     message: "to must be later than from",
     path: ["to"],
+  })
+  // Both directions are a 400. A group feed with no group has nothing to
+  // show, and a stray groupId on any other audience would be silently ignored -
+  // which reads to the caller as "filtered" when it was not.
+  .refine((query) => (query.audience === "group") === Boolean(query.groupId), {
+    message: "groupId is required with audience=group, and only then",
+    path: ["groupId"],
   });
