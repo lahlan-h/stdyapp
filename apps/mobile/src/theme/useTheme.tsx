@@ -30,6 +30,7 @@ import { createHomeSearchStyles } from "./homeSearch.styles";
 import { createMessagesStyles } from "./messages.styles";
 import { createRoutinesStyles } from "./routines.styles";
 import { createSessionHistoryStyles } from "./sessionHistory.styles";
+import { createLeaderboardStyles } from "./leaderboard.styles";
 import { createGroupsStyles } from "./groups.styles";
 
 const STORAGE_KEY = "themePreference";
@@ -88,6 +89,7 @@ const styleMap = {
   messages: createMessagesStyles,
   routines: createRoutinesStyles,
   sessionHistory: createSessionHistoryStyles,
+  leaderboard: createLeaderboardStyles,
   groups: createGroupsStyles,
 } as const;
 

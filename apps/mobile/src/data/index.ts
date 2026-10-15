@@ -206,3 +206,13 @@ export {
 export { toWeekComparison, type WeekComparison } from "./weekComparison";
 export { useSessionRating, type SessionRatingState } from "./useSessionRating";
 export { useDiscardSession, type DiscardSessionState } from "./useDiscardSession";
+export {
+  useLeaderboard,
+  type Leaderboard,
+  type LeaderboardEntry,
+  type LeaderboardMe,
+  type LeaderboardMetric,
+  type LeaderboardRange,
+  type LeaderboardScope,
+  type LeaderboardState,
+} from "./useLeaderboard";

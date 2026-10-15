@@ -25,6 +25,7 @@ import { useAnalytics, type Analytics, type AnalyticsRange, type GoalHitRate } f
 
 import AnalyticsBarChart from "@components/AnalyticsBarChart";
 import AnalyticsStatTile from "@components/AnalyticsStatTile";
+import LeaderboardTeaser from "@components/LeaderboardTeaser";
 
 const RANGES: { key: AnalyticsRange; label: string }[] = [
   { key: "7d", label: "7 days" },
@@ -145,6 +146,10 @@ const AnalyticsScreen = () => {
             </Pressable>
             <Text style={styles.screenTitle}>Analytics</Text>
           </View>
+
+          {/* The social side of these numbers: your live standing, which opens
+              the leaderboard. A push, so back returns here. */}
+          <LeaderboardTeaser />
 
           <View style={styles.segmentGroup} accessibilityRole="tablist">
             {RANGES.map(({ key, label }) => {

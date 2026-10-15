@@ -128,6 +128,16 @@ export {
   SESSION_HISTORY_STAR_SIZE,
 } from "./sessionHistory.styles";
 export {
+  createLeaderboardStyles,
+  LEADERBOARD_BACK_ICON_SIZE,
+  LEADERBOARD_AVATAR_SIZE,
+  LEADERBOARD_ICON_SIZE,
+  LEADERBOARD_EMPTY_ICON_SIZE,
+  LEADERBOARD_PODIUM_AVATAR,
+  LEADERBOARD_MEDALS,
+  LEADERBOARD_PEDESTAL_HEIGHT,
+} from "./leaderboard.styles";
+export {
   createGroupsStyles,
   GROUPS_HEADER_ICON_SIZE,
   GROUPS_ICON_SIZE,

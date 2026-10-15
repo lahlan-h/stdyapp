@@ -15,6 +15,15 @@ import {
   RATING_MIN_SAMPLES,
   MAX_CALIBRATION_OFFSET,
 } from "./focusScoring.js";
+import {
+  METRICS,
+  MIN_SCORED_SESSIONS,
+  minSessionsFor,
+  audienceIds,
+  rankRows,
+  toEntry,
+  buildMe,
+} from "./focusLeaderboard.js";
 
 /**
  * Orchestration for the focus estimate: loading, persisting, and keeping each
@@ -421,39 +430,77 @@ export const getAccuracy = async (userId) => {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Focus-weighted minutes over a recent window, biggest first.
+ * A ranked board over a recent window (or all time), biggest first.
  *
- * Weighted minutes rather than raw minutes is the entire point: a leaderboard
- * on time alone rewards leaving a timer running, which is the behaviour this
- * feature exists to see through.
+ * Three metrics, all from columns finalise already wrote onto the session row:
+ *   - weightedMinutes (default): minutes scaled by the estimate. Weighted
+ *     rather than raw minutes is the entire point - a board on time alone
+ *     rewards leaving a timer running, which this feature exists to see
+ *     through;
+ *   - focusScore: the AVERAGE estimate, only for users with at least
+ *     MIN_SCORED_SESSIONS scored sessions in the window;
+ *   - tasksCompleted: checklist items ticked.
+ *
+ * Two audiences: "following" (default) is the people the caller follows plus
+ * the caller; "global" is everyone. Both hide blocked users in either
+ * direction.
+ *
+ * A following board is loaded WHOLE and paged here, because its size is
+ * bounded by one person's follow list and that is what lets the caller's rank
+ * be known even off the first page. A global board is paged in the query.
  *
  * @param {string} userId - the caller
- * @param {{ days: number, limit: number }} options
+ * @param {{ scope?: "following"|"global", metric?: string, days?: number|"all", limit?: number }} options
  */
-export const getLeaderboard = async (userId, { days, limit }) => {
-  const since = new Date(Date.now() - days * DAY_MS);
+export const getLeaderboard = async (
+  userId,
+  { scope = "following", metric = METRICS.WEIGHTED_MINUTES, days = 7, limit = 20 } = {},
+) => {
+  const since = days === "all" ? null : new Date(Date.now() - days * DAY_MS);
+  const isFollowing = scope === "following";
 
-  const blocked = await focusRepo.findBlockedUserIds(userId);
+  const [blocked, following] = await Promise.all([
+    focusRepo.findBlockedUserIds(userId),
+    isFollowing ? focusRepo.findFollowingIds(userId) : Promise.resolve(null),
+  ]);
+  const audience = isFollowing ? audienceIds(userId, following, blocked) : undefined;
 
-  const [entries, mine] = await Promise.all([
-    focusRepo.sumWeightedMinutesByUser({ since, excludeUserIds: blocked, take: limit }),
-    focusRepo.sumWeightedMinutesForUser({ userId, since }),
+  const [rows, mine] = await Promise.all([
+    focusRepo.aggregateSessionsByUser({
+      metric,
+      since,
+      userIds: audience,
+      excludeUserIds: blocked,
+      minSessions: minSessionsFor(metric),
+      take: isFollowing ? undefined : limit,
+    }),
+    focusRepo.aggregateSessionsForUser({ metric, userId, since }),
   ]);
 
+  const ranked = rankRows(rows, metric);
+  const page = ranked.slice(0, limit);
+
+  const users = await focusRepo.findLeaderboardUsers([
+    ...new Set([...page.map((row) => row.userId), userId]),
+  ]);
+  const byId = new Map(users.map((u) => [u.id, u]));
+
   return {
-    since,
+    scope,
+    metric,
     days,
-    entries,
+    since,
+    // Null on the boards that have no floor, so a client only explains one
+    // where there is one.
+    minScoredSessions: metric === METRICS.FOCUS_SCORE ? MIN_SCORED_SESSIONS : null,
+    // Lets a client tell "you follow nobody" apart from "nobody you follow has
+    // studied yet" - two different empty states. Null on the global board.
+    followingCount: isFollowing ? audience.length - 1 : null,
+    entries: page.map((row) => toEntry(row, byId.get(row.userId), metric)),
     // Always returned, even when the caller is already in `entries`: a client
     // showing "you" in a sticky footer should not have to scan the page to
     // find out whether to render it.
-    me: {
-      userId,
-      weightedMinutes: mine.weightedMinutes,
-      tasksCompleted: mine.tasksCompleted,
-      sessions: mine.sessions,
-      rank: entries.find((e) => e.userId === userId)?.rank ?? null,
-    },
+    me: buildMe({ userId, metric, mine, ranked, user: byId.get(userId) }),
   };
 };
 
