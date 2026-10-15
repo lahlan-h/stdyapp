@@ -9,7 +9,19 @@
  * `_count` or `photoUrl` means.
  */
 export type { FeedAuthor, FeedPost, FeedSession } from "./types";
-export { useIsSignedIn, useSessionRestored, logout } from "./auth";
+export {
+  useIsSignedIn,
+  useSessionRestored,
+  useChoosingPlan,
+  finishChoosingPlan,
+  logout,
+} from "./auth";
+export {
+  useSubscription,
+  type Subscription,
+  type SubscriptionState,
+} from "./useSubscription";
+export { PLANS, type Plan, type PlanId } from "./plans";
 export { useLogin, type LoginState } from "./useLogin";
 export {
   buildFocusTimeline,
