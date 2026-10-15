@@ -202,3 +202,4 @@ export {
   type GoalHitRate,
 } from "./useAnalytics";
 export { toWeekComparison, type WeekComparison } from "./weekComparison";
+export { useSessionRating, type SessionRatingState } from "./useSessionRating";

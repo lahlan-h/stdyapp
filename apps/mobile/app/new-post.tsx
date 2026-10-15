@@ -25,6 +25,7 @@ import {
 import {
   useCreatePost,
   useSessionDetail,
+  useSessionRating,
   MAX_PHOTO_BYTES,
   MAX_CAPTION_LENGTH,
   MAX_TITLE_LENGTH,
@@ -37,6 +38,7 @@ import {
   type LinkChoice,
 } from "@components/LinkPicker";
 import { NONE, formatSeconds } from "@components/sessionFormat";
+import RatingSheet from "@components/RatingSheet";
 
 /** What the API's magic-byte sniff will accept. GIF is deliberately not in it. */
 const ACCEPTED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -126,6 +128,15 @@ const NewPost = () => {
   // Read back from the server rather than passed in, so the duration shown is
   // the one the session was saved with.
   const { session: finished } = useSessionDetail(finishedId);
+
+  /**
+   * The focus rating, asked once as the composer opens - where the recap used
+   * to ask it. Over the form rather than before it, so flicking it away is a
+   * cheap way to skip: a rating someone felt cornered into is worse data than
+   * none.
+   */
+  const { rating, rate, error: ratingError } = useSessionRating(finishedId);
+  const [ratingOpen, setRatingOpen] = useState(Boolean(finishedId));
 
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
@@ -353,10 +364,10 @@ const NewPost = () => {
             </LinearGradient>
           </View>
 
-          {error ? (
+          {error || ratingError ? (
             <View style={newPostStyles.error}>
               <Feather name="alert-circle" size={18} color={colors.danger} />
-              <Text style={newPostStyles.errorText}>{error}</Text>
+              <Text style={newPostStyles.errorText}>{error ?? ratingError}</Text>
             </View>
           ) : null}
         </ScrollView>
@@ -413,6 +424,13 @@ const NewPost = () => {
             onClose={() => setPicker(null)}
           />
         ) : null}
+
+        <RatingSheet
+          visible={ratingOpen}
+          value={rating}
+          onRate={rate}
+          onClose={() => setRatingOpen(false)}
+        />
       </SafeAreaView>
     </LinearGradient>
   );
