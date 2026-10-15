@@ -40,11 +40,12 @@ type TabConfig =
  * screens now - Analytics from the Study tab, Settings from a gear on the
  * profile.
  *
- * The Feed is still the `index` route - renaming the file would change every
- * deep link to "/" - so only its label changed.
+ * The feed is labelled Home, as the design names it. It is still the `index`
+ * route - renaming the file would change every deep link to "/" - so only its
+ * label changed.
  */
 export const TABS: TabConfig[] = [
-  { name: "index", label: "Feed", family: "AntDesign", icon: "home" },
+  { name: "index", label: "Home", family: "AntDesign", icon: "home" },
   { name: "study", label: "Study", family: "Feather", icon: "book" },
   { name: "profile", label: "Profile", family: "FontAwesome5", icon: "user" },
 ];
@@ -70,6 +71,9 @@ const renderIcon = (tab: TabConfig, color: string) => {
  *
  * Rendering is driven by TABS, not by `state.routes`: the router decides its
  * own order, and the bar's order is a design decision.
+ *
+ * A floating pill rather than a full-width strip: three tabs do not need the
+ * width, and content stays visible either side of it.
  */
 const TabBar = ({ state, navigation, insets }: BottomTabBarProps) => {
   const { colors, isDarkMode } = useTheme();
@@ -102,6 +106,7 @@ const TabBar = ({ state, navigation, insets }: BottomTabBarProps) => {
         onPress={onPress}
         style={({ pressed }) => [
           tabBarStyles.tab,
+          isFocused && tabBarStyles.tabSelected,
           pressed && { opacity: 0.6 },
         ]}
         accessibilityRole="button"
@@ -119,14 +124,21 @@ const TabBar = ({ state, navigation, insets }: BottomTabBarProps) => {
   };
 
   return (
-    <View style={[tabBarStyles.container, { paddingBottom: insets.bottom }]}>
-      <BlurView
-        intensity={40}
-        tint={isDarkMode ? "dark" : "light"}
-        style={tabBarStyles.surface}
-      />
-
-      <View style={tabBarStyles.row}>{TABS.map(renderTab)}</View>
+    // box-none: the container spans the screen so the pill can centre itself,
+    // but only the pill may catch touches - either side of it is content, and
+    // has to stay tappable.
+    <View
+      style={[tabBarStyles.container, { paddingBottom: insets.bottom }]}
+      pointerEvents="box-none"
+    >
+      <View style={tabBarStyles.pill}>
+        <BlurView
+          intensity={40}
+          tint={isDarkMode ? "dark" : "light"}
+          style={tabBarStyles.surface}
+        />
+        {TABS.map(renderTab)}
+      </View>
     </View>
   );
 };
