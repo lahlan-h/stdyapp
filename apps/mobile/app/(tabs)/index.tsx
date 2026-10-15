@@ -29,12 +29,14 @@ import {
   consumeFeedStale,
   defaultFeedFilters,
   isDefaultFilters,
+  DEFAULT_FEED_AUDIENCE,
   useNotifications,
   useRecentSearches,
   useConversations,
   consumeChatRequest,
   requestChat,
   type FeedFilters,
+  type FeedAudience,
   type FeedPost,
   type UserSummary,
 } from "@data";
@@ -42,6 +44,8 @@ import {
 import PostCard from "@components/PostCard";
 import LoadingSpinner from "@components/LoadingSpinner";
 import EmptyFeed from "@components/EmptyFeed";
+import FeedAudienceTitle from "@components/FeedAudienceTitle";
+import FeedAudienceMenu from "@components/FeedAudienceMenu";
 import { useSessionBarClearance } from "@components/SessionBar";
 import ReportDialog from "@components/ReportDialog";
 import HomeSearchPanel, { type HomeSheetMode } from "@components/HomeSearchPanel";
@@ -90,6 +94,12 @@ const Index = () => {
    * app expects to see.
    */
   const [filters, setFilters] = useState<FeedFilters>(defaultFeedFilters);
+  /**
+   * Whose posts, chosen from the title's menu. Screen state for the filter's
+   * reason, so a fresh launch opens on the people you follow.
+   */
+  const [audience, setAudience] = useState<FeedAudience>(DEFAULT_FEED_AUDIENCE);
+  const [audienceMenuOpen, setAudienceMenuOpen] = useState(false);
   const [sheet, setSheet] = useState<HomeSheetMode | null>(null);
   const [query, setQuery] = useState("");
 
@@ -105,7 +115,7 @@ const Index = () => {
     error,
     refresh,
     setLiked,
-  } = usePosts(filters);
+  } = usePosts(filters, audience);
   // usePosts owns the array, so the optimistic update is handed back to it
   // rather than kept a second time over there - see SetLiked.
   const { toggleLike, error: likeError } = useLikePost(setLiked);
@@ -345,9 +355,9 @@ const Index = () => {
     }).start();
   }, [isRefreshing, isLoading, reducedMotion, feedOpacity]);
 
-  // A new filter starts at the top of its results, not wherever the old ones
-  // happened to be scrolled to.
-  const filterKey = JSON.stringify(filters);
+  // A new filter or audience starts at the top of its results, not wherever
+  // the old ones happened to be scrolled to.
+  const filterKey = JSON.stringify([filters, audience]);
   useEffect(() => {
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   }, [filterKey]);
@@ -362,6 +372,9 @@ const Index = () => {
    * An empty feed means different things filtered and unfiltered. With no
    * filter it is a new app - EmptyFeed's "log a session". With one, posts exist
    * and the filter ruled them out, so it says that and offers the way back.
+   *
+   * The audience is the same question one level up: an empty Following feed
+   * usually means following nobody yet, so it points at Everyone.
    */
   const emptyFeed = hasFilters ? (
     <View style={homeStyles.emptyContainer}>
@@ -374,6 +387,25 @@ const Index = () => {
       >
         <Text style={[homeStyles.bold, { color: colors.primary }]}>Clear filters</Text>
       </Pressable>
+    </View>
+  ) : audience.kind === "following" ? (
+    <View style={homeStyles.emptyContainer}>
+      <Text style={homeStyles.bold}>Nothing from your people yet</Text>
+      <Text style={homeStyles.soft}>
+        Your posts and those of people you follow show up here.
+      </Text>
+      <Pressable
+        onPress={() => setAudience({ kind: "everyone" })}
+        accessibilityRole="button"
+        hitSlop={8}
+      >
+        <Text style={[homeStyles.bold, { color: colors.primary }]}>See everyone</Text>
+      </Pressable>
+    </View>
+  ) : audience.kind === "group" ? (
+    <View style={homeStyles.emptyContainer}>
+      <Text style={homeStyles.bold}>No posts in {audience.groupName} yet</Text>
+      <Text style={homeStyles.soft}>Sessions its members post will show up here.</Text>
     </View>
   ) : (
     <EmptyFeed />
@@ -493,6 +525,13 @@ const Index = () => {
         <HomeSearchPanel
           ref={inputRef}
           topInset={insets.top}
+          title={
+            <FeedAudienceTitle
+              audience={audience}
+              open={audienceMenuOpen}
+              onPress={() => setAudienceMenuOpen((open) => !open)}
+            />
+          }
           query={query}
           onChangeQuery={setQuery}
           onFocusSearch={openSearch}
@@ -504,6 +543,18 @@ const Index = () => {
           hasFilters={hasFilters}
           unread={unread}
         />
+
+        {audienceMenuOpen ? (
+          <FeedAudienceMenu
+            audience={audience}
+            top={panelBottom - 8}
+            onSelect={(next) => {
+              setAudience(next);
+              setAudienceMenuOpen(false);
+            }}
+            onClose={() => setAudienceMenuOpen(false)}
+          />
+        ) : null}
 
         {/* ONE dialog for the whole list, outside the FlatList. Inside a row it
             would be unmounted the moment that row scrolled out of the window. */}
