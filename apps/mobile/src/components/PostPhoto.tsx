@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Image, Pressable, type ImageStyle, type StyleProp } from "react-native";
 
 import PhotoViewer from "./PhotoViewer";
+import { clampPhotoRatio } from "./photoRatio";
 
 interface PostPhotoProps {
   uri: string;
@@ -11,16 +12,6 @@ interface PostPhotoProps {
   style: StyleProp<ImageStyle>;
 }
 
-/**
- * How tall and how wide a frame may get, as width / height.
- *
- * Instagram's 4:5 at the tall end, so one portrait photo cannot fill the
- * screen; 2:1 at the wide end, so a panorama does not shrink to a strip.
- * Anything in between - a 16:9 slide, a 4:3 photo - shows whole. The full-size
- * viewer shows everything, whatever its shape.
- */
-const TALLEST = 4 / 5;
-const WIDEST = 2;
 /** Until the real shape is known. */
 const DEFAULT_RATIO = 1;
 
@@ -32,10 +23,7 @@ const DEFAULT_RATIO = 1;
  */
 const ratios = new Map<string, number>();
 
-const clampRatio = (width: number, height: number): number =>
-  Math.min(WIDEST, Math.max(TALLEST, width / height));
-
-/** The photo's frame shape: its own, within TALLEST and WIDEST. */
+/** The photo's frame shape: its own, within photoRatio.ts's limits. */
 const usePhotoRatio = (uri: string): number => {
   const [ratio, setRatio] = useState(() => ratios.get(uri) ?? DEFAULT_RATIO);
 
@@ -51,7 +39,7 @@ const usePhotoRatio = (uri: string): number => {
       uri,
       (width, height) => {
         if (!width || !height) return;
-        const next = clampRatio(width, height);
+        const next = clampPhotoRatio(width, height);
         ratios.set(uri, next);
         if (!cancelled) setRatio(next);
       },
@@ -72,8 +60,8 @@ const usePhotoRatio = (uri: string): number => {
  *
  * Framed at the photo's own aspect ratio rather than a fixed square: a square
  * frame with "cover" cut the sides off every landscape photo - a 16:9 slide
- * lost almost half its width. Only beyond TALLEST and WIDEST does anything get
- * cropped now.
+ * lost almost half its width. Only beyond the limits in photoRatio.ts does
+ * anything get cropped now.
  *
  * Its own Pressable, so on a feed card - where the whole card opens the post -
  * a tap on the photo opens the photo instead, as on Facebook and X.

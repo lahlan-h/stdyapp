@@ -135,8 +135,9 @@ export const createNewPostStyles = (colors: ColorScheme) => {
     },
 
     // --- Photo ---
-    // Square, matching how it renders in the feed, so what you pick is what
-    // everyone else will see.
+    // Square while empty. Once a photo is picked the screen sets its own
+    // aspect ratio, the same frame the feed will give it (photoRatio.ts), so
+    // what you see here is what everyone else will see.
     photoWell: {
       width: "100%",
       aspectRatio: 1,

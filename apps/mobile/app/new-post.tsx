@@ -43,6 +43,7 @@ import {
   type LinkChoice,
 } from "@components/LinkPicker";
 import { NONE, formatSeconds } from "@components/sessionFormat";
+import { clampPhotoRatio } from "@components/photoRatio";
 import RatingSheet from "@components/RatingSheet";
 import { confirmDiscardSession } from "@components/confirmDiscardSession";
 
@@ -187,6 +188,8 @@ const NewPost = () => {
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
   const [photo, setPhoto] = useState<NewPostPhoto | null>(null);
+  // The picked photo's frame shape, as the feed will show it - see photoRatio.
+  const [photoRatio, setPhotoRatio] = useState(1);
   const [session, setSession] = useState<LinkChoice | null>(
     params.sessionId ? { id: params.sessionId, label: "The session you just finished" } : null,
   );
@@ -207,10 +210,17 @@ const NewPost = () => {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
-      // Square, because that is how the feed crops it - what you pick here is
-      // what everyone else sees.
-      allowsEditing: true,
-      aspect: [1, 1],
+      // No crop step: the photo goes up whole, in its own shape. The feed
+      // frames each one at its own aspect ratio now - see PostPhoto - so there
+      // is no square to fit it to any more.
+      //
+      // Compatible, because without the crop step iOS hands back the ORIGINAL
+      // file, which is usually HEIC - and the API takes only JPEG, PNG and
+      // WebP. This has iOS convert it to JPEG on the way out.
+      preferredAssetRepresentationMode:
+        ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+      // Re-encoded at 0.8 so an uncropped full-resolution photo still fits
+      // under the API's 5 MB limit.
       quality: 0.8,
     });
 
@@ -233,6 +243,7 @@ const NewPost = () => {
 
     reset();
     setPhoto({ uri: asset.uri, mimeType, fileName: asset.fileName ?? undefined });
+    setPhotoRatio(clampPhotoRatio(asset.width, asset.height));
   };
 
   const submit = async () => {
@@ -327,7 +338,8 @@ const NewPost = () => {
             <Text style={newPostStyles.sectionTitle}>Photo</Text>
 
             <Pressable
-              style={newPostStyles.photoWell}
+              // Square while empty; the photo's own feed frame once picked.
+              style={[newPostStyles.photoWell, photo && { aspectRatio: photoRatio }]}
               onPress={pickPhoto}
               accessibilityRole="button"
               accessibilityLabel={photo ? "Change photo" : "Add a photo"}
