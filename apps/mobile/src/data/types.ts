@@ -37,6 +37,18 @@ export interface FeedSession {
   focusPoints: number;
 }
 
+/**
+ * The routine a post links to, when it links one - enough to label the chip.
+ *
+ * Always the AUTHOR'S routine: the API refuses to link anyone else's. The tasks
+ * are not here; the chip opens them on demand, from the routine itself for the
+ * author and from its preview for everyone else.
+ */
+export interface FeedRoutine {
+  id: string;
+  title: string;
+}
+
 export interface FeedPost {
   id: string;
   /** The headline, and the only text a post must have. */
@@ -104,4 +116,5 @@ export interface FeedPost {
   createdAt: number;
   author: FeedAuthor;
   session?: FeedSession;
+  routine?: FeedRoutine;
 }

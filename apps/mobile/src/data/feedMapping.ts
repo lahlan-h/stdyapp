@@ -25,6 +25,8 @@ export interface RawFeedRow {
     endedAt: string | null;
     focusPoints: number;
   } | null;
+  /** Null when no routine is linked, or the linked one was deleted. */
+  routine: { id: string; title: string } | null;
   _count: { likes: number; comments: number };
   /**
    * The viewer's own like, already flattened to a boolean by the API - see
@@ -138,5 +140,8 @@ export const toFeedPost = (row: RawFeedRow): FeedPost => {
       avatarUrl: row.user.avatarUrl ?? undefined,
     },
     session: toSession(row),
+    // `?? undefined` for the same reason as caption: an API that predates the
+    // routine join sends no key at all, and the card must not crash on it.
+    routine: row.routine ?? undefined,
   };
 };

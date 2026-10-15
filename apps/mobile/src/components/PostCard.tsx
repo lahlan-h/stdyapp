@@ -9,6 +9,7 @@ import PostCardHeader from "./PostCardHeader";
 import PostCardBody from "./PostCardBody";
 import PostCardStats from "./PostCardStats";
 import PostCardFooter from "./PostCardFooter";
+import PostRoutineLink from "./PostRoutineLink";
 
 interface PostCardProps {
   post: FeedPost;
@@ -65,6 +66,15 @@ const PostCard = ({ post, onToggleLike, onReport }: PostCardProps) => {
           createdAt={post.createdAt}
         />
         <PostCardBody title={post.title} caption={post.caption} />
+        {/* Its own Pressable, nested: a tap on the chip opens the routine
+            rather than the post. */}
+        {post.routine ? (
+          <PostRoutineLink
+            routine={post.routine}
+            isMine={post.isMine}
+            style={{ marginHorizontal: 12, marginTop: 8 }}
+          />
+        ) : null}
         {/* Always rendered. PostCardStats holds the row's place with a dash when
             a post has no linked session, rather than the row coming and going. */}
         <PostCardStats session={post.session} />

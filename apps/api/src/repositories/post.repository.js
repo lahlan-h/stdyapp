@@ -49,6 +49,16 @@ const postInclude = (viewerId) => ({
   session: {
     select: { startedAt: true, endedAt: true, focusPoints: true },
   },
+  // Null whenever the post has no routine, or it was deleted - routineId is
+  // nullable and SetNull, as sessionId is. Just enough for the card's "Routine"
+  // chip: the tasks themselves come from GET /api/routines/:id/preview when the
+  // chip is opened, which is block-gated, so a feed row never carries them.
+  //
+  // The title is cached on every post that links it, so renaming a routine
+  // must invalidate those posts - see updateRoutine in studyRoutine.service.js.
+  routine: {
+    select: { id: true, title: true },
+  },
   // Answers a question _count cannot: that is a total over everyone, so a heart
   // rendered from it has no way to know its own colour. This one is filtered to
   // the VIEWER, and by the unique (userId, postId) it matches at most one row -

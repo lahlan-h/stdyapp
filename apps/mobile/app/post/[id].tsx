@@ -36,6 +36,7 @@ import {
 import { formatRelativeTime, formatDuration } from "@stdyapp/shared";
 
 import ReportDialog from "@components/ReportDialog";
+import PostRoutineLink from "@components/PostRoutineLink";
 
 /** Stands in for a number that is not known yet, rather than inventing one. */
 const PLACEHOLDER = "—";
@@ -175,6 +176,14 @@ const PostDetail = () => {
 
             {post.caption ? (
               <Text style={styles.caption}>{post.caption}</Text>
+            ) : null}
+
+            {post.routine ? (
+              <PostRoutineLink
+                routine={post.routine}
+                isMine={post.isMine}
+                style={{ marginHorizontal: 16, marginTop: 16 }}
+              />
             ) : null}
 
             <View style={styles.statsRow}>
