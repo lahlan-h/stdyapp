@@ -22,6 +22,8 @@ import { assertAuthConfig, isDevAuthEnabled } from "./config/auth.js";
 import { assertStripeConfig } from "./config/stripe.js";
 import { corsOptions, warnIfCorsUnconfigured } from "./config/cors.js";
 import { HttpError } from "./utils/httpError.js";
+import { attachNotificationSocket } from "./realtime/notificationSocket.js";
+import { startSessionSweep } from "./jobs/sessionSweep.js";
 
 const log = createLogger("api");
 
@@ -96,6 +98,9 @@ app.use((err, req, res, next) => {
   }
 
   res.status(status).json({
+    // Anything a service attached for the client to act on - joinSession's
+    // groupId, say. Spread FIRST so it can never overwrite the message.
+    ...(status < 500 && err.data ? err.data : {}),
     error: err.message || "Internal server error",
   });
 });
@@ -120,6 +125,16 @@ const server = app.listen(PORT, () => {
   log.info(`listening on port ${PORT}`);
 });
 
+// Real-time notifications ride on the same HTTP server, as a WebSocket upgrade
+// on one path - see realtime/notificationSocket.js. Same port, same CORS-free
+// auth story (the socket authenticates with its first message), no second
+// listener to deploy.
+const closeNotificationSocket = attachNotificationSocket(server);
+
+// Closes sessions a crashed or abandoned app left open - see
+// sweepAbandonedSessions for the rule, and jobs/sessionSweep.js for the timer.
+const stopSessionSweep = startSessionSweep();
+
 // Guards against re-entry when Ctrl+C is pressed twice.
 let isShuttingDown = false;
 
@@ -142,6 +157,11 @@ const shutdown = async (signal) => {
   }, SHUTDOWN_TIMEOUT_MS);
 
   try {
+    // Sockets first: an open WebSocket holds its HTTP connection, so
+    // server.close() would otherwise wait on every one of them until the force
+    // exit above fired.
+    stopSessionSweep();
+    await closeNotificationSocket().catch(() => {});
     await new Promise((resolve) => server.close(resolve));
     await Promise.allSettled([
       closeRedis(),

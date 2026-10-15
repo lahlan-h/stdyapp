@@ -22,6 +22,10 @@ export interface NewPost {
   /** Omitted entirely when the user typed nothing - see createPost. */
   caption?: string;
   photo: NewPostPhoto;
+  /** One of the user's own sessions. Anyone else's is a 403. */
+  sessionId?: string;
+  /** One of the user's own routines. Anyone else's is a 403. */
+  routineId?: string;
 }
 
 /** The created row, as POST /api/posts returns it - a bare object, not `{ data }`. */
@@ -92,9 +96,11 @@ export const useCreatePost = (): CreatePostState => {
       const caption = post.caption?.trim();
       if (caption) formData.append("caption", caption);
 
-      // sessionId and routineId are deliberately not sent. The schema is a
-      // strictObject, so an empty string is a 400 rather than "no link", and
-      // there is no picker on the screen yet to produce a real one.
+      // Only when chosen. The API reads an empty part as "no link" too, but
+      // leaving it out says the same thing without relying on that.
+      if (post.sessionId) formData.append("sessionId", post.sessionId);
+      if (post.routineId) formData.append("routineId", post.routineId);
+
       const created = await withAuth((token) =>
         request<CreatedPost>("/api/posts", {
           method: "POST",

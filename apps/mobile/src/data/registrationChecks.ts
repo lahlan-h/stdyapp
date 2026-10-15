@@ -49,27 +49,41 @@ export interface RegistrationCheck {
   label: string;
 }
 
-/** Display order, grouped as the panel shows them. */
-export const REGISTRATION_CHECK_GROUPS: {
+export interface RegistrationCheckGroup {
   label: string;
   checks: RegistrationCheck[];
-}[] = [
-  {
-    label: "Email",
-    checks: [
-      { key: "at", label: "Contains an @" },
-      { key: "domain", label: "Has a domain, like example.com" },
-    ],
-  },
-  {
-    label: "Password",
-    checks: [
-      { key: "length", label: `At least ${MIN_PASSWORD_LENGTH} characters` },
-      { key: "number", label: "At least 1 number" },
-      { key: "special", label: "At least 1 special character, like ! # ? or @" },
-      { key: "match", label: "Both passwords match" },
-    ],
-  },
+}
+
+const EMAIL_CHECK_GROUP: RegistrationCheckGroup = {
+  label: "Email",
+  checks: [
+    { key: "at", label: "Contains an @" },
+    { key: "domain", label: "Has a domain, like example.com" },
+  ],
+};
+
+const PASSWORD_CHECK_GROUP: RegistrationCheckGroup = {
+  label: "Password",
+  checks: [
+    { key: "length", label: `At least ${MIN_PASSWORD_LENGTH} characters` },
+    { key: "number", label: "At least 1 number" },
+    { key: "special", label: "At least 1 special character, like ! # ? or @" },
+    { key: "match", label: "Both passwords match" },
+  ],
+};
+
+/** Display order, grouped as the panel shows them. */
+export const REGISTRATION_CHECK_GROUPS: RegistrationCheckGroup[] = [
+  EMAIL_CHECK_GROUP,
+  PASSWORD_CHECK_GROUP,
+];
+
+/**
+ * The password rules alone, for setting a new password after a reset - the
+ * same rows as sign-up, so the two screens hold a password to one bar.
+ */
+export const PASSWORD_CHECK_GROUPS: RegistrationCheckGroup[] = [
+  PASSWORD_CHECK_GROUP,
 ];
 
 export const REGISTRATION_CHECK_COUNT = REGISTRATION_CHECK_GROUPS.reduce(
@@ -99,6 +113,13 @@ export const evaluateRegistration = (
 
 export const countPassed = (results: RegistrationResults): number =>
   Object.values(results).filter(Boolean).length;
+
+/**
+ * The "Has a domain" check on its own, for a screen that asks for an email and
+ * nothing else - Forgot password. Passing it implies the "@" check too.
+ */
+export const isValidEmail = (email: string): boolean =>
+  DOMAIN_PATTERN.test(email.trim());
 
 /** usernameSchema: 3-30 letters, digits or underscores, after a trim. */
 export const isValidUsername = (username: string): boolean =>

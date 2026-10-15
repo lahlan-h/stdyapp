@@ -9,6 +9,9 @@ import {
   addTodoItem,
   updateTodoItem,
   deleteTodoItem,
+  reset,
+  reorderTodoItems,
+  preview,
 } from "../controllers/studyRoutine.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { validate } from "../middleware/validate.js";
@@ -21,6 +24,8 @@ import {
   updateRoutineSchema,
   createTodoItemSchema,
   updateTodoItemSchema,
+  resetRoutineSchema,
+  reorderTodoItemsSchema,
 } from "../validation/studyRoutine.validation.js";
 import {
   routineContentVersionKey,
@@ -33,7 +38,7 @@ import {
   CACHE_TTL_ROUTINE_LIST_SEC,
   RATE_LIMIT_READ,
   RATE_LIMIT_WRITE,
-  RATE_LIMIT_BULK,
+  RATE_LIMIT_TODO_WRITE,
 } from "../config/cache.js";
 
 const router = Router();
@@ -44,10 +49,11 @@ router.use(requireAuth);
 /**
  * Three buckets, all keyed on req.user.id and all in the routine keyspace.
  *
- * bulkLimit sits on DELETE /:id for the reason config/cache.js gives, and not
- * for row count: the delete cascades every todo item AND SetNulls the
- * sourceRoutineId of every clone anyone has ever taken of it. The blast radius
- * reaches other users' rows.
+ * todoLimit is for taps - ticking, unticking and reordering items - which come
+ * in bursts while someone works down a list. See RATE_LIMIT_TODO_WRITE.
+ *
+ * DELETE /:id is on writeLimit. It used to be on the bulk tier; config/cache.js
+ * says why it moved.
  *
  * POST /:id/clone stays on writeLimit despite writing N+1 rows. It is bounded
  * by the size of the source routine, creates nothing anyone else can see, and
@@ -55,7 +61,7 @@ router.use(requireAuth);
  */
 const readLimit = rateLimit({ name: "routine-read", ...RATE_LIMIT_READ });
 const writeLimit = rateLimit({ name: "routine-write", ...RATE_LIMIT_WRITE });
-const bulkLimit = rateLimit({ name: "routine-bulk", ...RATE_LIMIT_BULK });
+const todoLimit = rateLimit({ name: "routine-todo", ...RATE_LIMIT_TODO_WRITE });
 
 /**
  * Cache configuration for the two cacheable reads. See the note in
@@ -112,18 +118,47 @@ router.patch(
 
 router.delete(
   "/:id",
-  bulkLimit,
+  writeLimit,
   validate({ params: routineIdParamSchema }),
   remove,
 );
 
+/**
+ * GET /:id/preview - someone else's routine, before cloning it.
+ *
+ * NOT CACHED. The answer depends on whether a block stands between viewer and
+ * owner, and cache() runs before the controller, so a shared entry would serve
+ * a blocked viewer straight past the check. Keying on the viewer would fix
+ * that but would not be invalidated when a block is created. A preview is
+ * opened rarely, one at a time; the read limit is the only bound it needs.
+ *
+ * Declared before nothing it could clash with: "/:id/preview" is two segments
+ * deep, so GET "/:id" cannot swallow it.
+ */
+router.get(
+  "/:id/preview",
+  readLimit,
+  validate({ params: routineIdParamSchema }),
+  preview,
+);
+
 // Deliberately NOT ownership-gated in the service — taking someone else's
 // routine is the whole point. It is still a write, so it is still limited.
+// It IS block-gated, matching the preview above.
 router.post(
   "/:id/clone",
   writeLimit,
   validate({ params: routineIdParamSchema }),
   clone,
+);
+
+// Unticks every item. One write, on writeLimit: it is a deliberate "start
+// again", not a burst.
+router.post(
+  "/:id/reset",
+  writeLimit,
+  validate({ params: routineIdParamSchema, body: resetRoutineSchema }),
+  reset,
 );
 
 router.post(
@@ -133,9 +168,22 @@ router.post(
   addTodoItem,
 );
 
+/**
+ * PUT /:id/todos/order - the whole new order. PUT, not PATCH, because it
+ * replaces the order outright; and a different verb from the PATCH below,
+ * so "order" can never be read as a :todoId (it would fail the UUID check
+ * anyway).
+ */
+router.put(
+  "/:id/todos/order",
+  todoLimit,
+  validate({ params: routineIdParamSchema, body: reorderTodoItemsSchema }),
+  reorderTodoItems,
+);
+
 router.patch(
   "/:id/todos/:todoId",
-  writeLimit,
+  todoLimit,
   validate({ params: routineTodoParamSchema, body: updateTodoItemSchema }),
   updateTodoItem,
 );

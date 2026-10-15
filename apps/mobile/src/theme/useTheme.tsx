@@ -23,7 +23,14 @@ import { createReportDialogStyles } from "./reportDialog.styles";
 import { createTabBarStyles } from "./tabBar.styles";
 import { createLoginStyles } from "./login.styles";
 import { createRegisterStyles } from "./register.styles";
+import { createForgotPasswordStyles } from "./forgotPassword.styles";
 import { createEditProfileStyles } from "./editProfile.styles";
+import { createAnalyticsStyles } from "./analytics.styles";
+import { createHomeSearchStyles } from "./homeSearch.styles";
+import { createMessagesStyles } from "./messages.styles";
+import { createRoutinesStyles } from "./routines.styles";
+import { createSessionHistoryStyles } from "./sessionHistory.styles";
+import { createGroupsStyles } from "./groups.styles";
 
 const STORAGE_KEY = "themePreference";
 
@@ -74,7 +81,14 @@ const styleMap = {
   tabBar: createTabBarStyles,
   login: createLoginStyles,
   register: createRegisterStyles,
+  forgotPassword: createForgotPasswordStyles,
   editProfile: createEditProfileStyles,
+  analytics: createAnalyticsStyles,
+  homeSearch: createHomeSearchStyles,
+  messages: createMessagesStyles,
+  routines: createRoutinesStyles,
+  sessionHistory: createSessionHistoryStyles,
+  groups: createGroupsStyles,
 } as const;
 
 type StyleName = keyof typeof styleMap;
@@ -219,6 +233,9 @@ export const useStyles = <K extends StyleName>(name: K): BuiltStyles[K] => {
 /** The home stylesheet for the active theme. Never rebuilds. */
 export const useHomeStyles = () => useStyles("home");
 
+/** @see useStyles */
+export const useStudyStyles = () => useStyles("study");
+
 /** The settings stylesheet for the active theme. Never rebuilds. */
 export const useSettingsStyles = () => useStyles("settings");
 
@@ -243,5 +260,20 @@ export const useLoginStyles = () => useStyles("login");
  */
 export const useRegisterStyles = () => useStyles("register");
 
+/**
+ * The forgot-password screen's own stylesheet for the active theme. Never
+ * rebuilds. Used alongside useLoginStyles, as register's is.
+ */
+export const useForgotPasswordStyles = () => useStyles("forgotPassword");
+
 /** The edit-profile stylesheet for the active theme. Never rebuilds. */
 export const useEditProfileStyles = () => useStyles("editProfile");
+
+/** The analytics stylesheet for the active theme. Never rebuilds. */
+export const useAnalyticsStyles = () => useStyles("analytics");
+
+/** The routines stylesheet for the active theme. Never rebuilds. */
+export const useRoutinesStyles = () => useStyles("routines");
+
+/** The groups stylesheet for the active theme. Never rebuilds. */
+export const useGroupsStyles = () => useStyles("groups");

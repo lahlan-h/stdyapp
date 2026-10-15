@@ -11,11 +11,27 @@
 export type { FeedAuthor, FeedPost, FeedSession } from "./types";
 export { useIsSignedIn, useSessionRestored, logout } from "./auth";
 export { useLogin, type LoginState } from "./useLogin";
+export {
+  buildFocusTimeline,
+  interruptionsToSpells,
+  FOCUS_SAMPLE_INTERVAL_SEC,
+  type FocusTimeline,
+  type FocusSpell,
+  type TraceSegment,
+  type TimedFocusSample,
+} from "./focusTrace";
 export { useRegister, type RegisterState } from "./useRegister";
 export { useGoogleSignIn, type GoogleSignInState } from "./useGoogleSignIn";
+export {
+  useForgotPassword,
+  normalizeResetCode,
+  RESET_CODE_LENGTH,
+  type ForgotPasswordState,
+} from "./useForgotPassword";
 export type { RegisterInput } from "./auth";
 export {
   REGISTRATION_CHECK_GROUPS,
+  PASSWORD_CHECK_GROUPS,
   REGISTRATION_CHECK_COUNT,
   MAX_USERNAME_LENGTH,
   MAX_NAME_LENGTH,
@@ -23,11 +39,68 @@ export {
   evaluateRegistration,
   countPassed,
   isValidUsername,
+  isValidEmail,
   withinPasswordLimit,
   type RegistrationCheckKey,
+  type RegistrationCheckGroup,
   type RegistrationResults,
 } from "./registrationChecks";
 export { usePosts, type FeedState, type SetLiked } from "./usePosts";
+export {
+  defaultFeedFilters,
+  isDefaultFilters,
+  isRangeInvalid,
+  toDayKey,
+  fromDayKey,
+  DEFAULT_FEED_AUDIENCE,
+  type FeedFilters,
+  type FeedSort,
+  type FeedDateMode,
+  type FeedAudience,
+} from "./feedFilters";
+export {
+  useUserSearch,
+  type UserSummary,
+  type UserSearchState,
+} from "./useUserSearch";
+export { useRecentSearches, type RecentSearchesState } from "./recentSearches";
+export { useUser, type UserState } from "./useUser";
+export {
+  useNotifications,
+  useNotificationStream,
+  type NotificationsState,
+} from "./useNotifications";
+export type { AppNotification, NotificationType } from "./notificationMapping";
+export { useConversations, type ConversationsState } from "./useConversations";
+export { useChat, type ChatHookState } from "./useChat";
+export { requestChat, consumeChatRequest } from "./chatRequest";
+export {
+  MAX_MESSAGE_LENGTH,
+  type ChatMessage,
+  type ConversationSummary,
+} from "./messageMapping";
+// For turning a profile into the person a chat is with - the same shape a
+// search result has.
+export { toUserSummary } from "./userSummary";
+export { useFollow, type FollowState } from "./useFollow";
+export { useMotionVariance, type MotionSource } from "./useMotionVariance";
+export {
+  FocusSessionProvider,
+  useFocusSession,
+  useIsSessionRunning,
+} from "./FocusSessionProvider";
+export {
+  type FocusSessionState,
+  type FocusResult,
+  type FocusPhase,
+  type SessionTask,
+  type SessionGroup,
+} from "./useFocusSession";
+export {
+  requestStudySession,
+  consumeStudyRequest,
+  type StudyRequest,
+} from "./studyRequest";
 export { usePost } from "./usePost";
 export { useUserPosts, type UserPostsState } from "./useUserPosts";
 export {
@@ -39,8 +112,20 @@ export { useStreak, type Streak, type StreakState } from "./useStreak";
 export {
   useStudySessions,
   type StudyTotals,
+  type PastSession,
   type StudySessionsState,
 } from "./useStudySessions";
+export {
+  useSessionHistory,
+  type SessionHistoryItem,
+  type SessionHistoryState,
+  type SessionStatus,
+} from "./useSessionHistory";
+export {
+  useSessionDetail,
+  type SessionDetail,
+  type SessionDetailState,
+} from "./useSessionDetail";
 // The store's own setter, for a screen that shows ONE post and so has no feed
 // hook to take it from. Same function usePosts hands back - there is one array.
 export { setLiked as setPostLiked } from "./postStore";
@@ -83,6 +168,41 @@ export {
   MIN_USERNAME_LENGTH,
   USERNAME_PATTERN,
   type Profile,
+  type PublicProfile,
   type ProfileEdit,
   type ProfileState,
 } from "./useProfile";
+export { useRoutines, type RoutinesState } from "./useRoutines";
+export { useGroups, type GroupsState, type NewGroup } from "./useGroups";
+export { useGroup, type GroupState, type GroupEdit } from "./useGroup";
+export { useRoom, type RoomState, type RoomParticipant } from "./useRoom";
+export {
+  MAX_GROUP_NAME_LENGTH,
+  MAX_GROUP_DESCRIPTION_LENGTH,
+  MAX_JOIN_CODE_LENGTH,
+  type StudyGroup,
+  type GroupMember,
+  type GroupRole,
+  type GroupPerson,
+  type LiveSession,
+} from "./groupTypes";
+export { useRoutine, type RoutineState, type TodoEdit } from "./useRoutine";
+export {
+  MAX_ROUTINE_TITLE_LENGTH,
+  MAX_TODO_TITLE_LENGTH,
+  endOfLocalDay,
+  type Routine,
+  type RoutineSummary,
+  type RoutineDetail,
+  type TodoItem,
+} from "./routineTypes";
+export {
+  useAnalytics,
+  type Analytics,
+  type AnalyticsRange,
+  type AnalyticsState,
+  type GoalHitRate,
+} from "./useAnalytics";
+export { toWeekComparison, type WeekComparison } from "./weekComparison";
+export { useSessionRating, type SessionRatingState } from "./useSessionRating";
+export { useDiscardSession, type DiscardSessionState } from "./useDiscardSession";

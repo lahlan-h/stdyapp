@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,9 +9,7 @@ import {
   StatusBar,
   ActivityIndicator,
   Keyboard,
-  Platform,
   Animated,
-  Easing,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,6 +20,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import {
   useTheme,
   usePostDetailStyles,
+  useKeyboardLift,
   POST_DETAIL_EXIT_ICON_SIZE,
   ACTION_ICON_SIZE,
 } from "@theme";
@@ -40,99 +39,6 @@ import ReportDialog from "@components/ReportDialog";
 
 /** Stands in for a number that is not known yet, rather than inventing one. */
 const PLACEHOLDER = "—";
-
-/**
- * How far the composer has to rise to clear the keyboard.
- *
- * Measured rather than assumed, and that is the whole point. The obvious
- * version - lift by the keyboard's height - is wrong on any platform whose
- * window already shrinks for the keyboard, because the composer has moved
- * before this runs and lifting it again sends it into the middle of the
- * screen. Whether that shrinking happens depends on the Android keyboard mode
- * and on whether the app draws edge to edge, which is not something a screen
- * should have to know.
- *
- * So it asks the only question that has one answer everywhere: where is the
- * composer's bottom edge right now, and where does the keyboard start? The
- * difference is the overlap. A window that already resized reports no overlap
- * and nothing moves.
- *
- * The events differ deliberately: iOS fires `Will` before the frame animates,
- * so the lift rides the same animation instead of snapping in after it, while
- * Android only ever fires `did` - by which point any resize has happened,
- * which is exactly what makes the measurement come out at zero there.
- */
-/**
- * Breathing room between the composer and the top of the keyboard.
- *
- * Added only when there is something to clear: a window that resized itself
- * reports no overlap, and nudging it up anyway would move a composer that is
- * already sitting where it belongs.
- */
-const KEYBOARD_GAP = 32;
-
-/** What the keyboard animates over when the platform does not say. */
-const FALLBACK_DURATION_MS = 250;
-
-interface KeyboardLift {
-  /** Animated, so the bar travels with the keyboard rather than jumping. */
-  lift: Animated.Value;
-  /** Whether it is raised at all - the padding below depends on it. */
-  isLifted: boolean;
-}
-
-const useKeyboardLift = (composer: React.RefObject<View | null>): KeyboardLift => {
-  const lift = useRef(new Animated.Value(0)).current;
-  const [isLifted, setIsLifted] = useState(false);
-
-  useEffect(() => {
-    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-
-    /**
-     * Driven in JS rather than natively, which is forced: marginBottom is a
-     * layout property, and the native driver only handles opacity and
-     * transforms. A transform would animate more cheaply but would slide the
-     * bar OVER the thread instead of shortening it, putting the newest comment
-     * behind the field the user is typing into.
-     */
-    const animate = (toValue: number, duration: number) =>
-      Animated.timing(lift, {
-        toValue,
-        // The platform's own keyboard duration where it offers one, so the bar
-        // and the keys move as one thing instead of racing.
-        duration: duration || FALLBACK_DURATION_MS,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: false,
-      }).start();
-
-    const shown = Keyboard.addListener(showEvent, (event) => {
-      const keyboardTop = event.endCoordinates.screenY;
-
-      composer.current?.measureInWindow((_x, y, _width, height) => {
-        // Measured BEFORE any lift is applied, so this never compounds: the
-        // hide handler returns it to zero, and a second show measures from rest.
-        const overlap = y + height - keyboardTop;
-        const next = overlap > 0 ? overlap + KEYBOARD_GAP : 0;
-
-        setIsLifted(next > 0);
-        animate(next, event.duration);
-      });
-    });
-
-    const hidden = Keyboard.addListener(hideEvent, (event) => {
-      setIsLifted(false);
-      animate(0, event.duration);
-    });
-
-    return () => {
-      shown.remove();
-      hidden.remove();
-    };
-  }, [composer, lift]);
-
-  return { lift, isLifted };
-};
 
 const defaultAvatar = (seed: string) =>
   `https://api.dicebear.com/9.x/initials/png?seed=${encodeURIComponent(seed)}`;
@@ -208,7 +114,11 @@ const PostDetail = () => {
           overflow:hidden for its corners, and would clip it.
         */}
         <Pressable
-          style={[styles.exit, { top: 14 }]}
+          // insets.top by hand: SafeAreaView insets its children with PADDING,
+          // and an absolutely positioned child ignores its parent's padding. A
+          // bare top: 14 is measured from the top of the SCREEN, which put the
+          // button under the status bar on any device that has one.
+          style={[styles.exit, { top: insets.top + 14 }]}
           onPress={() => router.back()}
           accessibilityRole="button"
           accessibilityLabel="Close and go back to the feed"
@@ -504,12 +414,14 @@ const CommentRow = ({ comment }: { comment: Comment }) => {
 const MissingPost = () => {
   const { colors } = useTheme();
   const styles = usePostDetailStyles();
+  const insets = useSafeAreaInsets();
 
   return (
     <LinearGradient colors={colors.gradients.background} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <Pressable
-          style={[styles.exit, { top: 14 }]}
+          // See the exit button in PostDetail for why the inset is added here.
+          style={[styles.exit, { top: insets.top + 14 }]}
           onPress={() => router.back()}
           accessibilityRole="button"
           accessibilityLabel="Go back to the feed"

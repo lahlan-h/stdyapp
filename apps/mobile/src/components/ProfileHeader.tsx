@@ -1,12 +1,16 @@
 import { View, Text, Image } from "react-native";
 
 import { useStyles } from "@theme";
-import type { Profile } from "@data";
+import type { PublicProfile } from "@data";
 
 import { defaultAvatar } from "./defaultAvatar";
 
 interface ProfileHeaderProps {
-  profile: Profile;
+  /**
+   * The public half only, so this one header serves both the signed-in user and
+   * anyone opened from search - and cannot render the email the first carries.
+   */
+  profile: PublicProfile;
 }
 
 /**
@@ -18,7 +22,7 @@ interface ProfileHeaderProps {
  * agree: the same person appears here and on their own post cards, and a name
  * assembled differently in each place reads as two different users.
  */
-const displayNameOf = ({ firstName, lastName, username }: Profile): string =>
+const displayNameOf = ({ firstName, lastName, username }: PublicProfile): string =>
   [firstName, lastName].filter(Boolean).join(" ") || username;
 
 /** Avatar, name and bio. Renders from the profile it is given and queries nothing. */

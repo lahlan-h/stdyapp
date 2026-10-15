@@ -26,6 +26,20 @@ import { z } from "zod";
 const MAX_INTERRUPTION_SEC = 24 * 60 * 60;
 
 /**
+ * The longest session a client may plan. Same reasoning as MAX_INTERRUPTION_SEC:
+ * a 24-hour study plan is a client bug, and letting it through would make every
+ * real session look barely started, dragging its completion factor to ~0.
+ */
+const MAX_PLANNED_MINUTES = 24 * 60;
+
+/**
+ * Mirrors the InterruptionType enum in the Prisma schema. Declared here rather
+ * than imported from @prisma/client so validation stays readable without the
+ * generated client, matching how focus.service.js lists FocusSignal.
+ */
+export const INTERRUPTION_TYPES = ["APP_EXIT", "DEVICE_MOTION", "MANUAL"];
+
+/**
  * sessions.id is TEXT in Postgres rather than a native uuid column, so an
  * invalid id would otherwise just miss and return a confusing 404. Validating
  * the shape here upgrades that to a 400 that says what is actually wrong - the
@@ -55,6 +69,61 @@ export const sessionIdParamSchema = z.strictObject({
  */
 export const startSessionSchema = z.strictObject({
   groupId: z.uuid("groupId must be a UUID").nullish(),
+  /**
+   * How long the user MEANT to study. Optional: a session opened without a
+   * plan is still a valid session, and the focus estimate falls back to sample
+   * coverage when this is absent (see computeCompletionFactor in
+   * services/focusScoring.js). .nullish() for the same reason as groupId.
+   */
+  plannedMinutes: z
+    .number()
+    .int("plannedMinutes must be a whole number of minutes")
+    .min(1, "plannedMinutes must be at least 1")
+    .max(
+      MAX_PLANNED_MINUTES,
+      `plannedMinutes must be at most ${MAX_PLANNED_MINUTES} (24 hours)`,
+    )
+    .nullish(),
+});
+
+/**
+ * PATCH /api/sessions/:id/end.
+ *
+ * The body is OPTIONAL - every client before this field existed sends none,
+ * and the session then ends at the moment the request arrives, as it always
+ * has.
+ *
+ * endedAt is when the user tapped End. A client retrying through a dead
+ * network sends the ORIGINAL moment, so the wait for a connection is not
+ * credited as study time. endSession clamps it to [startedAt, now], so it can
+ * only ever shorten a session, never lengthen it.
+ */
+export const endSessionSchema = z
+  .strictObject({
+    endedAt: z.iso.datetime({ offset: true }).optional(),
+  })
+  .optional();
+
+/**
+ * POST /api/sessions/join.
+ *
+ * Bounds match the group joinCode's in studyGroup.validation.js: the generator
+ * makes six characters of base36, and the bounds only stop junk reaching the
+ * query.
+ *
+ * Uppercased here, unlike joinGroupSchema, because nothing is being guarded by
+ * case: joinSession still demands group membership, so the code only FINDS a
+ * session the caller could already see in their group. Being forgiving about a
+ * code read aloud costs nothing.
+ */
+export const joinSessionSchema = z.strictObject({
+  inviteCode: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .min(4, "inviteCode must be at least 4 characters")
+    .max(16, "inviteCode must be at most 16 characters")
+    .regex(/^[A-Z0-9]+$/, "inviteCode may only contain letters and numbers"),
 });
 
 /**
@@ -77,4 +146,14 @@ export const addInterruptionSchema = z.strictObject({
       MAX_INTERRUPTION_SEC,
       `durationSec must be at most ${MAX_INTERRUPTION_SEC} (24 hours)`,
     ),
+  /**
+   * What pulled the user away. Optional and nullable: every client written
+   * before this field existed sends no type, and that must stay valid - the
+   * column is nullable for exactly that reason.
+   */
+  type: z
+    .enum(INTERRUPTION_TYPES, {
+      message: `type must be one of ${INTERRUPTION_TYPES.join(", ")}`,
+    })
+    .nullish(),
 });

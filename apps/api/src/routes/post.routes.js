@@ -15,11 +15,11 @@ import { validate } from "../middleware/validate.js";
 import { rateLimit } from "../middleware/rateLimit.js";
 import { cache } from "../middleware/cache.js";
 import { uploadImage } from "../middleware/uploadImage.js";
-import { paginationQuerySchema } from "../validation/pagination.validation.js";
 import {
   createPostSchema,
   updatePostSchema,
   postIdParamSchema,
+  listAllPostsQuerySchema,
 } from "../validation/post.validation.js";
 import { IMAGE_MIME_TYPES, MAX_POST_PHOTO_BYTES } from "../config/upload.js";
 import {
@@ -142,13 +142,16 @@ router.delete("/user/me", bulkLimit, removeMine);
 // 404 "Post not found". A silently wrong answer rather than a routing error.
 //
 // This is also the only route in this file that validates its query string and
-// returns a { data, pagination } envelope; see the note on listAll.
+// returns a { data, pagination } envelope; see the note on listAll. The query
+// carries the feed's sort and date window as well as the page - see
+// listAllPostsQuerySchema.
 //
 // UNCACHED by request. It keeps a limiter anyway, matching like.routes.js: it is
 // the most expensive query in the file — a paginated global feed with joins and
 // a COUNT — and leaving the one route excluded from caching with no ceiling at
-// all would be the wrong reading of "except /all".
-router.get("/all", readLimit, validate({ query: paginationQuerySchema }), listAll);
+// all would be the wrong reading of "except /all". If it is ever cached, the
+// key needs the sort and window as well as the viewer.
+router.get("/all", readLimit, validate({ query: listAllPostsQuerySchema }), listAll);
 
 /**
  * Create a post: ONE multipart request carrying the photo and the caption.

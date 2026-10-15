@@ -42,6 +42,8 @@ export default function RootLayout() {
             guard and lands on the feed with no navigation of its own.
           */}
           <Stack.Screen name="register" />
+          {/* Signed-out only too: it is how you get back to logging in. */}
+          <Stack.Screen name="forgot-password" />
         </Stack.Protected>
 
         <Stack.Protected guard={signedIn}>
@@ -49,9 +51,14 @@ export default function RootLayout() {
           {/*
             A modal, not a tab: composing a post is something you finish or
             abandon, which is also why the screen carries its own discard button
-            rather than relying on a back arrow.
+            rather than relying on a back arrow. No swipe-down either: for a
+            session that just ended, leaving without posting deletes it, and
+            that has to be a deliberate tap, never a stray drag.
           */}
-          <Stack.Screen name="new-post" options={{ presentation: "modal" }} />
+          <Stack.Screen
+            name="new-post"
+            options={{ presentation: "modal", gestureEnabled: false }}
+          />
           {/*
             A push, not a modal: reading a post and its thread is somewhere you
             go and come back from, where composing is finish-or-abandon. It still
@@ -60,6 +67,29 @@ export default function RootLayout() {
           <Stack.Screen name="post/[id]" />
           {/* A push, for post/[id]'s reason: you go there and come back. */}
           <Stack.Screen name="edit-profile" />
+          {/* A push from the gear on your own profile, for the same reason. */}
+          <Stack.Screen name="settings" />
+          {/*
+            A push, for the same reason - opened from the Study tab's Routines
+            view. The routines list itself lives under Study.
+          */}
+          <Stack.Screen name="routine/[id]" />
+          {/* The full analytics page, a push from the Study tab's weekly card. */}
+          <Stack.Screen name="analytics" />
+          {/* A push from the Study tab's Groups view, for routine/[id]'s reason. */}
+          <Stack.Screen name="group/[id]" />
+          {/*
+            Someone else's profile, opened from the home screen's search. A
+            push over the tabs, so the way back returns to the feed exactly as
+            it was left.
+          */}
+          <Stack.Screen name="user/[id]" />
+          {/*
+            Session history, opened from the profile, and one session's
+            recap-style detail opened from it. Pushes, for post/[id]'s reason.
+          */}
+          <Stack.Screen name="sessions" />
+          <Stack.Screen name="session/[id]" />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

@@ -14,17 +14,27 @@ export const MIN_USERNAME_LENGTH = 3;
 export const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 
 /**
- * The signed-in user, as GET /api/auth/me answers it (USER_PUBLIC_SELECT).
- * Only the fields a screen reads are listed.
+ * What any profile shows, whoever it belongs to.
+ *
+ * The header renders from this and nothing wider, so the same component can draw
+ * the signed-in user and someone opened from search without the second case
+ * ever holding - or being able to render - the first case's email.
  */
-export interface Profile {
+export interface PublicProfile {
   id: string;
-  email: string;
   username: string;
   firstName: string | null;
   lastName: string | null;
   avatarUrl: string | null;
   bio: string | null;
+}
+
+/**
+ * The signed-in user, as GET /api/auth/me answers it (USER_PUBLIC_SELECT).
+ * Only the fields a screen reads are listed.
+ */
+export interface Profile extends PublicProfile {
+  email: string;
   isPrivate: boolean;
 }
 

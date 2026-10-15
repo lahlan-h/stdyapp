@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  Animated,
   View,
   Text,
   TextInput,
@@ -9,46 +10,188 @@ import {
   StatusBar,
   ActivityIndicator,
   Alert,
+  BackHandler,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import Feather from "@expo/vector-icons/Feather";
 
 import {
   useTheme,
   useNewPostStyles,
+  useKeyboardLift,
   EXIT_ICON_SIZE,
   NEW_POST_ROW_ICON_SIZE,
 } from "@theme";
 import {
   useCreatePost,
+  useSessionDetail,
+  useSessionRating,
+  useDiscardSession,
   MAX_PHOTO_BYTES,
   MAX_CAPTION_LENGTH,
   MAX_TITLE_LENGTH,
   type NewPostPhoto,
 } from "@data";
 
+import {
+  SessionLinkPicker,
+  RoutineLinkPicker,
+  type LinkChoice,
+} from "@components/LinkPicker";
+import { NONE, formatSeconds } from "@components/sessionFormat";
+import RatingSheet from "@components/RatingSheet";
+import { confirmDiscardSession } from "@components/confirmDiscardSession";
+
 /** What the API's magic-byte sniff will accept. GIF is deliberately not in it. */
 const ACCEPTED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 /**
+ * One link row: tap to choose, x to clear. Says what is linked once something
+ * is, and what linking would add before.
+ */
+const LinkRow = ({
+  icon,
+  label,
+  hint,
+  choice,
+  onPress,
+  onClear,
+  divider = false,
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  hint: string;
+  choice: LinkChoice | null;
+  onPress: () => void;
+  onClear: () => void;
+  divider?: boolean;
+}) => {
+  const { colors } = useTheme();
+  const newPostStyles = useNewPostStyles();
+
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        newPostStyles.row,
+        divider && newPostStyles.rowDivider,
+        pressed && { opacity: 0.6 },
+      ]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={choice ? `${label}: ${choice.label}. Tap to change` : label}
+    >
+      <View style={newPostStyles.rowIconBox}>
+        <Feather
+          name={icon}
+          size={NEW_POST_ROW_ICON_SIZE}
+          color={choice ? colors.primary : colors.textMuted}
+        />
+      </View>
+      <View style={newPostStyles.rowText}>
+        <Text style={newPostStyles.rowLabel}>{label}</Text>
+        <Text style={newPostStyles.rowValue} numberOfLines={1}>
+          {choice ? choice.label : hint}
+        </Text>
+      </View>
+      {choice ? (
+        <Pressable
+          style={newPostStyles.rowClear}
+          onPress={onClear}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove linked ${label.replace("Link a ", "")}`}
+        >
+          <Feather name="x" size={NEW_POST_ROW_ICON_SIZE} color={colors.textMuted} />
+        </Pressable>
+      ) : (
+        <Feather name="chevron-right" size={NEW_POST_ROW_ICON_SIZE} color={colors.textMuted} />
+      )}
+    </Pressable>
+  );
+};
+
+/**
  * Compose a post.
  *
- * Presented as a modal from the tab bar's centre button. A photo and a title
+ * Presented as a modal from the Study tab when a session finishes - there is
+ * no other way in, since a post is about a session. A photo and a title
  * are required - Post.photoUrl is not nullable, so there is no text-only post
  * to fall back to - and the caption is the optional half.
+ *
+ * POST OR DISCARD. For a session that just ended there are exactly two ways
+ * out, as on Hevy's save screen: publish it, or discard it, which deletes the
+ * session. The swipe-down that would otherwise dismiss the modal is switched
+ * off in the root layout, and Android's back button asks to discard.
  */
 const NewPost = () => {
   const { colors } = useTheme();
   const newPostStyles = useNewPostStyles();
   const insets = useSafeAreaInsets();
   const { createPost, isSubmitting, error, reset } = useCreatePost();
+  // Set when the Study tab opens this screen for the session that just ended,
+  // so the post arrives already linked.
+  const params = useLocalSearchParams<{ sessionId?: string }>();
+  const finishedId = params.sessionId;
+  // Read back from the server rather than passed in, so the duration shown is
+  // the one the session was saved with.
+  const { session: finished } = useSessionDetail(finishedId);
+
+  /**
+   * The focus rating, asked once as the composer opens - where the recap used
+   * to ask it. Over the form rather than before it, so flicking it away is a
+   * cheap way to skip: a rating someone felt cornered into is worse data than
+   * none.
+   */
+  const { rating, rate, error: ratingError } = useSessionRating(finishedId);
+  const [ratingOpen, setRatingOpen] = useState(Boolean(finishedId));
+
+  const { discard, isDiscarding, error: discardError } = useDiscardSession();
+
+  /**
+   * The Post button rides up with the keyboard, as the comment box on a post
+   * does, so it can be tapped without closing the keyboard first. No gap: the
+   * footer is a bar of its own and sits flush on the keys.
+   */
+  const footer = useRef<View>(null);
+  const { lift: keyboardLift, isLifted } = useKeyboardLift(footer, 0);
+
+  /** The X: deletes a just-finished session, after asking; otherwise just closes. */
+  const leave = () => {
+    if (!finishedId) {
+      router.back();
+      return;
+    }
+    confirmDiscardSession(async () => {
+      if (await discard(finishedId)) router.back();
+    });
+  };
+
+  // Android's back button is a way out too, so it gets the same question
+  // rather than quietly leaving the session posted nowhere. Android only:
+  // nothing else has the button, and react-native-web logs an error for every
+  // subscription. No dependency list: re-subscribing each render keeps the
+  // handler calling the current leave(), which closes over the latest state.
+  useEffect(() => {
+    if (!finishedId || Platform.OS !== "android") return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      leave();
+      return true;
+    });
+    return () => subscription.remove();
+  });
 
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
   const [photo, setPhoto] = useState<NewPostPhoto | null>(null);
+  const [session, setSession] = useState<LinkChoice | null>(
+    params.sessionId ? { id: params.sessionId, label: "The session you just finished" } : null,
+  );
+  const [routine, setRoutine] = useState<LinkChoice | null>(null);
+  const [picker, setPicker] = useState<"session" | "routine" | null>(null);
 
   const canSubmit = Boolean(photo) && title.trim().length > 0 && !isSubmitting;
 
@@ -95,7 +238,13 @@ const NewPost = () => {
   const submit = async () => {
     if (!photo) return;
 
-    const created = await createPost({ title, caption, photo });
+    const created = await createPost({
+      title,
+      caption,
+      photo,
+      sessionId: session?.id,
+      routineId: routine?.id,
+    });
     // A null result means the hook has set `error`, which is already on screen.
     if (created) router.back();
   };
@@ -115,10 +264,15 @@ const NewPost = () => {
         edges={["top", "left", "right"]}
       >
         <Pressable
-          style={[newPostStyles.exit, { top: 8 }]}
-          onPress={() => router.back()}
+          // insets.top by hand, as on the post detail screen: SafeAreaView's
+          // top padding does not move an absolutely positioned child, so a bare
+          // top: 8 put this button under the status bar.
+          style={[newPostStyles.exit, { top: insets.top + 8 }]}
+          onPress={leave}
+          disabled={isDiscarding}
           accessibilityRole="button"
-          accessibilityLabel="Discard post"
+          accessibilityLabel={finishedId ? "Discard session" : "Discard post"}
+          accessibilityState={{ disabled: isDiscarding, busy: isDiscarding }}
         >
           <Feather name="x" size={EXIT_ICON_SIZE} color={colors.danger} />
         </Pressable>
@@ -131,8 +285,16 @@ const NewPost = () => {
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          // Dragging the form puts the keyboard away too, so it is never the
+          // only thing standing between the user and the Post button.
+          keyboardDismissMode="on-drag"
         >
           <View>
+            {/*
+              multiline so a long title wraps, but Return closes the keyboard
+              rather than adding a line - the keyboard otherwise had no way to
+              go away and sat over the Post button.
+            */}
             <TextInput
               style={newPostStyles.titleInput}
               value={title}
@@ -140,6 +302,8 @@ const NewPost = () => {
               placeholder="New post"
               placeholderTextColor={colors.textMuted}
               multiline
+              submitBehavior="blurAndSubmit"
+              returnKeyType="done"
               maxLength={MAX_TITLE_LENGTH}
               accessibilityLabel="Post title"
             />
@@ -147,6 +311,17 @@ const NewPost = () => {
               {title.length} / {MAX_TITLE_LENGTH}
             </Text>
           </View>
+
+          {/* What the post is about, up top - the way Hevy opens its save
+              screen with the workout's numbers. */}
+          {finishedId ? (
+            <View style={newPostStyles.sessionStats}>
+              <Text style={newPostStyles.sessionStatLabel}>Duration</Text>
+              <Text style={newPostStyles.sessionStatValue}>
+                {finished ? formatSeconds(finished.totalSec) : NONE}
+              </Text>
+            </View>
+          ) : null}
 
           <View style={newPostStyles.section}>
             <Text style={newPostStyles.sectionTitle}>Photo</Text>
@@ -201,16 +376,24 @@ const NewPost = () => {
               placeholder="How did the session go?"
               placeholderTextColor={colors.textMuted}
               multiline
+              // Return closes the keyboard here too, for the title's reason.
+              // The cost is no line breaks in a caption; the text still wraps.
+              submitBehavior="blurAndSubmit"
+              returnKeyType="done"
               maxLength={MAX_CAPTION_LENGTH}
               accessibilityLabel="Caption"
             />
           </View>
 
           {/*
-            Laid out now so the screen is complete, and marked inert so neither
-            the user nor the next dev mistakes a row for a working control.
-            Linking needs a picker fed by GET /api/sessions, and sending an id
-            you do not own is a 403.
+            Both optional, and either, both or neither may be set. Only the
+            user's own sessions and routines are offered - linking anyone
+            else's is a 403 - and the pickers load only when opened.
+
+            No session row when this screen was opened for a session that just
+            ended: that session is what the post is about, and its duration is
+            already at the top. Swapping it for another would leave the one
+            just studied posted nowhere.
           */}
           <View style={newPostStyles.section}>
             <Text style={newPostStyles.sectionTitle}>Links</Text>
@@ -221,61 +404,51 @@ const NewPost = () => {
               start={{ x: 0.5, y: 0 }}
               end={{ x: 0.5, y: 1 }}
             >
-              <View style={[newPostStyles.row, newPostStyles.rowDisabled]}>
-                <View style={newPostStyles.rowIconBox}>
-                  <Feather
-                    name="clock"
-                    size={NEW_POST_ROW_ICON_SIZE}
-                    color={colors.textMuted}
-                  />
-                </View>
-                <View style={newPostStyles.rowText}>
-                  <Text style={newPostStyles.rowLabel}>Link a session</Text>
-                  <Text style={newPostStyles.rowValue}>
-                    Adds time and focus to your post
-                  </Text>
-                </View>
-                <View style={newPostStyles.badge}>
-                  <Text style={newPostStyles.badgeText}>SOON</Text>
-                </View>
-              </View>
-
-              <View
-                style={[
-                  newPostStyles.row,
-                  newPostStyles.rowDivider,
-                  newPostStyles.rowDisabled,
-                ]}
-              >
-                <View style={newPostStyles.rowIconBox}>
-                  <Feather
-                    name="repeat"
-                    size={NEW_POST_ROW_ICON_SIZE}
-                    color={colors.textMuted}
-                  />
-                </View>
-                <View style={newPostStyles.rowText}>
-                  <Text style={newPostStyles.rowLabel}>Link a routine</Text>
-                </View>
-                <View style={newPostStyles.badge}>
-                  <Text style={newPostStyles.badgeText}>SOON</Text>
-                </View>
-              </View>
+              {finishedId ? null : (
+                <LinkRow
+                  icon="clock"
+                  label="Link a session"
+                  hint="Adds time and focus to your post"
+                  choice={session}
+                  onPress={() => setPicker("session")}
+                  onClear={() => setSession(null)}
+                />
+              )}
+              <LinkRow
+                icon="repeat"
+                label="Link a routine"
+                hint="Lets others see what you worked through"
+                choice={routine}
+                onPress={() => setPicker("routine")}
+                onClear={() => setRoutine(null)}
+                divider={!finishedId}
+              />
             </LinearGradient>
           </View>
 
-          {error ? (
+          {error || ratingError || discardError ? (
             <View style={newPostStyles.error}>
               <Feather name="alert-circle" size={18} color={colors.danger} />
-              <Text style={newPostStyles.errorText}>{error}</Text>
+              <Text style={newPostStyles.errorText}>
+                {error ?? discardError ?? ratingError}
+              </Text>
             </View>
           ) : null}
         </ScrollView>
 
-        <View
+        <Animated.View
+          ref={footer}
           style={[
             newPostStyles.footer,
-            { paddingBottom: 12 + insets.bottom },
+            {
+              // marginBottom rather than a transform, for post/[id]'s reason:
+              // it shortens the form above, so the field being typed in stays
+              // in view instead of sliding under the button.
+              marginBottom: keyboardLift,
+              // The inset clears the home indicator, which the keyboard
+              // already covers while it is up.
+              paddingBottom: 12 + (isLifted ? 0 : insets.bottom),
+            },
           ]}
         >
           <Pressable
@@ -303,7 +476,34 @@ const NewPost = () => {
               )}
             </LinearGradient>
           </Pressable>
-        </View>
+        </Animated.View>
+        {picker === "session" ? (
+          <SessionLinkPicker
+            selectedId={session?.id}
+            onSelect={(choice) => {
+              setSession(choice);
+              setPicker(null);
+            }}
+            onClose={() => setPicker(null)}
+          />
+        ) : null}
+        {picker === "routine" ? (
+          <RoutineLinkPicker
+            selectedId={routine?.id}
+            onSelect={(choice) => {
+              setRoutine(choice);
+              setPicker(null);
+            }}
+            onClose={() => setPicker(null)}
+          />
+        ) : null}
+
+        <RatingSheet
+          visible={ratingOpen}
+          value={rating}
+          onRate={rate}
+          onClose={() => setRatingOpen(false)}
+        />
       </SafeAreaView>
     </LinearGradient>
   );

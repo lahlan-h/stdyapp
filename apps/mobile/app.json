@@ -23,7 +23,14 @@
       ],
       "expo-font",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "STDY checks your step count to tell whether your phone stayed down on your desk while you studied."
+        }
+      ]
     ],
     "android": {
       "package": "com.stdyapp.mobile"

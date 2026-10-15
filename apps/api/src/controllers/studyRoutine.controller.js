@@ -118,3 +118,34 @@ export const deleteTodoItem = async (req, res, next) => {
     next(err);
   }
 };
+
+export const reset = async (req, res, next) => {
+  try {
+    const routine = await routineService.resetRoutine(req.validated.params.id, req.user.id);
+    res.status(200).json(routine);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const reorderTodoItems = async (req, res, next) => {
+  try {
+    const routine = await routineService.reorderTodoItems(
+      req.validated.params.id,
+      req.user.id,
+      req.validated.body.todoIds,
+    );
+    res.status(200).json(routine);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const preview = async (req, res, next) => {
+  try {
+    const routine = await routineService.previewRoutine(req.validated.params.id, req.user.id);
+    res.status(200).json(routine);
+  } catch (err) {
+    next(err);
+  }
+};

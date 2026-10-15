@@ -33,7 +33,9 @@ export const API_BASE_URL = (
  */
 const TUNNEL_KEY = process.env.EXPO_PUBLIC_TUNNEL_KEY;
 
-const tunnelHeaders = (): Record<string, string> => ({
+// Exported for the notification socket, which opens its own connection and
+// needs the same headers to get through a tunnel that request() sends.
+export const tunnelHeaders = (): Record<string, string> => ({
   "ngrok-skip-browser-warning": "true",
   ...(TUNNEL_KEY ? { "x-tunnel-key": TUNNEL_KEY } : {}),
 });
@@ -48,12 +50,23 @@ const tunnelHeaders = (): Record<string, string> => ({
 export class ApiError extends Error {
   status: number;
   retryAfter?: number;
+  /**
+   * Whatever else the error body carried for the client to act on - a private
+   * group's id on a refused session join, say. Empty for most errors.
+   */
+  data: Record<string, unknown>;
 
-  constructor(status: number, message: string, retryAfter?: number) {
+  constructor(
+    status: number,
+    message: string,
+    retryAfter?: number,
+    data: Record<string, unknown> = {},
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.retryAfter = retryAfter;
+    this.data = data;
   }
 }
 
@@ -66,6 +79,7 @@ interface ErrorBody {
   error?: string;
   retryAfter?: number;
   details?: { field?: string; message?: string }[];
+  [key: string]: unknown;
 }
 
 /**
@@ -89,7 +103,8 @@ const toApiError = async (response: Response): Promise<ApiError> => {
       ? `${detail.field ?? "request"}: ${detail.message}`
       : body.error || `Request failed (${response.status})`;
 
-  return new ApiError(response.status, message, body.retryAfter);
+  const { error: _error, retryAfter, details: _details, ...data } = body;
+  return new ApiError(response.status, message, retryAfter, data);
 };
 
 export interface RequestOptions {

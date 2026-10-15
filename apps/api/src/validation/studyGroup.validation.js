@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "./pagination.validation.js";
+
 /**
  * Request schemas for the study groups resource.
  *
@@ -166,13 +168,21 @@ export const setMemberRoleSchema = z.strictObject({
  * everything, not receive a 400. searchGroups already treats undefined as
  * "no filter".
  *
- * NOT paginated, unlike the user directory, because this route returns a bare
- * array and adding page/limit would change its response shape. That is a real
- * gap rather than a decision - with no ?q at all it selects EVERY group in the
- * database - and the fix is a { data, pagination } envelope here plus a client
- * change, which belongs in its own commit rather than smuggled into this one.
+ * Paginated like the user directory, with the same page/limit and the same
+ * { data, pagination } envelope - pagination.validation.js owns the cap.
+ *
+ * `page` has NO default, and that absence is the switch: a request without it
+ * comes from an app build older than pagination, which expects the old bare
+ * array. The controller answers those in the old shape - see search().
  */
 export const searchGroupsQuerySchema = z.strictObject({
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_PAGE_SIZE)
+    .default(DEFAULT_PAGE_SIZE),
   q: z
     .string()
     .trim()

@@ -3,6 +3,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { ApiError, request } from "./api";
 import { resetPosts } from "./postStore";
+import { clearRecentSearches } from "./recentSearches";
+import { resetNotifications } from "./notificationStore";
+import { resetMessages } from "./messageStore";
 import {
   clearRefreshToken,
   loadRefreshToken,
@@ -320,6 +323,66 @@ export const withAuth = async <T>(
   }
 };
 
+/** How close to expiry an access token is treated as already expired. */
+const EXPIRY_SKEW_MS = 30_000;
+
+/**
+ * When an access token stops working, read from its own `exp` claim.
+ *
+ * Decoded, not verified - the server does that. This only decides whether to
+ * refresh BEFORE handing a token to something long-lived, which a 401 cannot
+ * tell us in time. Undefined when the token does not decode, in which case the
+ * caller uses it and lets the server answer.
+ */
+const expiresAt = (token: string): number | undefined => {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
+    const { exp } = JSON.parse(atob(padded)) as { exp?: number };
+    return typeof exp === "number" ? exp * 1000 : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * An access token good for a while yet, or null when signed out or the refresh
+ * failed.
+ *
+ * For callers that hold a token longer than one request - the notification
+ * socket authenticates once and keeps the connection - where withAuth's
+ * "try, and refresh on 401" does not fit: the socket would open with a token
+ * seconds from expiry and be closed again straight away. `force` refreshes
+ * regardless, for when the server has just said the token is no good.
+ *
+ * Goes through refreshOnce, so it can never race a withAuth retry into
+ * presenting the same refresh token twice.
+ */
+export const getFreshAccessToken = async (force = false): Promise<string | null> => {
+  if (!session) return null;
+
+  const expiry = expiresAt(session.accessToken);
+  const stale = force || (expiry !== undefined && expiry - Date.now() < EXPIRY_SKEW_MS);
+  if (!stale) return session.accessToken;
+
+  try {
+    return await refreshOnce();
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Calls `listener` whenever someone signs in or out, or a token rotates.
+ *
+ * The non-React twin of useIsSignedIn, for the notification socket, which lives
+ * outside any component and must start and stop with the session.
+ */
+export const subscribeAuth = (listener: () => void): (() => void) => subscribe(listener);
+
+/** Whether anyone is signed in right now, for the same non-React callers. */
+export const isSignedIn = (): boolean => session !== null;
+
 /**
  * Signs out - on this device and on the server.
  *
@@ -340,6 +403,12 @@ export const logout = async (): Promise<void> => {
 
   setSession(null);
   resetPosts();
+  // Who this account looked up is as personal as what it liked.
+  clearRecentSearches();
+  // And so is who has been liking and following it.
+  resetNotifications();
+  // And, most of all, what it has been saying to people.
+  resetMessages();
   await clearRefreshToken();
 
   if (!refreshToken) return;

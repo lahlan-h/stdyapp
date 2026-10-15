@@ -251,25 +251,50 @@ export const createUser = async (input) => {
 };
 
 /**
+ * What a user LIST may show about each person: who they are and their face.
+ *
+ * Narrower than USER_PUBLIC_SELECT on purpose. That select serves single-user
+ * reads; this one serves a search box any signed-in account can type into, and
+ * every extra column here is one more fact about every user that a loop over
+ * ?q=a, ?q=b … can harvest. email in particular has no business in a directory
+ * listing - the same enumeration worry that keeps it out of the `where` below -
+ * and isSuspended would tell strangers which accounts have been actioned.
+ */
+const USER_SEARCH_SELECT = {
+  id: true,
+  username: true,
+  firstName: true,
+  lastName: true,
+  avatarUrl: true,
+};
+
+/**
  * Returns one page of users plus the total, so the controller can compute
  * pagination without a second round trip.
  *
+ * The caller is never in their own results. The same `where` goes to the
+ * count, so the total agrees with the pages.
+ *
  * @param {{ page: number, limit: number, q?: string }} query - validated
+ * @param {string} viewerId - the caller's own id; guaranteed by requireAuth
  * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
  */
-export const listUsers = async ({ page, limit, q }) => {
-  // Deliberately NOT searching email: matching on it would turn this
-  // unauthenticated endpoint into an account-enumeration oracle
-  // ("is alice@uts.edu.au registered here?").
-  const where = q
-    ? {
-        OR: [
-          { username: { contains: q, mode: "insensitive" } },
-          { firstName: { contains: q, mode: "insensitive" } },
-          { lastName: { contains: q, mode: "insensitive" } },
-        ],
-      }
-    : undefined;
+export const listUsers = async ({ page, limit, q }, viewerId) => {
+  // Deliberately NOT searching email: matching on it would turn this endpoint
+  // into an account-enumeration oracle ("is alice@uts.edu.au registered
+  // here?") for anyone holding any account at all.
+  const where = {
+    NOT: { id: viewerId },
+    ...(q
+      ? {
+          OR: [
+            { username: { contains: q, mode: "insensitive" } },
+            { firstName: { contains: q, mode: "insensitive" } },
+            { lastName: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
 
   // One transaction so the page and the total agree even under concurrent
   // writes. A batch $transaction([...]) is safe through PgBouncer's transaction
@@ -278,7 +303,7 @@ export const listUsers = async ({ page, limit, q }) => {
   const [items, total] = await prisma.$transaction([
     prisma.user.findMany({
       where,
-      select: USER_PUBLIC_SELECT,
+      select: USER_SEARCH_SELECT,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * limit,
       take: limit,
@@ -433,5 +458,53 @@ export const setStripeCustomerId = async (userId, stripeCustomerId) => {
   await prisma.user.update({
     where: { id: userId },
     data: { stripeCustomerId },
+  });
+};
+/**
+ * The id of the account with this email, or null.
+ *
+ * For forgot-password, which knows only an email. The caller must answer the
+ * same either way - see passwordReset.service.js.
+ *
+ * @param {string} email - already lowercased by emailSchema
+ * @returns {Promise<string | null>}
+ */
+export const findUserIdByEmail = async (email) => {
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+
+  return user?.id ?? null;
+};
+
+/**
+ * Hashes a new password, at the same cost as sign-up - this module is the one
+ * place a password becomes a hash (see buildUserData).
+ *
+ * Kept apart from setPasswordHash so the ~350ms of hashing happens BEFORE a
+ * caller opens a transaction, not while one is holding row locks.
+ *
+ * @param {string} password - already checked by passwordSchema
+ * @returns {Promise<string>}
+ */
+export const hashPassword = (password) =>
+  bcrypt.hash(password, BCRYPT_COST_FACTOR);
+
+/**
+ * Replaces a user's password hash.
+ *
+ * No cache bump, for setStripeCustomerId's reason: passwordHash is not in
+ * USER_PUBLIC_SELECT, so no cached response contains it.
+ *
+ * @param {string} userId
+ * @param {string} passwordHash - from hashPassword
+ * @param {object} [tx] - a Prisma transaction client, to run inside the caller's
+ * @returns {Promise<void>}
+ */
+export const setPasswordHash = async (userId, passwordHash, tx = prisma) => {
+  await tx.user.update({
+    where: { id: userId },
+    data: { passwordHash },
   });
 };

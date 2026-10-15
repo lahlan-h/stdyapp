@@ -4,6 +4,7 @@ import * as routineRepo from "../repositories/studyRoutine.repository.js";
 // See deleteSession for the identical case.
 import { findPostRefsByRoutine } from "../repositories/post.repository.js";
 import { invalidateDetachedPosts } from "./post.service.js";
+import { findBlockBetween } from "../repositories/block.repository.js";
 import {
   bumpVersions,
   routineContentVersionKey,
@@ -22,6 +23,12 @@ const todoNotFound = () => {
   return err;
 };
 
+const badRequest = (message) => {
+  const err = new Error(message);
+  err.status = 400;
+  return err;
+};
+
 const forbidden = () => {
   const err = new Error("You don't have access to this routine");
   err.status = 403;
@@ -35,6 +42,19 @@ const getOwnedRoutineOrThrow = async (routineId, requesterId) => {
   if (!routine) throw notFound();
   if (routine.userId !== requesterId) throw forbidden();
   return routine;
+};
+
+/**
+ * Throws a 404 when a block stands between the routine's owner and someone
+ * else, in either direction.
+ *
+ * 404 rather than 403, as everywhere blocks are enforced: a 403 would confirm
+ * the routine exists and that a block is the reason, which is exactly what a
+ * block is meant to hide. The owner is never blocked from their own routine.
+ */
+const assertNotBlocked = async (ownerId, viewerId) => {
+  if (ownerId === viewerId) return;
+  if (await findBlockBetween(ownerId, viewerId)) throw notFound();
 };
 
 /**
@@ -129,6 +149,9 @@ export const deleteRoutine = async (routineId, requesterId) => {
 export const cloneRoutine = async (sourceRoutineId, requesterId) => {
   const source = await routineRepo.findRoutineById(sourceRoutineId);
   if (!source) throw notFound();
+  // Not ownership-gated, but block-gated: a block hides a person's routines
+  // from preview, and cloning must not be a way round that.
+  await assertNotBlocked(source.userId, requesterId);
 
   const clone = await routineRepo.createRoutine({
     userId: requesterId,
@@ -154,7 +177,8 @@ export const cloneRoutine = async (sourceRoutineId, requesterId) => {
 export const addTodoItem = async (routineId, requesterId, { title, dueDate }) => {
   await getOwnedRoutineOrThrow(routineId, requesterId);
 
-  const todo = await routineRepo.createTodoItem({ routineId, title, dueDate });
+  const position = await routineRepo.findNextTodoPosition(routineId);
+  const todo = await routineRepo.createTodoItem({ routineId, title, dueDate, position });
 
   // BOTH scopes. findRoutineById embeds the items themselves, and
   // findRoutinesByUser embeds _count.todoItems — so adding one changes the
@@ -179,12 +203,14 @@ export const updateTodoItem = async (routineId, todoId, requesterId, data) => {
     isComplete,
   });
 
-  // CONTENT only, and the asymmetry is deliberate — logInterruption's exact
-  // reasoning. Ticking a task off changes the embedded items in the
-  // single-routine payload, but findRoutinesByUser carries only _count, which
-  // an update leaves alone. Bumping the owner counter here would discard a
-  // whole cached list every time someone checks a box, for nothing.
-  await invalidateRoutine({ routineIds: [routineId] });
+  // CONTENT always. OWNER only when the tick changed: findRoutinesByUser now
+  // carries completedCount, so ticking a box moves a number in the list, but
+  // renaming an item or changing its due date still does not touch the list
+  // and should not discard it.
+  await invalidateRoutine({
+    routineIds: [routineId],
+    ownerIds: isComplete === undefined ? [] : [requesterId],
+  });
 
   return updated;
 };
@@ -201,4 +227,72 @@ export const deleteTodoItem = async (routineId, todoId, requesterId) => {
   await invalidateRoutine({ routineIds: [routineId], ownerIds: [requesterId] });
 
   return result;
+};
+
+/**
+ * Unticks every item in a routine, so it can be worked through again.
+ *
+ * One write instead of one PATCH per item, which also keeps a long routine
+ * clear of the todo rate limit. Answers the routine as GET /:id would, because
+ * every box on the screen has just changed.
+ */
+export const resetRoutine = async (routineId, requesterId) => {
+  await getOwnedRoutineOrThrow(routineId, requesterId);
+
+  const { count } = await routineRepo.resetTodoItems(routineId);
+
+  // Both scopes, but only if something changed: completedCount is in the list.
+  if (count > 0) {
+    await invalidateRoutine({ routineIds: [routineId], ownerIds: [requesterId] });
+  }
+
+  return routineRepo.findRoutineById(routineId);
+};
+
+/**
+ * Puts a routine's items in the order given.
+ *
+ * todoIds must be EXACTLY this routine's items - every one, once each. A
+ * partial list is refused rather than merged, because "move these three to the
+ * top" has no single meaning when other items exist, and a client working from
+ * a stale list would quietly scramble the order. A 400 tells it to reload.
+ */
+export const reorderTodoItems = async (routineId, requesterId, todoIds) => {
+  const routine = await getOwnedRoutineOrThrow(routineId, requesterId);
+
+  const current = new Set(routine.todoItems.map((item) => item.id));
+  const sameItems =
+    todoIds.length === current.size && todoIds.every((id) => current.has(id));
+  if (!sameItems) {
+    throw badRequest("todoIds must list every item in this routine exactly once");
+  }
+
+  await routineRepo.setTodoPositions(routineId, todoIds);
+
+  // CONTENT only: the list carries counts, which an order change leaves alone.
+  await invalidateRoutine({ routineIds: [routineId] });
+
+  return routineRepo.findRoutineById(routineId);
+};
+
+/**
+ * Someone else's routine, as far as is needed to decide whether to clone it.
+ *
+ * Gated like clone - anyone signed in who has the id, unless a block stands
+ * between them - because a preview of something you may take is no more than
+ * the take itself would reveal. Shaped as findRoutinePreview selects it, with
+ * the count added so a client need not count the array.
+ */
+export const previewRoutine = async (routineId, viewerId) => {
+  const routine = await routineRepo.findRoutinePreview(routineId);
+  if (!routine) throw notFound();
+  await assertNotBlocked(routine.userId, viewerId);
+
+  const { userId, user, ...rest } = routine;
+  return {
+    ...rest,
+    owner: user,
+    isOwn: userId === viewerId,
+    todoCount: routine.todoItems.length,
+  };
 };

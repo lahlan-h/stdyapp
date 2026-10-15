@@ -13,12 +13,43 @@ import * as sessionService from "../services/session.service.js";
 
 export const start = async (req, res, next) => {
   try {
-    const { groupId } = req.validated.body;
+    const { groupId, plannedMinutes } = req.validated.body;
     const session = await sessionService.startSession({
       userId: req.user.id,
       groupId: groupId ?? null,
+      plannedMinutes: plannedMinutes ?? null,
     });
     res.status(201).json(session);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const join = async (req, res, next) => {
+  try {
+    const session = await sessionService.joinSession({
+      userId: req.user.id,
+      inviteCode: req.validated.body.inviteCode,
+    });
+    res.status(201).json(session);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const abandon = async (req, res, next) => {
+  try {
+    const session = await sessionService.abandonSession(req.validated.params.id, req.user.id);
+    res.status(200).json(session);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const room = async (req, res, next) => {
+  try {
+    const result = await sessionService.getRoom(req.validated.params.id, req.user.id);
+    res.status(200).json(result);
   } catch (err) {
     next(err);
   }
@@ -44,7 +75,10 @@ export const listMine = async (req, res, next) => {
 
 export const end = async (req, res, next) => {
   try {
-    const session = await sessionService.endSession(req.validated.params.id, req.user.id);
+    const endedAt = req.validated.body?.endedAt;
+    const session = await sessionService.endSession(req.validated.params.id, req.user.id, {
+      endedAt: endedAt ? new Date(endedAt) : undefined,
+    });
     res.status(200).json(session);
   } catch (err) {
     next(err);
@@ -62,12 +96,12 @@ export const remove = async (req, res, next) => {
 
 export const addInterruption = async (req, res, next) => {
   try {
-    const { durationSec } = req.validated.body;
+    const { durationSec, type } = req.validated.body;
 
     const interruption = await sessionService.logInterruption(
       req.validated.params.id,
       req.user.id,
-      { durationSec }
+      { durationSec, type: type ?? null }
     );
     res.status(201).json(interruption);
   } catch (err) {

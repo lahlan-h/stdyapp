@@ -17,10 +17,15 @@ export const createUser = async (req, res) => {
  * admin/discover list that wants page numbers, and the dataset is a student
  * cohort. Revisit with cursors when the social feed lands - a feed genuinely
  * needs them.
+ *
+ * The caller is passed so they can be left out of their own search results -
+ * the app's user search opens a profile, and "you" is already a tab away.
+ * req.user.id is safe to read: the router applies requireAuth to every route.
  */
 export const listUsers = async (req, res) => {
   const { items, total, page, limit } = await userService.listUsers(
     req.validated.query,
+    req.user.id,
   );
 
   res.status(200).json({

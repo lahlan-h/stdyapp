@@ -131,8 +131,15 @@ export const getStreakForUser = async (targetUserId) => {
  * session end rather than trying to detect the first one of the day at the call
  * site.
  *
+ * `now` may be IN THE PAST: an abandoned session is credited to the day it
+ * started, which can be yesterday. A day EARLIER than the streak's last
+ * active day is ignored - the table keeps only a count and a last day, so a
+ * past day cannot be slotted into the middle, and treating it as a gap would
+ * wrongly reset a streak the user has kept.
+ *
  * @param {string} userId
- * @param {Date} [now] - injectable so this is testable without mocking the clock
+ * @param {Date} [now] - the day studied; defaults to today, and is injectable so
+ *   this is testable without mocking the clock
  * @returns {Promise<object>} the effective streak after recording
  */
 export const recordStudyDay = async (userId, now = new Date()) => {
@@ -145,7 +152,9 @@ export const recordStudyDay = async (userId, now = new Date()) => {
 
   // Already counted today. Return the current state without touching the row -
   // this is the common case, since most sessions are not the first of their day.
-  if (lastActive && differenceInUtcDays(today, lastActive) === 0) {
+  // Already counted today - or this day is older than one already counted,
+  // which can only be a late-closed session and must not reset anything.
+  if (lastActive && differenceInUtcDays(today, lastActive) <= 0) {
     return toEffectiveStreak(existing);
   }
 

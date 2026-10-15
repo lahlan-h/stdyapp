@@ -29,8 +29,46 @@ const buildWhere = (userId, unreadOnly) => {
   return where;
 };
 
-export const createNotification = ({ userId, type, message }) => {
-  return prisma.notification.create({ data: { userId, type, message } });
+/**
+ * The actor as every notification read returns it: who they are and their
+ * face, the allowlist the feed's author join uses. A select, never
+ * `actor: true` - that would put the actor's email on someone else's list.
+ */
+const ACTOR_SELECT = {
+  select: {
+    id: true,
+    username: true,
+    firstName: true,
+    lastName: true,
+    avatarUrl: true,
+  },
+};
+
+// Returns the row with its actor, because the row goes straight out over the
+// notification socket - and a client handed only an actorId would have to
+// look the person up before it could link their name.
+export const createNotification = ({ userId, type, message, actorId }) => {
+  return prisma.notification.create({
+    data: { userId, type, message, actorId },
+    include: { actor: ACTOR_SELECT },
+  });
+};
+
+/**
+ * Whether this exact notification was already raised recently.
+ *
+ * Exact on the message, which is what makes it a duplicate rather than merely
+ * similar: "Maya liked your post X" twice in an hour is a like, an unlike and a
+ * like again, while Maya liking post Y is news. Served by @@index([userId,
+ * createdAt]) - the type and message are filtered from that narrow window.
+ *
+ * @returns {Promise<{ id: string } | null>}
+ */
+export const findRecentDuplicate = ({ userId, type, message, since }) => {
+  return prisma.notification.findFirst({
+    where: { userId, type, message, createdAt: { gte: since } },
+    select: { id: true },
+  });
 };
 
 /**
@@ -53,6 +91,7 @@ export const findNotificationsByUser = ({ userId, unreadOnly, skip, take }) => {
       // fan out to several - would otherwise have no defined order, and a row
       // could appear on both page 1 and page 2 or on neither.
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      include: { actor: ACTOR_SELECT },
       skip,
       take,
     }),

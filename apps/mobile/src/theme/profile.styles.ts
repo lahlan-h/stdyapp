@@ -10,6 +10,20 @@ export const PROFILE_ACTION_ICON_SIZE = 16;
 /** Icon in the study card's two figures. */
 export const PROFILE_STUDY_ICON_SIZE = 18;
 
+/**
+ * The back control on someone else's profile - the same 40px circle and 18px
+ * chevron analytics and edit-profile draw, so every pushed screen's way back
+ * looks and sits the same.
+ */
+const BACK_SIZE = 40;
+export const PROFILE_BACK_ICON_SIZE = 18;
+
+/**
+ * The gear on your own profile. Bare rather than in the back control's circle,
+ * as the design draws it, so it is sized up to hold the corner on its own.
+ */
+export const PROFILE_SETTINGS_ICON_SIZE = 26;
+
 export const createProfileStyles = (colors: ColorScheme) => {
   const styles = StyleSheet.create({
     container: {
@@ -95,6 +109,53 @@ export const createProfileStyles = (colors: ColorScheme) => {
     },
     actionLabelDanger: {
       color: colors.danger,
+    },
+    // Follow is the one action on someone else's profile, so it is the filled,
+    // primary pill; once following it drops back to the plain outline, which is
+    // what tells the two states apart at a glance before the label is read.
+    actionButtonPrimary: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    // The page's ground rather than a fixed white - see chipLabelSelected in
+    // homeSearch.styles, the same pale-blue-in-dark-mode problem.
+    actionLabelOnPrimary: {
+      color: colors.bg,
+    },
+    actionError: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.danger,
+      textAlign: "center",
+    },
+
+    // --- Top bar: back on someone else's profile, settings on your own ---
+    topBar: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    // Your own profile has nothing to go back to, so its one control sits at
+    // the far end.
+    topBarEnd: {
+      justifyContent: "flex-end",
+    },
+    // The back control's footprint without its circle, so the tap target
+    // stays 40px even though only the glyph is drawn.
+    settingsButton: {
+      width: BACK_SIZE,
+      height: BACK_SIZE,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    back: {
+      width: BACK_SIZE,
+      height: BACK_SIZE,
+      borderRadius: BACK_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
 
     // --- Stats card ---

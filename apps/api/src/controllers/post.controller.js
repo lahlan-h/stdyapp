@@ -42,7 +42,8 @@ export const getOne = async (req, res, next) => {
 };
 
 /**
- * GET /api/posts/all - one page of the global feed - every post by everyone, newest first.
+ * GET /api/posts/all - one page of the global feed - every post by everyone,
+ * newest first unless ?sort says otherwise, optionally inside a ?from/?to window.
  *
  * The only route in this file that uses Zod: the query params are validated by
  * the validate() middleware on the route, so req.validated.query is already

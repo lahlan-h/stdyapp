@@ -130,3 +130,32 @@ export const updateTodoItemSchema = z
   .refine((body) => Object.keys(body).length > 0, {
     message: "request body must contain at least one field to update",
   });
+
+/**
+ * POST /api/routines/:id/reset.
+ *
+ * EMPTY and strict, for emptyBodySchema's reason in subscription.validation.js:
+ * the route takes nothing from the client, so any key is a 400 rather than
+ * something a later edit might start forwarding.
+ */
+export const resetRoutineSchema = z.strictObject({});
+
+/**
+ * PUT /api/routines/:id/todos/order.
+ *
+ * The full new order, as ids. Whether they are exactly this routine's items is
+ * the service's check - it needs the database - but duplicates are refused
+ * here, where they cost nothing to spot. 500 is far past any real routine and
+ * bounds the transaction the service runs.
+ */
+const MAX_TODOS_PER_REORDER = 500;
+
+export const reorderTodoItemsSchema = z.strictObject({
+  todoIds: z
+    .array(z.uuid("todoIds must be UUIDs"))
+    .min(1, "todoIds must not be empty")
+    .max(MAX_TODOS_PER_REORDER, `todoIds must have at most ${MAX_TODOS_PER_REORDER} items`)
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: "todoIds must not repeat an id",
+    }),
+});

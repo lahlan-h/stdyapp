@@ -78,7 +78,9 @@ const BLOCK_EPOCH = "b1";
  * payload embeds its todo items, so each of those shapes must be free to change
  * and orphan only its own keys.
  */
-const SESSION_EPOCH = "se1";
+// se2: GET /api/sessions rows gained the history summary fields
+// (services/sessionHistory.js), so entries cached in the old shape are orphaned.
+const SESSION_EPOCH = "se2";
 const GROUP_EPOCH = "g1";
 const ROUTINE_EPOCH = "r1";
 
@@ -119,6 +121,7 @@ const GOAL_EPOCH = "go1";
 const STREAK_EPOCH = "st1";
 const SUBSCRIPTION_EPOCH = "sb1";
 const NOTIFICATION_EPOCH = "nt1";
+const ANALYTICS_EPOCH = "an1";
 
 /**
  * Version counters outlive the payloads beneath them by a wide margin, and that
@@ -750,8 +753,8 @@ export const sessionKey = (sessionId, viewerId, version) =>
  * Unlike postUserListKey this is not shared with a by-user route, because there
  * is no GET /api/sessions/user/:userId: study history is private in this API.
  * If one is ever added, it must NOT share this key unless it returns the
- * identical shape - findSessionsByUser omits interruptions, findSessionById
- * includes them.
+ * identical shape - findSessionsByUser summarises interruptions and the
+ * self-rating into counts, findSessionById includes the interruption rows.
  *
  * @param {string} userId @param {number} version
  */
@@ -1149,3 +1152,27 @@ export const bumpVersions = async (keys) => {
     noteFailure(`incr ${unique.length} versions`, err);
   }
 };
+
+/**
+ * Personal analytics - GET /api/analytics/me.
+ *
+ * Stamped with three counters from three domains (sessions, goals, streak) and
+ * with today's date in the caller's zone - see the note above cacheMine in
+ * analytics.routes.js for why each is there.
+ *
+ * range and tz are in the key because they change the answer. tz must be the
+ * CANONICAL spelling analytics.validation.js produces, or one answer is cached
+ * under several keys.
+ *
+ * No viewer segment, unlike sessionKey: the route only ever answers for the
+ * token's own user, so the subject IS the viewer.
+ *
+ * @param {string} userId
+ * @param {{ range: string, tz: string, today: string, sessionVersion: number,
+ *   goalVersion: number, streakVersion: number }} parts
+ */
+export const analyticsKey = (
+  userId,
+  { range, tz, today, sessionVersion, goalVersion, streakVersion },
+) =>
+  `${ANALYTICS_EPOCH}:analytics:me:${userId}:${range}:${tz}:${today}:s${sessionVersion}:g${goalVersion}:t${streakVersion}`;

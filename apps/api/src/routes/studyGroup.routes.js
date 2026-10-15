@@ -3,9 +3,12 @@ import {
   create,
   getOne,
   search,
+  mine,
+  liveSessions,
   update,
   remove,
   transferOwnership,
+  regenerateJoinCode,
   join,
   leave,
   members,
@@ -112,8 +115,13 @@ const cacheMembers = cache({
 router.post("/", writeLimit, validate({ body: createGroupSchema }), create);
 
 // UNCACHED by design — see the note above. ?q=searchTerm; omit q to list
-// everything.
+// everything. Paginated: ?page and ?limit, answered in { data, pagination }.
 router.get("/", readLimit, validate({ query: searchGroupsQuerySchema }), search);
+
+// UNCACHED, for search's reason: it is a list whose membership changes with
+// writes to many groups. Declared BEFORE /:id, which would otherwise take
+// "mine" as an id and answer 400.
+router.get("/mine", readLimit, mine);
 
 router.get(
   "/:id",
@@ -121,6 +129,15 @@ router.get(
   validate({ params: groupIdParamSchema }),
   cacheOne,
   getOne,
+);
+
+// UNCACHED: "who is studying now" goes stale the moment anyone starts or ends,
+// and those writes live in session.service.js, which bumps no group counter.
+router.get(
+  "/:id/sessions",
+  readLimit,
+  validate({ params: groupIdParamSchema }),
+  liveSessions,
 );
 
 router.patch(
@@ -142,6 +159,15 @@ router.patch(
   writeLimit,
   validate({ params: groupIdParamSchema, body: transferOwnershipSchema }),
   transferOwnership,
+);
+
+// writeLimit, not joinLimit: only the owner can call it, so there is nothing
+// to guess - it is an ordinary owner write.
+router.post(
+  "/:id/join-code",
+  writeLimit,
+  validate({ params: groupIdParamSchema }),
+  regenerateJoinCode,
 );
 
 router.post(
