@@ -87,6 +87,7 @@ export {
   PROFILE_ACTION_ICON_SIZE,
   PROFILE_STUDY_ICON_SIZE,
   PROFILE_BACK_ICON_SIZE,
+  PROFILE_SETTINGS_ICON_SIZE,
 } from "./profile.styles";
 export {
   createHomeSearchStyles,

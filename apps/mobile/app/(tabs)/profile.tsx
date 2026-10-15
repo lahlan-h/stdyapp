@@ -3,7 +3,13 @@ import { Pressable, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 
-import { useTabBarClearance, useTheme, useStyles, PROFILE_ACTION_ICON_SIZE } from "@theme";
+import {
+  useTabBarClearance,
+  useTheme,
+  useStyles,
+  PROFILE_ACTION_ICON_SIZE,
+  PROFILE_SETTINGS_ICON_SIZE,
+} from "@theme";
 import {
   useProfile,
   useUserPosts,
@@ -22,7 +28,7 @@ import ProfileActions from "@components/ProfileActions";
  * anyone else opened from search. What is THIS screen's alone is its reads -
  * /api/auth/me and the session totals, both of which only ever answer for the
  * caller - and its actions, edit and sign out, which mean nothing on someone
- * else's profile.
+ * else's profile. The settings gear is the same: settings are yours alone.
  */
 const Profile = () => {
   // What the floating tab bar covers, inset included - without it the last
@@ -54,6 +60,26 @@ const Profile = () => {
     }, [reloadPosts]),
   );
 
+  /**
+   * Settings sit behind this gear rather than on the tab bar: they are visited
+   * rarely, and the bar's slots belong to the screens used every day.
+   *
+   * Shown on the error screen too, because Settings is also where you sign out
+   * - a profile that will not load must not trap you in the account.
+   */
+  const topBar = (
+    <View style={[styles.topBar, styles.topBarEnd]}>
+      <Pressable
+        style={({ pressed }) => [styles.settingsButton, pressed && { opacity: 0.6 }]}
+        onPress={() => router.push("/settings")}
+        accessibilityRole="button"
+        accessibilityLabel="Settings"
+      >
+        <Feather name="settings" size={PROFILE_SETTINGS_ICON_SIZE} color={colors.text} />
+      </Pressable>
+    </View>
+  );
+
   if (profileLoading) return <ProfileLoading />;
 
   if (!profile) {
@@ -61,6 +87,7 @@ const Profile = () => {
       <ProfileMessage
         message={loadError ?? "Could not load your profile."}
         onRetry={reloadProfile}
+        topBar={topBar}
       />
     );
   }
@@ -93,6 +120,7 @@ const Profile = () => {
           </View>
         </>
       }
+      topBar={topBar}
       bottomPadding={tabBarClearance}
     />
   );
