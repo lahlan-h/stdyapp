@@ -40,6 +40,21 @@ export const TRACE_GRID_LINES = [25, 50, 75] as const;
 /** Air under the last control, on top of the tab bar clearance. */
 export const STUDY_FOOTER_ROOM = 32;
 
+/** Plot height of the weekly analytics card - the tallest bar fills it. */
+export const WEEK_CHART_HEIGHT = 170;
+
+/** Width of one bar; each day draws two, last week's and this week's. */
+const WEEK_BAR_WIDTH = 10;
+
+/** The arrow in the "vs last week" pill. */
+export const WEEK_PILL_ICON_SIZE = 14;
+
+/** The chart and lock glyphs either side of "See Advanced Analytics". */
+export const ADVANCED_ANALYTICS_ICON_SIZE = 24;
+
+/** The chevron on a Begin card row that starts something. */
+export const BEGIN_CHEVRON_SIZE = 18;
+
 export const createStudyStyles = (colors: ColorScheme) => {
   const styles = StyleSheet.create({
     container: { flex: 1 },
@@ -316,35 +331,8 @@ export const createStudyStyles = (colors: ColorScheme) => {
     },
 
     /**
-     * The mark at the top of the recap.
-     *
-     * A vector icon rather than an emoji: emoji render differently on every
-     * platform, cannot take a palette colour, and drift from the rest of the
-     * icon set.
-     */
-    heroBadge: {
-      width: 62,
-      height: 62,
-      borderRadius: 20,
-      alignSelf: "center",
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.successTint,
-      borderWidth: 1,
-      borderColor: colors.successEdge,
-    },
-
-    recapHeader: { alignItems: "center", gap: 3 },
-    recapTitle: {
-      fontSize: 26,
-      fontWeight: "700",
-      color: colors.text,
-      letterSpacing: -0.5,
-    },
-    recapSubtitle: { fontSize: 14, color: colors.textMuted },
-
-    /**
-     * ONE CARD PER METRIC, rather than rows inside a single card.
+     * ONE CARD PER METRIC, rather than rows inside a single card - used by a
+     * past session's detail screen.
      *
      * Each number is a separate thing the user might care about, and separate
      * cards let the eye land on one without reading the others. A grouped list
@@ -382,22 +370,6 @@ export const createStudyStyles = (colors: ColorScheme) => {
     },
     bandPillText: { fontSize: 13, fontWeight: "600" },
     bandDot: { width: 7, height: 7, borderRadius: 3.5 },
-
-    // ---- rewards ---------------------------------------------------------
-    rewardRow: { flexDirection: "row", gap: 10 },
-    rewardCard: {
-      flex: 1,
-      gap: 3,
-      paddingVertical: 14,
-      paddingHorizontal: 14,
-      borderRadius: 16,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    rewardTop: { flexDirection: "row", alignItems: "center", gap: 7 },
-    rewardValue: { fontSize: 17, fontWeight: "700", fontVariant: ["tabular-nums"] },
-    rewardCaption: { fontSize: 12, color: colors.textMuted },
 
     // ---- trace -----------------------------------------------------------
     traceCard: {
@@ -735,6 +707,202 @@ export const createStudyStyles = (colors: ColorScheme) => {
       height: 7,
       borderRadius: 4,
       backgroundColor: colors.success,
+    },
+
+    // ---- weekly analytics card ------------------------------------------
+    // Larger radius and padding than the setup cards: it is the screen's
+    // headline, as the design draws it, not one more row of settings.
+    weekCard: {
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 20,
+      gap: 14,
+    },
+    weekTitle: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 18,
+      color: colors.text,
+    },
+    weekHeadline: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      justifyContent: "space-between",
+      gap: 12,
+    },
+    weekCaption: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 12,
+      color: colors.textMuted,
+    },
+    weekTotalRow: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: 6,
+    },
+    weekTotal: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 34,
+      color: colors.text,
+    },
+    weekUnit: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 18,
+      color: colors.textMuted,
+    },
+    // Colours come from the screen: green when up, red when down.
+    weekPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: 7,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      borderWidth: 1,
+      marginBottom: 6,
+    },
+    weekPillText: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 13,
+    },
+    weekError: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.danger,
+    },
+    weekChart: {
+      height: WEEK_CHART_HEIGHT,
+      flexDirection: "row",
+      alignItems: "flex-end",
+    },
+    // One column per day, each holding its pair of bars side by side.
+    weekDay: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "flex-end",
+      justifyContent: "center",
+      gap: 3,
+    },
+    weekBar: {
+      width: WEEK_BAR_WIDTH,
+      borderRadius: 4,
+      backgroundColor: colors.primary,
+    },
+    // Last week is the same blue, stepped back - one hue for one measure, so
+    // the pair reads as then-and-now rather than two different things.
+    weekBarLast: {
+      opacity: 0.4,
+    },
+    weekAxis: {
+      flexDirection: "row",
+    },
+    weekAxisLabel: {
+      flex: 1,
+      textAlign: "center",
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 11,
+      color: colors.textMuted,
+    },
+    weekLegend: {
+      flexDirection: "row",
+      gap: 18,
+    },
+    weekLegendItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    weekLegendSwatch: {
+      width: 16,
+      height: 16,
+      borderRadius: 4,
+      backgroundColor: colors.primary,
+    },
+    weekLegendLabel: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.textMuted,
+    },
+
+    // ---- "See Advanced Analytics" ---------------------------------------
+    // The weekly card's shape, so the two read as a pair.
+    advancedRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 20,
+      paddingHorizontal: 20,
+    },
+    advancedLabel: {
+      flex: 1,
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 17,
+      color: colors.text,
+    },
+
+    // ---- Begin card -----------------------------------------------------
+    beginCard: {
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 20,
+      gap: 12,
+    },
+    beginTitle: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 18,
+      color: colors.text,
+    },
+    // A transparent edge on every row, so the lit one's border does not make
+    // it a pixel taller than the rest.
+    beginOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: TOUCH_MIN,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: "transparent",
+    },
+    // The mode that works today, lit the way the design lights it.
+    beginOptionPrimary: {
+      backgroundColor: colors.primaryTint,
+      borderColor: colors.primaryEdge,
+    },
+    beginOptionDisabled: {
+      opacity: 0.55,
+    },
+    beginOptionText: {
+      flex: 1,
+      gap: 2,
+    },
+    beginOptionTitle: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 16,
+      color: colors.text,
+    },
+    beginOptionCaption: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.textMuted,
+    },
+    beginBadge: {
+      paddingVertical: 3,
+      paddingHorizontal: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    beginBadgeText: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 10,
+      letterSpacing: 0.8,
+      color: colors.textMuted,
     },
   });
 

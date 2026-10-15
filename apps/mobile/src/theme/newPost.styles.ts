@@ -96,6 +96,25 @@ export const createNewPostStyles = (colors: ColorScheme) => {
       paddingTop: 2,
     },
 
+    // --- The finished session's numbers, under the title ---
+    sessionStats: {
+      gap: 2,
+      paddingHorizontal: 6,
+    },
+    sessionStatLabel: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.textMuted,
+    },
+    // Primary, as Hevy colours its duration: the one number here that is
+    // the app's to state rather than the user's to fill in.
+    sessionStatValue: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 20,
+      color: colors.primary,
+      fontVariant: ["tabular-nums"],
+    },
+
     // --- Section ---
     section: {
       gap: 8,

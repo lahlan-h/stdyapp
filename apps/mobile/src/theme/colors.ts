@@ -37,6 +37,13 @@ export interface ColorScheme {
   successTint: string;
   successEdge: string;
   /**
+   * `primary` at low alpha - the blue twin of the pairs above, for a choice
+   * that is lit up without being a solid button (the Study tab's Begin card).
+   * Derived from `primary` for the same reason those are derived from theirs.
+   */
+  primaryTint: string;
+  primaryEdge: string;
+  /**
    * The unread counter on the notifications button.
    *
    * THE SAME DEEP RED IN BOTH THEMES, and not `danger`: the counter carries
@@ -128,6 +135,8 @@ export const lightColors: ColorScheme = {
   dangerEdge: "rgba(239,68,68,0.28)",
   successTint: "rgba(16,185,129,0.12)",
   successEdge: "rgba(16,185,129,0.28)",
+  primaryTint: "rgba(59,130,246,0.12)",
+  primaryEdge: "rgba(59,130,246,0.32)",
   notificationBadge: "#dc2626",
   scrim: "rgba(0,0,0,0.55)",
   brandBanner: "#0f172a",
@@ -171,6 +180,8 @@ export const darkColors: ColorScheme = {
   // held its light-theme alpha would all but vanish against the dark surface.
   successTint: "rgba(52,211,153,0.16)",
   successEdge: "rgba(52,211,153,0.34)",
+  primaryTint: "rgba(96,165,250,0.16)",
+  primaryEdge: "rgba(96,165,250,0.38)",
   notificationBadge: "#dc2626",
   scrim: "rgba(0,0,0,0.55)",
   brandBanner: "transparent",

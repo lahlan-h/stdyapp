@@ -24,6 +24,8 @@ const BADGE_MAX = 9;
 interface HomeSearchPanelProps {
   /** The status-bar inset. The panel draws behind it, so its blur runs to the top edge. */
   topInset: number;
+  /** The row above the search box - the feed's audience title. */
+  title: ReactNode;
   query: string;
   onChangeQuery: (query: string) => void;
   /** Focusing the box is what opens search - there is no separate button. */
@@ -198,6 +200,7 @@ const HomeSearchPanel = forwardRef<TextInput, HomeSearchPanelProps>(
   (
     {
       topInset,
+      title,
       query,
       onChangeQuery,
       onFocusSearch,
@@ -256,6 +259,8 @@ const HomeSearchPanel = forwardRef<TextInput, HomeSearchPanelProps>(
           tint={isDarkMode ? "dark" : "light"}
           style={styles.panelSurface}
         />
+
+        {title}
 
         <View style={styles.panelRow}>
           <View style={[styles.searchBox, open === "search" && styles.searchBoxFocused]}>

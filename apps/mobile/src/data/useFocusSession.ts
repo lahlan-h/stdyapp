@@ -248,14 +248,27 @@ export interface FocusSessionState {
    */
   join: (inviteCode: string, groupName?: string, options?: { switching?: boolean }) => void;
   end: () => void;
+  /**
+   * Throws the running session away: the row is deleted, so the time counts
+   * for nothing - no streak, no analytics, nothing to post. The floating
+   * session bar's bin. A failure leaves the session running and says so.
+   */
+  discard: () => void;
   rate: (value: number) => void;
   reset: () => void;
 }
 
-export const useFocusSession = (): FocusSessionState => {
+/**
+ * The session's state and controls. Called ONCE, by FocusSessionProvider -
+ * screens read it through useFocusSession(), so every tab sees the same clock.
+ */
+export const useFocusSessionState = (): FocusSessionState => {
   const [phase, setPhase] = useState<FocusPhase>("idle");
   const [elapsedSec, setElapsedSec] = useState(0);
-  const [plannedSec, setPlannedSec] = useState(25 * 60);
+  // Open-ended by default: the Study tab's "Normal / Unlimited" is a stopwatch
+  // that runs until End. A plan, and the countdown that comes with it, is
+  // still supported for a timed mode to set.
+  const [plannedSec, setPlannedSec] = useState(0);
   const [sampleCount, setSampleCount] = useState(0);
   const [liveFocus, setLiveFocus] = useState<number | null>(null);
   const [awaySec, setAwaySec] = useState(0);
@@ -459,9 +472,8 @@ export const useFocusSession = (): FocusSessionState => {
     };
   }, [sendSample, settleAway, startMotion, stopMotion, startPhoneDown, stopPhoneDown, wasPhoneDownRecently]);
 
-  // Nothing may outlive the screen: an interval still posting samples after
-  // the user has navigated away would keep writing to a session they think
-  // they left.
+  // Nothing may outlive the provider: an interval still posting samples after
+  // sign-out would keep writing to a session nobody can see any more.
   useEffect(() => () => stopTimers.current(), []);
 
   /**
@@ -936,6 +948,38 @@ export const useFocusSession = (): FocusSessionState => {
     setError(undefined);
   }, []);
 
+  const discard = useCallback(() => {
+    const sessionId = sessionIdRef.current;
+    if (busy || !sessionId) return;
+    setBusy(true);
+    setError(undefined);
+
+    void (async () => {
+      try {
+        // DELETE rather than end-then-delete: ending would bank the streak
+        // and points that discarding exists to refuse.
+        await withAuth((token) =>
+          request(`/api/sessions/${sessionId}`, { method: "DELETE", token }),
+        );
+      } catch (err) {
+        // Already gone is the outcome that was wanted. Anything else keeps
+        // the session running - the clock never stopped - so nothing is lost
+        // and the bin can be tapped again.
+        if (!(err instanceof ApiError && err.status === 404)) {
+          setError(describe(err));
+          setBusy(false);
+          return;
+        }
+      }
+
+      // Forgotten only once the row is gone: the RUNNING_KEY is what would
+      // otherwise have the next launch close it as a real session.
+      clearRunning();
+      reset();
+      setBusy(false);
+    })();
+  }, [busy, reset]);
+
   /**
    * Counts DOWN against a plan and up without one, matching what the dial
    * shows. Floored at zero rather than going negative: running over a plan is
@@ -978,6 +1022,7 @@ export const useFocusSession = (): FocusSessionState => {
     start,
     join,
     end,
+    discard,
     rate,
     reset,
   };

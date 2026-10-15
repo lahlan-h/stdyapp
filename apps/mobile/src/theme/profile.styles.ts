@@ -18,6 +18,12 @@ export const PROFILE_STUDY_ICON_SIZE = 18;
 const BACK_SIZE = 40;
 export const PROFILE_BACK_ICON_SIZE = 18;
 
+/**
+ * The gear on your own profile. Bare rather than in the back control's circle,
+ * as the design draws it, so it is sized up to hold the corner on its own.
+ */
+export const PROFILE_SETTINGS_ICON_SIZE = 26;
+
 export const createProfileStyles = (colors: ColorScheme) => {
   const styles = StyleSheet.create({
     container: {
@@ -123,10 +129,23 @@ export const createProfileStyles = (colors: ColorScheme) => {
       textAlign: "center",
     },
 
-    // --- Back bar (someone else's profile only) ---
+    // --- Top bar: back on someone else's profile, settings on your own ---
     topBar: {
       flexDirection: "row",
       alignItems: "center",
+    },
+    // Your own profile has nothing to go back to, so its one control sits at
+    // the far end.
+    topBarEnd: {
+      justifyContent: "flex-end",
+    },
+    // The back control's footprint without its circle, so the tap target
+    // stays 40px even though only the glyph is drawn.
+    settingsButton: {
+      width: BACK_SIZE,
+      height: BACK_SIZE,
+      alignItems: "center",
+      justifyContent: "center",
     },
     back: {
       width: BACK_SIZE,

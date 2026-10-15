@@ -14,9 +14,10 @@ import Feather from "@expo/vector-icons/Feather";
 import { useTheme, useStyles } from "@theme";
 
 /**
- * The self-rating, as a sheet over the recap rather than a screen of its own.
+ * The self-rating, as a sheet over the composer rather than a screen of its
+ * own - ending a session opens the composer, and this rises over it.
  *
- * A screen would make rating feel like a second task; a sheet keeps the recap
+ * A screen would make rating feel like a second task; a sheet keeps the post
  * visible behind it and makes answering feel like part of finishing. It also
  * gives the answer a cheap way out - flick it down - which matters, because a
  * rating the user felt cornered into is worse data than no rating.

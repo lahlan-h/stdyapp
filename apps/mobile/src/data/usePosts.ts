@@ -9,7 +9,12 @@ import {
 import { request } from "./api";
 import { withAuth } from "./auth";
 import { toFeedPost, type RawFeedRow } from "./feedMapping";
-import { toFeedQuery, type FeedFilters } from "./feedFilters";
+import {
+  toFeedQuery,
+  toAudienceQuery,
+  type FeedFilters,
+  type FeedAudience,
+} from "./feedFilters";
 import * as postStore from "./postStore";
 import type { FeedPost } from "./types";
 
@@ -74,12 +79,16 @@ export interface FeedState {
  * writes there too - the store holds whichever feed is on screen, which is the
  * one the detail screen is opened from.
  *
- * Changing the filter re-reads from page one. The filter is compared as its
- * query string, so a new object with the same contents does not refetch.
+ * Changing the filter or the audience re-reads from page one. Both are compared
+ * as their query string, so a new object with the same contents does not
+ * refetch. With no audience the API's own default applies: everyone.
  */
-export const usePosts = (filters?: FeedFilters): FeedState => {
+export const usePosts = (filters?: FeedFilters, audience?: FeedAudience): FeedState => {
   const posts = useSyncExternalStore(postStore.subscribe, postStore.getSnapshot);
-  const query = filters ? toFeedQuery(filters) : DEFAULT_QUERY;
+  const query = [
+    filters ? toFeedQuery(filters) : DEFAULT_QUERY,
+    ...(audience ? [toAudienceQuery(audience)] : []),
+  ].join("&");
 
   const [page, setPage] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(false);
