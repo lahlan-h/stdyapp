@@ -24,6 +24,7 @@ import {
   METRICS,
   MIN_SCORED_SESSIONS,
   minSessionsFor,
+  windowStart,
   audienceIds,
   rankRows,
   toEntry,
@@ -437,10 +438,9 @@ export const getAccuracy = async (userId) => {
   };
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 /**
- * A ranked board over a recent window (or all time), biggest first.
+ * A ranked board over a recent window, the calendar week so far, or all time,
+ * biggest first.
  *
  * Three metrics, all from columns finalise already wrote onto the session row:
  *   - weightedMinutes (default): minutes scaled by the estimate. Weighted
@@ -465,7 +465,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * existence is not the secret, its standings are.
  *
  * @param {string} userId - the caller
- * @param {{ scope?: "following"|"global"|"group", groupId?: string, metric?: string, days?: number|"all", limit?: number }} options
+ * @param {{ scope?: "following"|"global"|"group", groupId?: string, metric?: string, days?: number|"week"|"all", tz?: string, limit?: number }} options
+ *   tz is canonical, and only read for days="week" - see windowStart
+ * @param {Date} [now] - injectable for tests, like getMyAnalytics
  */
 export const getLeaderboard = async (
   userId,
@@ -474,10 +476,12 @@ export const getLeaderboard = async (
     groupId,
     metric = METRICS.WEIGHTED_MINUTES,
     days = 7,
+    tz = "UTC",
     limit = 20,
   } = {},
+  now = new Date(),
 ) => {
-  const since = days === "all" ? null : new Date(Date.now() - days * DAY_MS);
+  const since = windowStart(days, tz, now);
   const isFollowing = scope === "following";
   const isGroup = scope === "group";
 

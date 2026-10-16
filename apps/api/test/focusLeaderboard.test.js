@@ -5,6 +5,7 @@ import {
   METRICS,
   MIN_SCORED_SESSIONS,
   minSessionsFor,
+  windowStart,
   audienceIds,
   rankRows,
   roundValue,
@@ -36,6 +37,57 @@ describe("minSessionsFor", () => {
 
   it("the floor is more than one, or it would not stop a single lucky session", () => {
     assert.ok(MIN_SCORED_SESSIONS > 1);
+  });
+});
+
+describe("windowStart", () => {
+  // Wednesday 14 Oct 2026, 12:00 UTC - 11pm in Sydney, 8am in New York.
+  const wednesday = new Date("2026-10-14T12:00:00Z");
+
+  it("is null for all time", () => {
+    assert.equal(windowStart("all", "UTC", wednesday), null);
+  });
+
+  it("is a rolling window for a number of days, wherever the caller is", () => {
+    const expected = "2026-10-07T12:00:00.000Z";
+    assert.equal(windowStart(7, "UTC", wednesday).toISOString(), expected);
+    assert.equal(windowStart(7, "Australia/Sydney", wednesday).toISOString(), expected);
+  });
+
+  it("starts the week at Monday midnight in the caller's zone", () => {
+    assert.equal(windowStart("week", "UTC", wednesday).toISOString(), "2026-10-12T00:00:00.000Z");
+    // Monday 00:00 at +11.
+    assert.equal(
+      windowStart("week", "Australia/Sydney", wednesday).toISOString(),
+      "2026-10-11T13:00:00.000Z",
+    );
+    // Monday 00:00 at -4.
+    assert.equal(
+      windowStart("week", "America/New_York", wednesday).toISOString(),
+      "2026-10-12T04:00:00.000Z",
+    );
+  });
+
+  it("asks which day it is where the caller is, not in UTC", () => {
+    // 20:00 UTC on Sunday the 18th is already Monday morning in Sydney - a
+    // new week there - and still Sunday afternoon in New York.
+    const sundayEvening = new Date("2026-10-18T20:00:00Z");
+    assert.equal(
+      windowStart("week", "Australia/Sydney", sundayEvening).toISOString(),
+      "2026-10-18T13:00:00.000Z",
+    );
+    assert.equal(
+      windowStart("week", "America/New_York", sundayEvening).toISOString(),
+      "2026-10-12T04:00:00.000Z",
+    );
+  });
+
+  it("is a week of nothing yet at the first instant of Monday", () => {
+    const mondayMidnight = new Date("2026-10-11T13:00:00Z");
+    assert.equal(
+      windowStart("week", "Australia/Sydney", mondayMidnight).getTime(),
+      mondayMidnight.getTime(),
+    );
   });
 });
 

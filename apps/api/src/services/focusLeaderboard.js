@@ -7,6 +7,10 @@
  * decide only WHICH rows to load.
  */
 
+import { localParts, startOfLocalDay, weekStartKey } from "../utils/timeZone.js";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
  * What a board can rank by. The values double as the `metric` query param and
  * mirror LEADERBOARD_METRICS in focus.validation.js.
@@ -36,6 +40,32 @@ export const MIN_SCORED_SESSIONS = 3;
  */
 export const minSessionsFor = (metric) =>
   metric === METRICS.FOCUS_SCORE ? MIN_SCORED_SESSIONS : 1;
+
+/**
+ * Where a board's window starts, or null for all time.
+ *
+ * A number is a rolling window: that many days before now, the same instant
+ * wherever the caller is. "week" is the calendar week so far, from Monday
+ * midnight in the caller's zone - the week the app's weekly card and weekly
+ * goal count, so a board that says "this week" covers the same days they do.
+ *
+ * The same days, not always the same sessions: a board counts a session by
+ * when it ENDED, as every board does, where the weekly card files it under the
+ * day it started. A session run across Sunday midnight is last week's there
+ * and this week's here.
+ *
+ * @param {number|"week"|"all"} days
+ * @param {string} timeZone - canonical; only read for "week"
+ * @param {Date} now
+ * @returns {Date|null}
+ */
+export const windowStart = (days, timeZone, now) => {
+  if (days === "all") return null;
+  if (days === "week") {
+    return startOfLocalDay(weekStartKey(localParts(now, timeZone).dateKey), timeZone);
+  }
+  return new Date(now.getTime() - days * DAY_MS);
+};
 
 /**
  * Who a bounded board is about: everyone the caller follows (a "following"
