@@ -80,9 +80,19 @@ const RatingSheet = ({ visible, value, onRate, onClose }: RatingSheetProps) => {
 
   const pan = useRef(
     PanResponder.create({
-      // Claim the gesture only once it is clearly a downward drag, so a tap on
-      // a rating button is never swallowed by the sheet.
+      // Claimed as the touch STARTS, not once it is seen to move: on iOS, in
+      // this Modal over the composer's native modal, the sheet is never asked
+      // about a move, so waiting for one left it deaf to every drag. The
+      // buttons still get their taps - a touch is offered to the deepest view
+      // first, so a rating or Submit claims its own before the sheet is asked.
+      onStartShouldSetPanResponder: () => true,
+      // Wherever moves ARE offered, a drag begun on a button still moves the
+      // sheet once it is clearly downward.
       onMoveShouldSetPanResponder: (_, g) => g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx),
+      // Once dragging, the sheet keeps the finger; and if the system takes it
+      // anyway, it springs back rather than staying half-way down.
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderTerminate: () => open(),
       onPanResponderMove: (_, g) => {
         // Downward only. Letting it follow upward drags would lift the sheet
         // off the bottom of the screen and expose the backdrop beneath it.
