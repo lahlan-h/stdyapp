@@ -170,7 +170,7 @@ const Study = () => {
   const shareInvite = async () => {
     if (!activeGroup?.inviteCode) return;
     const code = activeGroup.inviteCode;
-    const message = `Study with me in ${activeGroup.name} on stdy - join with code ${code}`;
+    const message = `Study with me in ${activeGroup.name} on stdy - type ${code} on the Study tab to join.`;
 
     if (Platform.OS !== "web") {
       void Share.share({ message });
@@ -311,7 +311,12 @@ const Study = () => {
           {view === "routines" ? <RoutineList /> : null}
           {/* While a session runs the Groups view only shows your groups:
               joining and making them is for before you start. */}
-          {view === "groups" ? <GroupList sessionRunning={phase === "running"} /> : null}
+          {view === "groups" ? (
+            <GroupList
+              sessionRunning={phase === "running"}
+              onJoinedSession={() => setView("sessions")}
+            />
+          ) : null}
 
           {showingSessions && error ? (
             <View style={styles.errorBox}>

@@ -11,6 +11,11 @@ export type JoinByCodeResult =
   | { kind: "joined"; group: StudyGroup }
   /** Already a member: not an error, just the group to open. */
   | { kind: "already"; groupId: string }
+  /**
+   * Not a group's code but a live group SESSION's - for the caller to join
+   * that session, through the study session itself.
+   */
+  | { kind: "session"; code: string; groupName: string | null }
   /** No such code, or the request failed - `error` says which. */
   | { kind: "failed" };
 
@@ -28,7 +33,8 @@ export interface JoinGroupByCodeState {
  * POST /api/groups/join takes the code alone, public group or private: the
  * code is the key. A group you are already in answers 409 with its id, which
  * this turns into somewhere to go rather than an error, since typing your own
- * group's code just means you wanted to see it.
+ * group's code just means you wanted to see it. A live session's code - typed
+ * into the same boxes - comes back as "session", for the caller to join.
  */
 export const useJoinGroupByCode = (): JoinGroupByCodeState => {
   const [isJoining, setIsJoining] = useState(false);
@@ -49,6 +55,13 @@ export const useJoinGroupByCode = (): JoinGroupByCodeState => {
       if (err instanceof ApiError && err.status === 409 && typeof err.data.groupId === "string") {
         return { kind: "already", groupId: err.data.groupId };
       }
+      if (err instanceof ApiError && err.status === 404 && typeof err.data.sessionCode === "string") {
+        return {
+          kind: "session",
+          code: err.data.sessionCode,
+          groupName: typeof err.data.groupName === "string" ? err.data.groupName : null,
+        };
+      }
       setError(describeJoinError(err));
       return { kind: "failed" };
     } finally {
@@ -64,5 +77,5 @@ export const useJoinGroupByCode = (): JoinGroupByCodeState => {
 /** A 404 here is a mistyped code, not a missing group - say it that way. */
 const describeJoinError = (err: unknown): string =>
   err instanceof ApiError && err.status === 404
-    ? "No group has that code. Check it and try again."
+    ? "No group or session has that code. Check it and try again."
     : describeGroupError(err, "Could not join that group.");

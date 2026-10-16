@@ -16,6 +16,8 @@ interface GroupListProps {
    * the middle of a session, where it would only be a distraction.
    */
   sessionRunning?: boolean;
+  /** A session's code was typed into the join card and its session joined. */
+  onJoinedSession?: () => void;
 }
 
 /**
@@ -26,7 +28,7 @@ interface GroupListProps {
  * the Study tab's own scroller, under the view switch, and mounts only while
  * that switch is on Groups.
  */
-const GroupList = ({ sessionRunning = false }: GroupListProps) => {
+const GroupList = ({ sessionRunning = false, onJoinedSession }: GroupListProps) => {
   const { colors } = useTheme();
   const styles = useGroupsStyles();
   const {
@@ -102,7 +104,7 @@ const GroupList = ({ sessionRunning = false }: GroupListProps) => {
         </View>
       ) : (
         <>
-          <JoinOrCreateGroupCard />
+          <JoinOrCreateGroupCard onJoinedSession={onJoinedSession} />
 
           {/* Public groups, to browse. A private one is found here too, but
               only its code - from someone in it - lets you in. */}
