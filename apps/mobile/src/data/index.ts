@@ -255,6 +255,7 @@ export {
 } from "./useAnalytics";
 export { toWeekComparison, type WeekComparison } from "./weekComparison";
 export { useSessionRating, type SessionRatingState } from "./useSessionRating";
+export { defaultPostTitle } from "./defaultPostTitle";
 export { useDiscardSession, type DiscardSessionState } from "./useDiscardSession";
 export {
   useLeaderboard,
