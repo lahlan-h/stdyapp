@@ -11,6 +11,7 @@
  * group's rooms is a different question, which the group page's "Studying now"
  * still answers.
  */
+import { activeMs } from "./sessionPause.js";
 
 /** "Ada Lovelace", "Ada", or null - leaderboard rows use the same rule. */
 const displayNameOf = (user) => {
@@ -37,11 +38,13 @@ const displayNameOf = (user) => {
  *   groupId: string|null,
  *   startedAt: Date,
  *   plannedMinutes: number|null,
+ *   pausedAt?: Date|null,
+ *   pausedSeconds?: number,
  *   user: { id: string, username: string, firstName?: string|null, lastName?: string|null, avatarUrl?: string|null },
  * }>} sessions - open sessions, any order
- * @param {{ groupId: string, viewerId: string }} context
+ * @param {{ groupId: string, viewerId: string, now?: Date }} context
  */
-export const toStudyingNow = (sessions, { groupId, viewerId }) => {
+export const toStudyingNow = (sessions, { groupId, viewerId, now = new Date() }) => {
   const newestByUser = new Map();
   for (const session of sessions) {
     const kept = newestByUser.get(session.userId);
@@ -60,6 +63,12 @@ export const toStudyingNow = (sessions, { groupId, viewerId }) => {
       displayName: displayNameOf(session.user),
       avatarUrl: session.user.avatarUrl ?? null,
       startedAt: session.startedAt,
+      // How long they have STUDIED so far, breaks left out, as of `now` - so
+      // the strip says "42m" for 42 minutes of study, not of wall clock. A
+      // client adds the seconds since it fetched, while they are not on a break.
+      studiedSeconds: Math.round(activeMs(session, now) / 1000),
+      // On one of their breaks right now - the strip shows it instead of a time.
+      onBreak: Boolean(session.pausedAt),
       plannedMinutes: session.plannedMinutes,
       // Whether they are studying IN this group - one of its rooms - rather
       // than on their own. Never which other group: that is not this group's

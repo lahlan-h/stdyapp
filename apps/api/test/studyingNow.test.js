@@ -75,6 +75,25 @@ describe("toStudyingNow", () => {
     }
   });
 
+  it("says who is on a break, and counts studied time without breaks", () => {
+    const now = new Date("2026-10-16T10:00:00Z");
+    const [resting, working] = toStudyingNow(
+      [
+        // An hour in, four minutes of it banked break, and a break running for two.
+        session("ada", "2026-10-16T09:00:00Z", {
+          pausedSeconds: 240,
+          pausedAt: new Date("2026-10-16T09:58:00Z"),
+        }),
+        session("bo", "2026-10-16T09:30:00Z"),
+      ],
+      { groupId: GROUP, viewerId: VIEWER, now },
+    );
+    assert.equal(resting.onBreak, true);
+    assert.equal(resting.studiedSeconds, 60 * 60 - 240 - 120);
+    assert.equal(working.onBreak, false);
+    assert.equal(working.studiedSeconds, 30 * 60);
+  });
+
   it("builds a display name from first and last, or leaves it null", () => {
     const [named, bare] = toStudyingNow(
       [

@@ -232,6 +232,9 @@ export const findLiveSessionsByUsers = (userIds, since) => {
       groupId: true,
       startedAt: true,
       plannedMinutes: true,
+      // Who is on a break, and how much of their time was one.
+      pausedAt: true,
+      pausedSeconds: true,
       user: {
         select: { id: true, username: true, firstName: true, lastName: true, avatarUrl: true },
       },
