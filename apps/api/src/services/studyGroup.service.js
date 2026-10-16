@@ -22,6 +22,7 @@ import {
   bumpVersions,
   groupContentVersionKey,
   groupMemberVersionKey,
+  postAuthorVersionKey,
 } from "../utils/cache.js";
 
 const notFound = () => {
@@ -423,6 +424,20 @@ export const joinGroup = async (groupId, userId, providedCode) => {
   return addMember(group, userId);
 };
 
+/**
+ * A membership ending - leaving, or being removed - takes that person's posts
+ * off the group's feed: they are no longer in the room those posts were for.
+ * Bumps their post lists when anything went, since each row's sharedTo
+ * changes.
+ *
+ * Other ex-members' views of a group-shared post on its author's profile are
+ * keyed by viewer and catch up within CACHE_TTL_POST_USER_LIST_SEC.
+ */
+const unshareMemberPosts = async (userId, groupId) => {
+  const removed = await groupRepo.deleteSharesOfMember(userId, groupId);
+  if (removed > 0) await bumpVersions([postAuthorVersionKey(userId)]);
+};
+
 export const leaveGroup = async (groupId, userId) => {
   const group = await groupRepo.findGroupById(groupId);
   if (!group) throw notFound();
@@ -437,6 +452,7 @@ export const leaveGroup = async (groupId, userId) => {
   if (!existing) throw notFound();
 
   const result = await groupRepo.deleteMembership(userId, groupId);
+  await unshareMemberPosts(userId, groupId);
 
   await invalidateGroup({ groupId, members: true });
 
@@ -475,6 +491,7 @@ export const kickMember = async (groupId, requesterId, targetUserId) => {
   }
 
   const result = await groupRepo.deleteMembership(targetUserId, groupId);
+  await unshareMemberPosts(targetUserId, groupId);
 
   await invalidateGroup({ groupId, members: true });
 

@@ -97,8 +97,24 @@ export const createPhotoUploadsSchema = z.strictObject({
  * Still no photoUrl and no key: nothing client-supplied may name an object in
  * our bucket. An id only points at a row the API created for this caller.
  */
+/**
+ * The most groups one post can be shared to. A ceiling on a list the client
+ * fills in, and far above how many groups anyone posts a session to.
+ */
+export const MAX_SHARE_GROUPS = 20;
+
 export const createPostSchema = z.strictObject({
   title: titleSchema,
+  // Who the post is for - see Post.shareToFollowers. Both optional: a client
+  // that predates sharing sends neither and gets followers, as before. Sending
+  // neither audience on purpose (false and no groups) is refused by the
+  // service, which is where "at least one" is decided.
+  shareToFollowers: z.boolean().optional(),
+  groupIds: z
+    .array(linkSchema)
+    .max(MAX_SHARE_GROUPS, `a post can be shared to at most ${MAX_SHARE_GROUPS} groups`)
+    .refine((ids) => new Set(ids).size === ids.length, "groupIds must not repeat")
+    .optional(),
   // Omitted rather than "" when there is no caption - "" is refused as "you
   // typed nothing" by captionSchema.
   caption: captionSchema.optional(),
@@ -206,13 +222,15 @@ const instantSchema = z.iso
  */
 /**
  * Whose posts the feed shows. Mirrors FeedAudience in the mobile app's
- * feedFilters.ts.
+ * feedFilters.ts, which no longer offers "everyone".
  *
- *   everyone  - every post: the feed as it always was, and the DEFAULT, so a
- *               client that predates this parameter sees no change at all
- *   following - the viewer's own posts and those of everyone they follow
- *   group     - the posts of one study group's members; needs groupId, and
- *               the viewer must be a member (see listAllPosts)
+ *   everyone  - every post shared to followers, plus the viewer's own: the
+ *               DEFAULT, so a client that predates this parameter sees what it
+ *               always did. A group-only post is never in it.
+ *   following - the viewer's own posts and the followers-shared posts of
+ *               everyone they follow
+ *   group     - the posts SHARED to one study group; needs groupId, and the
+ *               viewer must be a member (see listAllPosts)
  */
 export const FEED_AUDIENCES = ["everyone", "following", "group"];
 

@@ -15,9 +15,12 @@ import { findCommenterIdsByPosts } from "../repositories/comment.repository.js";
 import { findLikerIdsByPosts } from "../repositories/like.repository.js";
 import { findBookmarkerIdsByPosts } from "../repositories/bookmark.repository.js";
 import { findReporterIdsByPosts } from "../repositories/report.repository.js";
-// The feed's audiences, for who-wrote-it filtering - see feedAuthorIds.
+// The feed's audiences, and who may share to a group - see feedWhere and createPost.
 import { findFollowingIds } from "../repositories/follow.repository.js";
-import { findMembership, findMemberIds } from "../repositories/studyGroup.repository.js";
+import {
+  findMembership,
+  findMemberGroupIds,
+} from "../repositories/studyGroup.repository.js";
 // Object storage for post photos. This service owns WHEN an object is written or
 // reclaimed; photoStorage owns the key layout and the ownership rule that says
 // which objects a caller may touch at all.
@@ -206,6 +209,9 @@ export const invalidateDetachedPosts = async (posts) => {
  */
 const NEEDS_PHOTO_OR_CAPTION = "A post without a session needs a photo or a caption";
 
+/** A post must be for someone: its followers, a group, or both. */
+const NEEDS_AN_AUDIENCE = "Share this post with your followers, a group, or both";
+
 /** Whether a post's body meets the rule above. */
 const hasEnoughToPost = ({ sessionId, photoCount, caption }) =>
   Boolean(sessionId) || photoCount > 0 || Boolean(caption);
@@ -245,7 +251,11 @@ export const createPost = async ({
   title,
   caption,
   photoIds = [],
+  shareToFollowers = true,
+  groupIds = [],
 }) => {
+  if (!shareToFollowers && groupIds.length === 0) throw new HttpError(400, NEEDS_AN_AUDIENCE);
+
   // See NEEDS_PHOTO_OR_CAPTION. caption has already been trimmed and refused
   // when empty by createPostSchema, so presence is the whole test.
   if (!hasEnoughToPost({ sessionId, photoCount: photoIds.length, caption })) {
@@ -255,6 +265,17 @@ export const createPost = async ({
   const checks = [];
   if (sessionId) checks.push(assertOwnsSession(sessionId, userId));
   if (routineId) checks.push(assertOwnsRoutine(routineId, userId));
+  // Only to groups you are in: sharing into someone else's group would put a
+  // post in front of people who never let you in.
+  if (groupIds.length > 0) {
+    checks.push(
+      findMemberGroupIds(userId, groupIds).then((mine) => {
+        if (mine.length !== groupIds.length) {
+          throw new HttpError(403, "You can only share to groups you're in");
+        }
+      }),
+    );
+  }
   await Promise.all(checks);
 
   const uploads = await postPhotoRepo.findUnattachedPhotos({ ids: photoIds, userId });
@@ -303,6 +324,8 @@ export const createPost = async ({
     title,
     caption: caption ?? null,
     photoIds,
+    shareToFollowers,
+    groupIds,
   });
   // A claim missed inside the transaction: the sweep or a concurrent post took
   // a photo between the checks above and the write. Nothing was created.
@@ -348,7 +371,12 @@ const personalBestsOf = (rows) =>
  * @param {string} viewerId
  * @param {Set<string>} [personalBests] - session ids, from personalBestsOf
  */
-const toViewerPost = (viewerId, personalBests = new Set()) => ({ likes, reports, ...post }) => {
+const toViewerPost = (viewerId, personalBests = new Set()) => ({
+  likes,
+  reports,
+  groupShares,
+  ...post
+}) => {
   const report = reports[0];
   // Presence is NOT the answer. A withdrawn report is still a row - the unique
   // keeps it there so the reporter can file again - and getPostReportStatus in
@@ -381,12 +409,22 @@ const toViewerPost = (viewerId, personalBests = new Set()) => ({ likes, reports,
     // rejects a self-report on its own authority, and that check is what
     // actually enforces the rule.
     isMine: post.userId === viewerId,
+    // Where the post went - for its author alone, who chose it and may want
+    // to see it; nobody else is told which other groups saw a post. Null for
+    // everyone else, and on a row read without its shares.
+    sharedTo:
+      post.userId === viewerId && groupShares
+        ? {
+            followers: post.shareToFollowers,
+            groups: groupShares.map(({ group }) => group),
+          }
+        : null,
   };
 };
 
 /**
  * One page of the feed — every post by everyone, or only by the audience the
- * caller chose (see feedAuthorIds), newest first unless the caller asked for
+ * caller chose (see feedWhere), newest first unless the caller asked for
  * another order, optionally narrowed to a date window. All of it arrives
  * already validated by listAllPostsQuerySchema.
  *
@@ -412,30 +450,38 @@ const toViewerPost = (viewerId, personalBests = new Set()) => ({ likes, reports,
  * performance trade-off to weigh; it is a privacy bug.
  */
 /**
- * Whose posts an audience covers, or undefined for everyone.
+ * Which posts an audience's feed is of, as a `where`.
  *
- * The viewer is always in a following feed: your own posts belong in the feed
- * of the people you keep up with, as they do on every other social app. They
- * are in a group feed only by being a member, which is also the gate - a group
- * feed is the group's posts, and someone outside it may not read them through
- * here. 403 rather than 404 because the group's existence is not a secret: its
- * screen and invite code already say it exists.
+ *   following - you and the people you follow, and of theirs only what they
+ *               shared to followers: a post they kept to a group belongs on
+ *               that group's feed, not here. Your own posts are all here.
+ *   group     - what was SHARED to the group, by anyone in it. Membership is
+ *               the gate - a group's feed is for its members - and 403 rather
+ *               than 404, because the group's existence is not a secret.
+ *   everyone  - every followers-shared post, and your own. Never a group-only
+ *               post, which is what keeps this audience from leaking them.
  */
-const feedAuthorIds = async ({ audience, groupId }, viewerId) => {
+const feedWhere = async ({ audience, groupId }, viewerId) => {
+  const mineOrForFollowers = { OR: [{ userId: viewerId }, { shareToFollowers: true }] };
   if (audience === "following") {
-    return [viewerId, ...(await findFollowingIds(viewerId))];
+    return {
+      AND: [
+        { userId: { in: [viewerId, ...(await findFollowingIds(viewerId))] } },
+        mineOrForFollowers,
+      ],
+    };
   }
   if (audience === "group") {
     if (!(await findMembership(viewerId, groupId))) throw forbidden("group");
-    return findMemberIds(groupId);
+    return { groupShares: { some: { groupId } } };
   }
-  return undefined;
+  return mineOrForFollowers;
 };
 
 export const listAllPosts = async ({ page, limit, sort, from, to, audience, groupId }, viewerId) => {
-  const authorIds = await feedAuthorIds({ audience, groupId }, viewerId);
+  const audienceWhere = await feedWhere({ audience, groupId }, viewerId);
   const [rows, total] = await postRepo.findAllPosts(
-    { skip: (page - 1) * limit, take: limit, sort, from, to, authorIds },
+    { skip: (page - 1) * limit, take: limit, sort, from, to, audience: audienceWhere },
     viewerId,
   );
 
