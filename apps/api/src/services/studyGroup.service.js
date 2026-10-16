@@ -5,7 +5,12 @@ import * as groupRepo from "../repositories/studyGroup.repository.js";
 import {
   findSessionRefsByGroup,
   findLiveSessionsByGroup,
+  findLiveSessionsByUsers,
 } from "../repositories/session.repository.js";
+// Both directions of the block relation - the leaderboard's own read, reused
+// rather than written a second time for the same social-surface rule.
+import { findBlockedUserIds } from "../repositories/focus.repository.js";
+import { toStudyingNow } from "./studyingNow.js";
 import {
   invalidateDetachedSessions,
   LIVE_SESSION_WINDOW_MS,
@@ -173,6 +178,34 @@ export const listLiveSessions = async (groupId, requesterId) => {
     ...session,
     isMine: session.user.id === requesterId,
   }));
+};
+
+/**
+ * Which members are studying right now, in any session - the group feed's
+ * live strip. See studyingNow.js for why "any" rather than this group's.
+ *
+ * Members only, like the live sessions above. Anyone with a block between them
+ * and the viewer is left out, as on every other social surface.
+ */
+export const listStudyingMembers = async (groupId, requesterId) => {
+  const group = await groupRepo.findGroupById(groupId);
+  if (!group) throw notFound();
+
+  const membership = await groupRepo.findMembership(requesterId, groupId);
+  if (!membership) throw forbidden("Only members can see who's studying");
+
+  const [memberIds, blocked] = await Promise.all([
+    groupRepo.findMemberIds(groupId),
+    findBlockedUserIds(requesterId),
+  ]);
+  const hidden = new Set(blocked);
+
+  const sessions = await findLiveSessionsByUsers(
+    memberIds.filter((id) => !hidden.has(id)),
+    new Date(Date.now() - LIVE_SESSION_WINDOW_MS),
+  );
+
+  return toStudyingNow(sessions, { groupId, viewerId: requesterId });
 };
 
 export const updateGroup = async (groupId, requesterId, data) => {

@@ -412,4 +412,59 @@ describe("group sessions against a real database", { skip }, () => {
     // A solo session carries no group rather than a broken one.
     assert.ok(history.filter((s) => !s.groupId).every((s) => s.group === null));
   });
+
+  it("shows which members are studying in ANY session, to members only", async () => {
+    // Its own stranger: `outsiderId` joined this public group earlier, by
+    // joining one of its sessions.
+    const strangerId = await makeUser("stranger");
+
+    // Earlier tests leave sessions open; start from nobody studying.
+    await prisma.session.updateMany({
+      where: { userId: { in: [hostId, memberId, outsiderId] }, endedAt: null },
+      data: { endedAt: new Date() },
+    });
+    assert.deepEqual(await groupService.listStudyingMembers(group.id, hostId), []);
+
+    // A SOLO session - no group at all - still counts: the strip is about
+    // the group's people, not its rooms.
+    const solo = await sessionService.startSession({ userId: memberId });
+    // A stranger studying is nobody this group sees.
+    const strangerSession = await sessionService.startSession({ userId: strangerId });
+
+    const asHost = await groupService.listStudyingMembers(group.id, hostId);
+    assert.deepEqual(
+      asHost.map((row) => row.userId),
+      [memberId],
+      "only the member studying, and nobody from outside the group",
+    );
+    assert.equal(asHost[0].studyingHere, false, "a solo session is not studying here");
+    assert.equal(asHost[0].isMine, false);
+
+    // The viewer's own session leads the strip, flagged as theirs.
+    const hosted = await sessionService.startSession({ userId: hostId, groupId: group.id });
+    const asMember = await groupService.listStudyingMembers(group.id, memberId);
+    assert.equal(asMember[0].userId, memberId);
+    assert.equal(asMember[0].isMine, true);
+    assert.equal(asMember.find((row) => row.userId === hostId)?.studyingHere, true);
+
+    await rejectsWith(groupService.listStudyingMembers(group.id, strangerId), 403);
+
+    // A block hides someone here as everywhere else, in either direction.
+    await prisma.block.create({ data: { blockerId: memberId, blockedId: hostId } });
+    try {
+      const blockedView = await groupService.listStudyingMembers(group.id, hostId);
+      assert.equal(blockedView.some((row) => row.userId === memberId), false);
+    } finally {
+      await prisma.block.deleteMany({ where: { blockerId: memberId } });
+    }
+
+    // Ending a session takes them off it.
+    await sessionService.endSession(solo.id, memberId);
+    const after = await groupService.listStudyingMembers(group.id, hostId);
+    assert.equal(after.some((row) => row.userId === memberId), false);
+
+    await sessionService.endSession(hosted.id, hostId);
+    await sessionService.endSession(strangerSession.id, strangerId);
+    await destroyUsers([strangerId]);
+  });
 });

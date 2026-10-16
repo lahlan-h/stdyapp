@@ -104,6 +104,19 @@ export const mine = async (req, res, next) => {
   }
 };
 
+/** GET /api/groups/:id/studying - members in any session right now. */
+export const studying = async (req, res, next) => {
+  try {
+    const people = await groupService.listStudyingMembers(
+      req.validated.params.id,
+      req.user.id,
+    );
+    res.status(200).json(people);
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const liveSessions = async (req, res, next) => {
   try {
     const sessions = await groupService.listLiveSessions(

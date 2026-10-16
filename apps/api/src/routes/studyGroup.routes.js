@@ -5,6 +5,7 @@ import {
   search,
   mine,
   liveSessions,
+  studying,
   update,
   remove,
   transferOwnership,
@@ -138,6 +139,16 @@ router.get(
   readLimit,
   validate({ params: groupIdParamSchema }),
   liveSessions,
+);
+
+// UNCACHED, for /:id/sessions's reason - and more so: this one follows every
+// member's sessions, not only the group's, so no group write could invalidate
+// it. The client polls it while the group's feed is on screen.
+router.get(
+  "/:id/studying",
+  readLimit,
+  validate({ params: groupIdParamSchema }),
+  studying,
 );
 
 router.patch(

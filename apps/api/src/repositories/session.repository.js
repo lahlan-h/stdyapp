@@ -206,6 +206,36 @@ export const findLiveSessionsByGroup = (groupId, since) => {
   });
 };
 
+/**
+ * Every open session belonging to these people - ANY session, in any group or
+ * none. The group feed's "who's studying" strip, which asks about a group's
+ * members rather than its rooms; see services/studyingNow.js.
+ *
+ * "Open" is findLiveSessionsByGroup's definition exactly - endedAt NULL and
+ * started after `since` - so the strip and the group page's "Studying now"
+ * never disagree about whether someone is still at it.
+ *
+ * @param {string[]} userIds
+ * @param {Date} since
+ */
+export const findLiveSessionsByUsers = (userIds, since) => {
+  if (userIds.length === 0) return Promise.resolve([]);
+  return prisma.session.findMany({
+    where: { userId: { in: userIds }, endedAt: null, startedAt: { gte: since } },
+    select: {
+      id: true,
+      userId: true,
+      groupId: true,
+      startedAt: true,
+      plannedMinutes: true,
+      user: {
+        select: { id: true, username: true, firstName: true, lastName: true, avatarUrl: true },
+      },
+    },
+    orderBy: { startedAt: "asc" },
+  });
+};
+
 export const updateSession = (id, data) => {
   return prisma.session.update({ where: { id }, data });
 };
