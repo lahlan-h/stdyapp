@@ -473,12 +473,6 @@ const Study = () => {
                 </Pressable>
               </View>
 
-              {breakTimedOut && !isPaused ? (
-                <Text style={[styles.helpText, styles.centeredText]} accessibilityLiveRegion="polite">
-                  Break's over - back to it.
-                </Text>
-              ) : null}
-
               {/* The code is what lets someone else join; tapping shares it. */}
               {activeGroup ? (
                 <Pressable
@@ -505,6 +499,36 @@ const Study = () => {
                     </>
                   ) : null}
                 </Pressable>
+              ) : null}
+
+              {/* Above everything that turns up mid-session. The notes, chips,
+                  chart and room all arrive later, and while they sat above the
+                  checklist each one pushed it down - once moving + out from
+                  under a finger adding a task. */}
+              <TaskChecklist
+                tasks={tasks}
+                onAdd={addTask}
+                onToggle={toggleTask}
+                onRemoveTask={removeTask}
+              />
+
+              {/* After the retries run out: the clock is already stopped, and
+                  the session is closed properly the next time they study. */}
+              {ending === "failed" ? (
+                <Pressable
+                  style={styles.actionSecondary}
+                  onPress={reset}
+                  accessibilityRole="button"
+                  accessibilityLabel="Leave it for now"
+                >
+                  <Text style={styles.actionSecondaryText}>Leave it for now</Text>
+                </Pressable>
+              ) : null}
+
+              {breakTimedOut && !isPaused ? (
+                <Text style={[styles.helpText, styles.centeredText]} accessibilityLiveRegion="polite">
+                  Break's over - back to it.
+                </Text>
               ) : null}
 
               {/* Web only: says what the chip just did when there was no sheet. */}
@@ -534,26 +558,6 @@ const Study = () => {
 
               {/* Group sessions only: a solo session is a room of one. */}
               {activeGroup && sessionId ? <RoomParticipants sessionId={sessionId} /> : null}
-
-              <TaskChecklist
-                tasks={tasks}
-                onAdd={addTask}
-                onToggle={toggleTask}
-                onRemoveTask={removeTask}
-              />
-
-              {/* After the retries run out: the clock is already stopped, and
-                  the session is closed properly the next time they study. */}
-              {ending === "failed" ? (
-                <Pressable
-                  style={styles.actionSecondary}
-                  onPress={reset}
-                  accessibilityRole="button"
-                  accessibilityLabel="Leave it for now"
-                >
-                  <Text style={styles.actionSecondaryText}>Leave it for now</Text>
-                </Pressable>
-              ) : null}
             </>
           ) : null}
 
