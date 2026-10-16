@@ -220,9 +220,11 @@ const AnalyticsBody = ({ analytics }: { analytics: Analytics }) => {
         </View>
       ) : null}
 
-      {/* 1. Focus time - the headline, then the shape of it. */}
+      {/* 1. Study time - the headline, then the shape of it. Not "Focus time":
+          that is the leaderboard's name for minutes WEIGHTED by the focus
+          estimate, in the teaser just above, and this is every minute studied. */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Focus time</Text>
+        <Text style={styles.cardTitle}>Study time</Text>
         <Text style={styles.heroValue}>{formatMinutes(focusTime.totalMinutes)}</Text>
         <Trend focusTime={focusTime} days={range.days} />
         <AnalyticsBarChart
