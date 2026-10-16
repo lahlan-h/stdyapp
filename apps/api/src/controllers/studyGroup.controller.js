@@ -104,6 +104,19 @@ export const mine = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/groups/join - joins the group a code names, and answers with it
+ * as the joiner now sees it, code and all.
+ */
+export const joinByCode = async (req, res, next) => {
+  try {
+    const group = await groupService.joinGroupByCode(req.user.id, req.validated.body.code);
+    res.status(201).json(group);
+  } catch (err) {
+    next(err);
+  }
+};
+
 /** GET /api/groups/:id/studying - members in any session right now. */
 export const studying = async (req, res, next) => {
   try {

@@ -13,6 +13,15 @@ export const findGroupById = (id) => {
   });
 };
 
+// The group a join code names. Unique, so at most one - and the lookup is the
+// unique index itself.
+export const findGroupByJoinCode = (joinCode) => {
+  return prisma.studyGroup.findUnique({
+    where: { joinCode },
+    include: { _count: { select: { memberships: true } } },
+  });
+};
+
 // The viewer's own membership row, at most one, so a list can say "joined"
 // without a query per group. Filtered to the viewer: the full membership list
 // is GET /:id/members, not something every search result should carry.

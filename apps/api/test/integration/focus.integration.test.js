@@ -414,6 +414,8 @@ describe("focus feature against a real database", { skip }, () => {
         data: {
           ownerId: userId,
           name: `board-${randomUUID().slice(0, 8)}`,
+          // Every group has a unique code; this run's own, so it never collides.
+          joinCode: randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase(),
           memberships: { create: [{ userId }, { userId: member }] },
         },
         select: { id: true },

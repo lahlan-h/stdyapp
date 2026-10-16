@@ -16,6 +16,8 @@ import {
   LIVE_SESSION_WINDOW_MS,
 } from "./session.service.js";
 import { notifyActivity } from "./notification.service.js";
+import { generateJoinCode, normalizeJoinCode } from "./joinCode.js";
+import { isPrismaError } from "../utils/prismaError.js";
 import {
   bumpVersions,
   groupContentVersionKey,
@@ -40,11 +42,12 @@ const conflict = (message) => {
   return err;
 };
 
-// Strips joinCode from the response unless the requester is the owner.
-// Otherwise "private with a code" is pointless — anyone could just fetch
-// the group's details and read the code straight off it.
-const sanitizeGroup = (group, requesterId) => {
-  if (group.ownerId === requesterId) return group;
+// Strips joinCode from the response unless the requester is in the group.
+// The code is how a group is joined, so it is for the people already in it
+// to pass on - anyone else reading it off GET /:id or a search result would
+// make every group, private ones included, open to whoever looked.
+const sanitizeGroup = (group, isMember) => {
+  if (isMember) return group;
   const { joinCode, ...safe } = group;
   return safe;
 };
@@ -57,11 +60,40 @@ const sanitizeGroup = (group, requesterId) => {
  * response ever looks like a member list.
  */
 const withViewer = ({ memberships, ...group }, requesterId) => ({
-  ...sanitizeGroup(group, requesterId),
+  ...sanitizeGroup(group, memberships.length > 0),
   isMember: memberships.length > 0,
   isOwner: group.ownerId === requesterId,
   role: memberships[0]?.role ?? null,
 });
+
+/**
+ * How many fresh codes to try before giving up on a write. A collision is a
+ * one-in-a-billion event per existing group (see joinCode.js), so a second try
+ * is already belt and braces; five is there for a far fuller table than this.
+ */
+const MAX_CODE_ATTEMPTS = 5;
+
+/**
+ * Runs a write that sets a newly generated join code, retrying with another
+ * code if the unique index says this one is taken. Codes are generated rather
+ * than checked first, because a check-then-write could lose a race to another
+ * group taking the same code in between; the index is the only real referee.
+ *
+ * @template T
+ * @param {(joinCode: string) => Promise<T>} write
+ * @returns {Promise<T>}
+ */
+const withFreshCode = async (write) => {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await write(generateJoinCode());
+    } catch (err) {
+      const codeTaken =
+        isPrismaError(err, "P2002") && String(err.meta?.target ?? "").includes("joinCode");
+      if (!codeTaken || attempt >= MAX_CODE_ATTEMPTS) throw err;
+    }
+  }
+};
 
 /**
  * Invalidates this module's cached reads.
@@ -91,20 +123,20 @@ const invalidateGroup = async ({ groupId, content = false, members = false }) =>
   await bumpVersions(keys);
 };
 
-// Six characters of base36, uppercased - the shape joinGroupSchema and
-// updateGroupSchema are bounded around.
-const generateJoinCode = () => Math.random().toString(36).slice(2, 8).toUpperCase();
-
+/**
+ * Every group gets a code, public or private: it is how anyone joins, typed on
+ * the Study tab. A private group differs only in having no other way in.
+ */
 export const createGroup = async ({ ownerId, name, description, isPrivate }) => {
-  const joinCode = isPrivate ? generateJoinCode() : null;
-
-  const group = await groupRepo.createGroup({
-    ownerId,
-    name,
-    description: description ?? null,
-    isPrivate: !!isPrivate,
-    joinCode,
-  });
+  const group = await withFreshCode((joinCode) =>
+    groupRepo.createGroup({
+      ownerId,
+      name,
+      description: description ?? null,
+      isPrivate: !!isPrivate,
+      joinCode,
+    }),
+  );
 
   // the owner is also a member — without this they wouldn't show up in
   // listMembers, and ownership transfer (which requires the new owner to
@@ -135,6 +167,41 @@ export const getGroup = async (groupId, requesterId) => {
     { ...group, memberships: membership ? [membership] : [] },
     requesterId,
   );
+};
+
+/**
+ * Joins whichever group a code belongs to - the Study tab's "Join a group".
+ *
+ * The code IS the key, for public and private groups alike: holding it is the
+ * proof that someone in the group meant you to have it. So unlike joinGroup
+ * there is no separate privacy check - a private group's code was always what
+ * let you in.
+ *
+ * 404 for a code no group has; 409 for a group you are already in, carrying
+ * its id so the client can simply open it - typing your own group's code is
+ * not really an error, just a short trip.
+ *
+ * @param {string} userId
+ * @param {string} rawCode - as typed; normalised here
+ */
+export const joinGroupByCode = async (userId, rawCode) => {
+  const group = await groupRepo.findGroupByJoinCode(normalizeJoinCode(rawCode));
+  if (!group) {
+    const err = new Error("No group has that code. Check it and try again.");
+    err.status = 404;
+    throw err;
+  }
+
+  const existing = await groupRepo.findMembership(userId, group.id);
+  if (existing) {
+    const err = conflict("You're already in this group");
+    // Rendered into the error body by index.js, as joinSession's groupId is.
+    err.data = { groupId: group.id };
+    throw err;
+  }
+
+  await addMember(group, userId);
+  return getGroup(group.id, userId);
 };
 
 // search results are public — private groups are discoverable by design,
@@ -220,27 +287,18 @@ export const updateGroup = async (groupId, requesterId, data) => {
     throw forbidden("Only the owner or an admin can update this group");
   }
 
-  const { name, description, isPrivate, joinCode } = data;
+  const { name, description, isPrivate } = data;
 
   // privacy settings are security-sensitive — only the owner changes them,
   // admins can update the basic info (name/description) only
-  if ((isPrivate !== undefined || joinCode !== undefined) && !isOwner) {
+  if (isPrivate !== undefined && !isOwner) {
     throw forbidden("Only the owner can change privacy settings");
   }
 
-  const updateData = isOwner
-    ? { name, description, isPrivate, joinCode }
-    : { name, description };
-
-  // Going private with no code would make the group impossible to join - every
-  // code a newcomer could send fails the comparison against NULL - so one is
-  // generated. Going public clears the code, which no longer guards anything.
-  if (isOwner && isPrivate === true && joinCode === undefined && !group.joinCode) {
-    updateData.joinCode = generateJoinCode();
-  }
-  if (isOwner && isPrivate === false && joinCode === undefined) {
-    updateData.joinCode = null;
-  }
+  // The join code is not here, and going private or public leaves it alone:
+  // every group has one either way, and it is only ever replaced by
+  // regenerateJoinCode - never set to a value someone chose.
+  const updateData = isOwner ? { name, description, isPrivate } : { name, description };
 
   const updated = await groupRepo.updateGroup(groupId, updateData);
 
@@ -274,19 +332,20 @@ export const deleteGroup = async (groupId, requesterId) => {
 };
 
 /**
- * A fresh join code, generated here rather than chosen by the owner - the
- * shape the note on updateGroupSchema asks for, and the way to retire a code
- * that has leaked. Existing members are unaffected; only new joins need it.
+ * A fresh join code, generated here rather than chosen by the owner, and the
+ * way to retire a code that has leaked. Existing members are unaffected; only
+ * new joins need it. Any group's, now that every group has one.
  */
 export const regenerateJoinCode = async (groupId, requesterId) => {
   const group = await groupRepo.findGroupById(groupId);
   if (!group) throw notFound();
   if (group.ownerId !== requesterId) throw forbidden("Only the owner can change the join code");
-  if (!group.isPrivate) throw conflict("Only a private group has a join code");
 
-  const updated = await groupRepo.updateGroup(groupId, { joinCode: generateJoinCode() });
+  const updated = await withFreshCode((joinCode) =>
+    groupRepo.updateGroup(groupId, { joinCode }),
+  );
 
-  // CONTENT only: the code is part of the owner's GET /:id payload.
+  // CONTENT only: the code is part of every member's GET /:id payload.
   await invalidateGroup({ groupId, content: true });
 
   return updated;
@@ -314,31 +373,26 @@ export const transferOwnership = async (groupId, requesterId, newOwnerId) => {
 
   // CONTENT only — no membership row changes, so the member list and the count
   // are both untouched. Load-bearing rather than cosmetic: ownerId is what
-  // sanitizeGroup tests, so a stale content payload would keep showing the
-  // joinCode to the PREVIOUS owner and keep hiding it from the new one.
+  // isOwner reads, so a stale content payload would keep offering the owner's
+  // controls - delete, a new code - to the PREVIOUS owner, and not the new one.
   await invalidateGroup({ groupId, content: true });
 
   return updated;
 };
 
-export const joinGroup = async (groupId, userId, providedCode) => {
-  const group = await groupRepo.findGroupById(groupId);
-  if (!group) throw notFound();
-
-  if (group.isPrivate && group.joinCode !== providedCode) {
-    throw forbidden("Incorrect join code");
-  }
-
-  const existing = await groupRepo.findMembership(userId, groupId);
-  if (existing) throw conflict("Already a member of this group");
-
-  const membership = await groupRepo.createMembership(userId, groupId);
+/**
+ * The membership write shared by both ways in - joining from the group's own
+ * screen and joining by code - so the cache and the owner's notification can
+ * never differ between them.
+ */
+const addMember = async (group, userId) => {
+  const membership = await groupRepo.createMembership(userId, group.id);
 
   // MEMBERS only. That single bump covers the member list AND the group
   // payload, because groupKey is stamped with this counter too — see the note
   // above invalidateGroup. The group row itself did not change, so bumping
   // content as well would throw away a good cache entry for nothing.
-  await invalidateGroup({ groupId, members: true });
+  await invalidateGroup({ groupId: group.id, members: true });
 
   // To the owner only, not every member: a group's owner is the one who wants to
   // know who arrived, and fanning out to a large group would turn every join
@@ -351,6 +405,22 @@ export const joinGroup = async (groupId, userId, providedCode) => {
   });
 
   return membership;
+};
+
+export const joinGroup = async (groupId, userId, providedCode) => {
+  const group = await groupRepo.findGroupById(groupId);
+  if (!group) throw notFound();
+
+  // Case and spacing forgiven, as joinGroupByCode forgives them - see
+  // normalizeJoinCode for why that widens nothing a guesser can use.
+  if (group.isPrivate && group.joinCode !== normalizeJoinCode(providedCode ?? "")) {
+    throw forbidden("Incorrect join code");
+  }
+
+  const existing = await groupRepo.findMembership(userId, groupId);
+  if (existing) throw conflict("Already a member of this group");
+
+  return addMember(group, userId);
 };
 
 export const leaveGroup = async (groupId, userId) => {

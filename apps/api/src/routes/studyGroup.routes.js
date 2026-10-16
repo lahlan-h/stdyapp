@@ -11,6 +11,7 @@ import {
   transferOwnership,
   regenerateJoinCode,
   join,
+  joinByCode,
   leave,
   members,
   kickMember,
@@ -27,6 +28,7 @@ import {
   updateGroupSchema,
   transferOwnershipSchema,
   joinGroupSchema,
+  joinByCodeSchema,
   setMemberRoleSchema,
   searchGroupsQuerySchema,
 } from "../validation/studyGroup.validation.js";
@@ -123,6 +125,10 @@ router.get("/", readLimit, validate({ query: searchGroupsQuerySchema }), search)
 // writes to many groups. Declared BEFORE /:id, which would otherwise take
 // "mine" as an id and answer 400.
 router.get("/mine", readLimit, mine);
+
+// joinLimit, as for /:id/join: a code alone is a key, so this is the route a
+// guesser would hammer, and the limit is what makes a billion codes unsearchable.
+router.post("/join", joinLimit, validate({ body: joinByCodeSchema }), joinByCode);
 
 router.get(
   "/:id",

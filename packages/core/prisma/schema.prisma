@@ -366,7 +366,12 @@ model StudyGroup {
 
   // private groups still show up in search — joining just requires joinCode
   isPrivate   Boolean  @default(false)
-  joinCode    String?
+
+  /// Six characters that let anyone holding them into the group, public or
+  /// private - typed on the Study tab, or shared by any member. Unique, because
+  /// a code alone names the group; generated, never chosen - see
+  /// apps/api/src/services/joinCode.js.
+  joinCode    String   @unique
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
