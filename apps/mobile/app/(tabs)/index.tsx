@@ -443,7 +443,9 @@ const Index = () => {
   ) : audience.kind === "group" ? (
     <View style={homeStyles.emptyContainer}>
       <Text style={homeStyles.bold}>No posts in {audience.groupName} yet</Text>
-      <Text style={homeStyles.soft}>Sessions its members post will show up here.</Text>
+      <Text style={homeStyles.soft}>
+        Posts shared to it show up here - choose it under Share to when you post a session.
+      </Text>
     </View>
   ) : (
     <EmptyFeed />

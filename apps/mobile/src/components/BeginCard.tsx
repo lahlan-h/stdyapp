@@ -309,7 +309,7 @@ const GroupSheet = ({
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.sheetBackdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" />
       <View style={[styles.sheet, styles.pickSheet, { paddingBottom: insets.bottom + 16 }]}>
-        <View style={styles.sheetHandle} />
+        <View style={[styles.sheetHandle, styles.pickHandle]} />
         <Text style={styles.sheetTitle}>Studying with</Text>
         <ScrollView style={styles.pickList} contentContainerStyle={styles.pickListContent}>
           {row("solo", "Just me", "A session of your own", selectedId === null, null)}

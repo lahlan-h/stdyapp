@@ -934,7 +934,10 @@ export const createStudyStyles = (colors: ColorScheme) => {
     },
 
     // --- Picking who you study with ---
+    // Stretched for full-width rows - so the handle, which centres itself
+    // under the rating sheet's alignItems, is centred by hand here.
     pickSheet: { alignItems: "stretch", maxHeight: "70%" },
+    pickHandle: { alignSelf: "center" },
     pickList: { alignSelf: "stretch" },
     pickListContent: { gap: 8, paddingVertical: 10 },
     pickRow: {
