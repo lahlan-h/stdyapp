@@ -349,6 +349,12 @@ enum InterruptionType {
   DEVICE_MOTION
   /// The user logged a break themselves.
   MANUAL
+  /// One of a session's three breaks, recorded when it ends - written by the
+  /// server alone, never accepted from a client, so it cannot be used to file
+  /// time away as a break. Kept so a finished session's chart can show where
+  /// its breaks fell; NOT time away, so it is left out of every away total.
+  /// The session's own pausedSeconds is the authoritative sum.
+  BREAK
 }
 
 model SessionInterruption {

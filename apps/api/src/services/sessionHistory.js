@@ -12,7 +12,7 @@
  * folded into summary numbers and dropped, so the payload carries counts
  * rather than an array per row.
  */
-import { activeMinutes } from "./sessionPause.js";
+import { activeMinutes, isTimeAway } from "./sessionPause.js";
 
 /**
  * A session still open after this long was not finished, it was left.
@@ -62,7 +62,8 @@ export const sessionDurationMinutes = (session) =>
  */
 export const toSessionHistoryRow = (row, now = new Date()) => {
   const { interruptions, focusRating, ...session } = row;
-  const away = interruptions ?? [];
+  // Breaks are interruptions too, for the chart's sake, but not time away.
+  const away = (interruptions ?? []).filter(isTimeAway);
 
   return {
     ...session,

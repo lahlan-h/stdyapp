@@ -18,7 +18,7 @@ const skip = TEST_DB ? false : "TEST_DATABASE_URL not set";
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 
-let prisma, sessionService, closeRedis, closeRabbitMq;
+let prisma, sessionService, focusService, closeRedis, closeRabbitMq;
 const userIds = [];
 
 if (TEST_DB) {
@@ -26,6 +26,7 @@ if (TEST_DB) {
   process.env.DIRECT_URL = TEST_DB;
   ({ prisma, closeRedis, closeRabbitMq } = await import("@stdyapp/core"));
   sessionService = await import("../../src/services/session.service.js");
+  focusService = await import("../../src/services/focus.service.js");
 }
 
 /** A fresh user per test, so streaks and open sessions never leak between them. */
@@ -259,6 +260,46 @@ describe("ending sessions when things go wrong", { skip }, () => {
 
     const [row] = await sessionService.listMySessions(userId);
     assert.equal(row.durationMinutes, 55, "the history agrees with the points");
+    assert.equal(row.awaySeconds, 0, "a break is not time away");
+
+    // The break left a row saying where it fell - for the chart - stamped at
+    // the end of its credited five minutes.
+    const breaks = await prisma.sessionInterruption.findMany({
+      where: { sessionId: session.id, type: "BREAK" },
+    });
+    assert.equal(breaks.length, 1);
+    assert.equal(breaks[0].durationSec, 5 * 60);
+    assert.equal(breaks[0].startedAt.getTime(), startedAt.getTime() + 45 * MINUTE);
+  });
+
+  it("records each finished break where it fell, and never as time away", async () => {
+    const userId = await makeUser();
+    const session = await sessionService.startSession({ userId });
+    await sessionService.pauseSession(session.id, userId);
+    // Backdate the open break by two minutes, as if it had been running.
+    await prisma.session.update({
+      where: { id: session.id },
+      data: { pausedAt: ago(2 * MINUTE), startedAt: ago(30 * MINUTE) },
+    });
+    const resumed = await sessionService.resumeSession(session.id, userId);
+    assert.ok(
+      resumed.pausedSeconds >= 119 && resumed.pausedSeconds <= 121,
+      `about two minutes credited, got ${resumed.pausedSeconds}`,
+    );
+
+    const breaks = await prisma.sessionInterruption.findMany({
+      where: { sessionId: session.id, type: "BREAK" },
+    });
+    assert.equal(breaks.length, 1);
+    assert.equal(breaks[0].durationSec, resumed.pausedSeconds);
+    assert.equal(breaks[0].penaltyApplied, false);
+
+    await sessionService.endSession(session.id, userId);
+    const focus = await focusService.getSessionFocus(session.id, userId);
+    assert.equal(focus.awaySeconds, 0);
+    assert.equal(focus.interruptionCount, 0);
+    assert.equal(focus.pauseCount, 1);
+    assert.equal(focus.pausedSeconds, resumed.pausedSeconds);
   });
 
   it("closes a session abandoned mid-break at the moment the break began", async () => {

@@ -210,12 +210,13 @@ const closeSession = async (session, endedAt) => {
     minutesStudied * FOCUS_POINTS_PER_MINUTE - penaltyPoints
   );
 
-  const updated = await sessionRepo.updateSession(session.id, {
-    endedAt,
-    focusPoints,
-    pausedAt: null,
-    pausedSeconds,
-  });
+  const updated = await sessionRepo.closeSessionRow(
+    session.id,
+    { endedAt, focusPoints, pausedAt: null, pausedSeconds },
+    session.pausedAt
+      ? { pausedAt: session.pausedAt, creditedSeconds: openPauseSeconds(session.pausedAt, endedAt) }
+      : null,
+  );
 
   /**
    * The focus ESTIMATE: a separate, calibrated 0-100 score derived from this

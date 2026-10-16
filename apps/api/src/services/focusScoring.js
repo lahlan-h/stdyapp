@@ -19,6 +19,7 @@
  * averaged over the session, blended with how much of the session was actually
  * seen through, and finally scaled to 0-100.
  */
+import { isTimeAway } from "./sessionPause.js";
 
 /**
  * Relative importance of each signal in the per-sample composite.
@@ -380,7 +381,9 @@ export const computeAwayFraction = (interruptions, elapsedMs) => {
   if (!Array.isArray(interruptions) || interruptions.length === 0) return 0;
   if (!(elapsedMs > 0)) return 0;
 
-  const awaySec = interruptions.reduce(
+  // A break is recorded as an interruption too, so the chart can place it,
+  // but it is not time away - see isTimeAway.
+  const awaySec = interruptions.filter(isTimeAway).reduce(
     (sum, i) => sum + (Number.isFinite(i?.durationSec) ? Math.max(0, i.durationSec) : 0),
     0,
   );

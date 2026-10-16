@@ -7,9 +7,12 @@ import {
   openPauseSeconds,
   pausedSecondsAt,
   toPauseState,
+  isTimeAway,
   MAX_PAUSES,
   MAX_PAUSE_SEC,
 } from "../src/services/sessionPause.js";
+import { computeAwayFraction } from "../src/services/focusScoring.js";
+import { toSessionHistoryRow } from "../src/services/sessionHistory.js";
 
 /**
  * A break takes time out of a session, never more than five minutes of it at
@@ -102,5 +105,39 @@ describe("toPauseState", () => {
 
   it("never reports fewer than zero breaks left", () => {
     assert.equal(toPauseState({ pauseCount: 7 }).pausesLeft, 0);
+  });
+});
+
+describe("isTimeAway", () => {
+  it("counts trips out of the app, typed or not, and not breaks", () => {
+    assert.equal(isTimeAway({ type: "APP_EXIT" }), true);
+    assert.equal(isTimeAway({ type: null }), true);
+    assert.equal(isTimeAway({}), true);
+    assert.equal(isTimeAway({ type: "BREAK" }), false);
+  });
+
+  it("keeps a break out of the away fraction the score uses", () => {
+    const HOUR = 60 * 60_000;
+    const away = [{ durationSec: 900, type: "APP_EXIT" }];
+    const withBreak = [...away, { durationSec: 300, type: "BREAK" }];
+    assert.equal(computeAwayFraction(withBreak, HOUR), computeAwayFraction(away, HOUR));
+  });
+
+  it("keeps a break out of a history row's time away", () => {
+    const row = toSessionHistoryRow({
+      id: "s",
+      startedAt: T0,
+      endedAt: at(60),
+      pausedSeconds: 300,
+      groupId: null,
+      interruptions: [
+        { durationSec: 120, type: "APP_EXIT" },
+        { durationSec: 300, type: "BREAK" },
+      ],
+      focusRating: null,
+    });
+    assert.equal(row.awaySeconds, 120);
+    assert.equal(row.interruptionCount, 1);
+    assert.equal(row.durationMinutes, 55);
   });
 });

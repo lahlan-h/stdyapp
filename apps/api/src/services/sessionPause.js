@@ -24,6 +24,21 @@
 /** Breaks one session may take. */
 export const MAX_PAUSES = 3;
 
+/**
+ * The interruption type a finished break is recorded as - see BREAK in the
+ * Prisma schema. Written by the server alone.
+ */
+export const BREAK_TYPE = "BREAK";
+
+/**
+ * Whether an interruption was time AWAY - counted against the focus estimate
+ * and in every "time away" total - rather than a break, which is neither.
+ * Rows without a type are older trips out of the app, and count.
+ *
+ * @param {{ type?: string | null }} interruption
+ */
+export const isTimeAway = (interruption) => interruption?.type !== BREAK_TYPE;
+
 /** The longest one break is credited for, in seconds. */
 export const MAX_PAUSE_SEC = 5 * 60;
 

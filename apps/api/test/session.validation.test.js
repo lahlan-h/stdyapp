@@ -70,6 +70,14 @@ describe("addInterruptionSchema.type", () => {
     }
   });
 
+  it("refuses BREAK: only the server records a break, or time away could be filed as one", () => {
+    assert.equal(INTERRUPTION_TYPES.includes("BREAK"), false);
+    assert.equal(
+      addInterruptionSchema.safeParse({ durationSec: 300, type: "BREAK" }).success,
+      false,
+    );
+  });
+
   it("rejects an unknown type rather than writing garbage to an enum column", () => {
     for (const type of ["BATHROOM", "app_exit", "", 3]) {
       assert.equal(

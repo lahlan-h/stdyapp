@@ -15,7 +15,7 @@ import {
 } from "../utils/timeZone.js";
 import { ANALYTICS_RANGES } from "../validation/analytics.validation.js";
 import { summariseFocusEstimate, focusScoreChange } from "./analyticsFocus.js";
-import { activeMs } from "./sessionPause.js";
+import { activeMs, isTimeAway } from "./sessionPause.js";
 
 /**
  * Personal study analytics: GET /api/analytics/me.
@@ -243,7 +243,11 @@ export const getMyAnalytics = async (userId, { range, tz }, now = new Date()) =>
   const pointsBasis = inRange.reduce((sum, { ms }) => sum + toMinutes(ms), 0);
   const focusPoints = inRange.reduce((sum, { session }) => sum + session.focusPoints, 0);
 
-  const interruptions = inRange.flatMap(({ session }) => session.interruptions);
+  // Breaks are recorded as interruptions so a chart can place them, but they
+  // are not time away and do not belong in these figures - see isTimeAway.
+  const interruptions = inRange
+    .flatMap(({ session }) => session.interruptions)
+    .filter(isTimeAway);
   const awaySec = interruptions.reduce((sum, item) => sum + item.durationSec, 0);
 
   // The per-session focus ESTIMATE and checklist totals - additive to the

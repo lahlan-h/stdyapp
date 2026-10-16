@@ -4,7 +4,7 @@ import * as sessionRepo from "../repositories/session.repository.js";
 // makes in post.service.js.
 import { findMembership, findMemberIds } from "../repositories/studyGroup.repository.js";
 // Break time comes off every duration - see sessionPause.js.
-import { activeMs, pausedSecondsAt } from "./sessionPause.js";
+import { activeMs, isTimeAway, pausedSecondsAt } from "./sessionPause.js";
 import { HttpError } from "../utils/httpError.js";
 import { bumpVersions, sessionOwnerVersionKey } from "../utils/cache.js";
 import {
@@ -303,6 +303,9 @@ export const getSessionFocus = async (sessionId, userId) => {
     focusRepo.findRatingBySession(sessionId),
     focusRepo.findTasksBySession(sessionId),
   ]);
+  // Breaks ride in the same table, to be placed on a chart, but are not time
+  // away - see isTimeAway.
+  const away = (session.interruptions ?? []).filter(isTimeAway);
 
   return {
     sessionId: session.id,
@@ -318,14 +321,11 @@ export const getSessionFocus = async (sessionId, userId) => {
     sampleCount,
     // Surfaced so the score is explainable: "you were away for 12 minutes" is
     // the single most useful thing to show next to a low estimate.
-    awaySeconds: (session.interruptions ?? []).reduce(
-      (sum, i) => sum + (i.durationSec ?? 0),
-      0,
-    ),
+    awaySeconds: away.reduce((sum, i) => sum + (i.durationSec ?? 0), 0),
     // Count as well as total, because they say different things: four short
     // glances away is a different session from one long one, and a recap that
     // shows only minutes cannot tell them apart.
-    interruptionCount: (session.interruptions ?? []).length,
+    interruptionCount: away.length,
     // Breaks, apart from time away: they do not count against the estimate,
     // and a recap that lumped them in with distraction would say they did.
     pauseCount: session.pauseCount ?? 0,

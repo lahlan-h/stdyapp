@@ -38,7 +38,8 @@ export const findSessionsByUser = (userId) => {
     orderBy: { startedAt: "desc" },
     include: {
       group: { select: { id: true, name: true } },
-      interruptions: { select: { durationSec: true } },
+      // type, so a break is not summed as time away - see isTimeAway.
+      interruptions: { select: { durationSec: true, type: true } },
       focusRating: { select: { selfRating: true } },
     },
   });
@@ -258,20 +259,58 @@ export const startPause = async (id, at, maxPauses) => {
 };
 
 /**
+ * The row a finished break leaves, stamped - like every interruption - at the
+ * moment it ended, with the seconds it was credited. Not time away; see BREAK
+ * in the Prisma schema.
+ */
+const breakRow = (sessionId, pausedAt, creditedSeconds) => ({
+  sessionId,
+  startedAt: new Date(pausedAt.getTime() + creditedSeconds * 1000),
+  durationSec: creditedSeconds,
+  penaltyApplied: false,
+  type: "BREAK",
+});
+
+/**
  * Ends a break, crediting its seconds - only if it is still the break that
- * began at `pausedAt`, so a racing second resume cannot credit it twice.
+ * began at `pausedAt`, so a racing second resume cannot credit it twice - and
+ * records where it fell, in the same transaction so the two always agree.
  *
  * @param {string} id
  * @param {Date} pausedAt
  * @param {number} creditedSeconds
  */
-export const finishPause = async (id, pausedAt, creditedSeconds) => {
-  const { count } = await prisma.session.updateMany({
-    where: { id, pausedAt },
-    data: { pausedAt: null, pausedSeconds: { increment: creditedSeconds } },
+export const finishPause = (id, pausedAt, creditedSeconds) =>
+  prisma.$transaction(async (tx) => {
+    const { count } = await tx.session.updateMany({
+      where: { id, pausedAt },
+      data: { pausedAt: null, pausedSeconds: { increment: creditedSeconds } },
+    });
+    if (count === 1 && creditedSeconds > 0) {
+      await tx.sessionInterruption.create({ data: breakRow(id, pausedAt, creditedSeconds) });
+    }
+    return count === 1;
   });
-  return count === 1;
-};
+
+/**
+ * Writes a session's end, closing a break still open at that moment - its
+ * credited share already summed into data.pausedSeconds by the caller - and
+ * recording it as a break, together.
+ *
+ * @param {string} id
+ * @param {object} data - endedAt, focusPoints, pausedAt: null, pausedSeconds
+ * @param {{ pausedAt: Date, creditedSeconds: number } | null} openBreak
+ */
+export const closeSessionRow = (id, data, openBreak) =>
+  prisma.$transaction(async (tx) => {
+    const updated = await tx.session.update({ where: { id }, data });
+    if (openBreak && openBreak.creditedSeconds > 0) {
+      await tx.sessionInterruption.create({
+        data: breakRow(id, openBreak.pausedAt, openBreak.creditedSeconds),
+      });
+    }
+    return updated;
+  });
 
 export const updateSession = (id, data) => {
   return prisma.session.update({ where: { id }, data });
@@ -408,7 +447,7 @@ export const findCompletedSessionsForAnalytics = (userId, since) => {
       focusWeightedMinutes: true,
       tasksTotal: true,
       tasksCompleted: true,
-      interruptions: { select: { durationSec: true, penaltyApplied: true } },
+      interruptions: { select: { durationSec: true, penaltyApplied: true, type: true } },
     },
     orderBy: { startedAt: "asc" },
   });
