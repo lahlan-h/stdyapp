@@ -73,8 +73,13 @@ const isThemePreference = (value: unknown): value is ThemePreference =>
  *
  * Safe to call repeatedly with the same value: it is a no-op on the native
  * side when nothing changes.
+ *
+ * Skipped where it does not exist: react-native-web's Appearance has no
+ * setColorScheme - a browser has no native views to override - and calling it
+ * there threw inside ThemeProvider and took the whole web app down.
  */
 const applyNativeScheme = (preference: ThemePreference) => {
+  if (typeof Appearance.setColorScheme !== "function") return;
   Appearance.setColorScheme(preference === "system" ? "unspecified" : preference);
 };
 
