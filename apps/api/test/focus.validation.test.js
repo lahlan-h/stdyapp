@@ -277,8 +277,41 @@ describe("leaderboardQuerySchema", () => {
     assert.equal(leaderboardQuerySchema.parse({ days: "all" }).days, "all");
   });
 
-  it("rejects day counts outside the window and words other than all", () => {
-    for (const days of ["0", "121", "-7", "forever", "7.5"]) {
+  it('accepts "week" for the calendar week, with or without a timezone', () => {
+    assert.equal(leaderboardQuerySchema.parse({ days: "week" }).days, "week");
+    assert.equal(
+      leaderboardQuerySchema.parse({ days: "week", tz: "Australia/Sydney" }).tz,
+      "Australia/Sydney",
+    );
+  });
+
+  it("canonicalises the timezone, as analytics does", () => {
+    assert.equal(
+      leaderboardQuerySchema.parse({ days: "week", tz: "australia/sydney" }).tz,
+      "Australia/Sydney",
+    );
+  });
+
+  it("refuses a timezone that is not one", () => {
+    assert.equal(
+      leaderboardQuerySchema.safeParse({ days: "week", tz: "Mars/Olympus_Mons" }).success,
+      false,
+    );
+  });
+
+  it("refuses a timezone on a rolling or all-time board, where it would change nothing", () => {
+    for (const days of ["7", "all"]) {
+      assert.equal(
+        leaderboardQuerySchema.safeParse({ days, tz: "Australia/Sydney" }).success,
+        false,
+        `tz with days=${days} should have been rejected`,
+      );
+    }
+    assert.equal(leaderboardQuerySchema.safeParse({ tz: "UTC" }).success, false);
+  });
+
+  it("rejects day counts outside the window and words other than all and week", () => {
+    for (const days of ["0", "121", "-7", "forever", "7.5", "month"]) {
       assert.equal(
         leaderboardQuerySchema.safeParse({ days }).success,
         false,

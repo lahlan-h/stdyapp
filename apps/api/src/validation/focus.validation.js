@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { timeZoneSchema } from "./analytics.validation.js";
+
 /**
  * Request schemas for the focus-estimate endpoints.
  *
@@ -139,6 +141,13 @@ export const LEADERBOARD_SCOPES = ["following", "global", "group"];
  * exactly one spelling of it, and the default "following" scope bounds what it
  * reads to one person's follow list.
  *
+ * The literal "week" is the CALENDAR week so far: from Monday midnight in `tz`
+ * (UTC if omitted), the same week the app's weekly card and weekly goal count.
+ * A number is a rolling window, so days=7 on a Monday still reaches back into
+ * last week - which is why a screen that says "this week" asks for "week".
+ * `tz` only means something to "week", and is refused anywhere else, as a
+ * stray groupId is.
+ *
  * `scope` defaults to "following" because comparing yourself with your friends
  * is the social loop; a global board of strangers is the opt-in. "group" is a
  * study group's own board, opened from that group's feed, and names the group
@@ -158,10 +167,11 @@ export const leaderboardQuerySchema = z
       })
       .default("weightedMinutes"),
     days: z
-      .union([z.literal("all"), z.coerce.number().int().min(1).max(120)], {
-        message: `days must be a whole number from 1 to 120, or "all"`,
+      .union([z.literal("all"), z.literal("week"), z.coerce.number().int().min(1).max(120)], {
+        message: `days must be a whole number from 1 to 120, "week" or "all"`,
       })
       .default(7),
+    tz: timeZoneSchema.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
   })
   // Both directions are a 400, as on the feed's audience: a group board with
@@ -170,6 +180,12 @@ export const leaderboardQuerySchema = z
   .refine((query) => (query.scope === "group") === Boolean(query.groupId), {
     message: "groupId is required with scope=group, and only then",
     path: ["groupId"],
+  })
+  // A rolling window starts N days before now wherever the caller is, so a tz
+  // there would change nothing - a client that sends one expects it to.
+  .refine((query) => query.tz === undefined || query.days === "week", {
+    message: "tz only applies to days=week",
+    path: ["tz"],
   });
 
 /** Length of one checklist item. Long enough for a real task, short enough
