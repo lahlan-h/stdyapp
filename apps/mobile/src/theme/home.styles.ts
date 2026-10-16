@@ -3,6 +3,8 @@ import { StyleSheet } from "react-native";
 
 /** Diameter of the author avatar on a post card. */
 const AVATAR_SIZE = 65;
+/** The space between photos in a post's grid - Facebook's hairline-plus. */
+const PHOTO_GRID_GAP = 2;
 
 export const createHomeStyles = (colors: ColorScheme) => {
   const styles = StyleSheet.create({
@@ -102,6 +104,25 @@ export const createHomeStyles = (colors: ColorScheme) => {
       fontFamily: "PlusJakartaSans_600SemiBold",
       color: colors.text,
     },
+    // --- A post's photos: one on its own, or Facebook's grid (PostPhotos) ---
+    // Shared with the post detail screen, whose frame differs only in its own
+    // outer style. The gaps show the card behind, so the tiles read as separate
+    // photos without a border colour of their own.
+    photoGrid: {
+      gap: PHOTO_GRID_GAP,
+    },
+    photoGridRow: {
+      flexDirection: "row",
+      gap: PHOTO_GRID_GAP,
+    },
+    photoGridTile: {
+      flex: 1,
+    },
+    photoGridImage: {
+      width: "100%",
+      height: "100%",
+    },
+
     // --- Badges a session earned ("Personal best"...) ---
     // Shared with the post detail screen through the PostHighlights component.
     highlights: {
@@ -134,7 +155,7 @@ export const createHomeStyles = (colors: ColorScheme) => {
     },
     postCardImage: {
       width: "100%",
-      // Square only until the photo's own shape is known - PostPhoto
+      // Square only until the first photo's shape is known - PostPhotos
       // replaces this with it, within 4:5 and 2:1.
       aspectRatio: 1,
       borderColor: colors.border,

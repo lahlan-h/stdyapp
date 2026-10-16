@@ -31,10 +31,12 @@ import {
   useSessionDetail,
   useSessionRating,
   useDiscardSession,
+  preparePhoto,
   MAX_PHOTO_BYTES,
+  MAX_POST_PHOTOS,
   MAX_CAPTION_LENGTH,
   MAX_TITLE_LENGTH,
-  type NewPostPhoto,
+  type PreparedPhoto,
 } from "@data";
 
 import {
@@ -43,7 +45,6 @@ import {
   type LinkChoice,
 } from "@components/LinkPicker";
 import { NONE, formatSeconds } from "@components/sessionFormat";
-import { clampPhotoRatio } from "@components/photoRatio";
 import RatingSheet from "@components/RatingSheet";
 import { confirmDiscardSession } from "@components/confirmDiscardSession";
 
@@ -132,7 +133,7 @@ const NewPost = () => {
   const { colors } = useTheme();
   const newPostStyles = useNewPostStyles();
   const insets = useSafeAreaInsets();
-  const { createPost, isSubmitting, error, reset } = useCreatePost();
+  const { createPost, isSubmitting, stage, error, reset } = useCreatePost();
   // Set when the Study tab opens this screen for the session that just ended,
   // so the post arrives already linked.
   const params = useLocalSearchParams<{ sessionId?: string }>();
@@ -187,65 +188,88 @@ const NewPost = () => {
 
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
-  const [photo, setPhoto] = useState<NewPostPhoto | null>(null);
-  // The picked photo's frame shape, as the feed will show it - see photoRatio.
-  const [photoRatio, setPhotoRatio] = useState(1);
+  // In posting order: the first is the one the feed frames the post by.
+  const [photos, setPhotos] = useState<PreparedPhoto[]>([]);
+  // Shrinking just-picked photos - see preparePhoto. Usually well under a second.
+  const [preparing, setPreparing] = useState(false);
   const [session, setSession] = useState<LinkChoice | null>(
     params.sessionId ? { id: params.sessionId, label: "The session you just finished" } : null,
   );
   const [routine, setRoutine] = useState<LinkChoice | null>(null);
   const [picker, setPicker] = useState<"session" | "routine" | null>(null);
 
-  // Mirrors the API's rule: a title, plus a photo or a caption.
-  const hasBody = Boolean(photo) || caption.trim().length > 0;
-  const canSubmit = title.trim().length > 0 && hasBody && !isSubmitting;
+  // Mirrors the API's rule: a title, plus photos or a caption.
+  const hasBody = photos.length > 0 || caption.trim().length > 0;
+  const canSubmit = title.trim().length > 0 && hasBody && !isSubmitting && !preparing;
+  const room = MAX_POST_PHOTOS - photos.length;
 
-  const pickPhoto = async () => {
+  const pickPhotos = async () => {
+    if (room <= 0) return;
+
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert(
         "Photos are off",
-        "stdy needs access to your photos to attach one to a post. Turn it on in Settings.",
+        "stdy needs access to your photos to attach them to a post. Turn it on in Settings.",
       );
       return;
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
-      // No crop step: the photo goes up whole, in its own shape. The feed
-      // frames each one at its own aspect ratio now - see PostPhoto - so there
-      // is no square to fit it to any more.
-      //
-      // Compatible, because without the crop step iOS hands back the ORIGINAL
-      // file, which is usually HEIC - and the API takes only JPEG, PNG and
-      // WebP. This has iOS convert it to JPEG on the way out.
+      // Several at once, up to what is left of MAX_POST_PHOTOS, in the order
+      // tapped. No crop step: each goes up whole, in its own shape.
+      allowsMultipleSelection: true,
+      selectionLimit: room,
+      orderedSelection: true,
+      // Compatible, because without a crop step iOS hands back the ORIGINAL
+      // file, which is usually HEIC. This has iOS convert it to JPEG; Android's
+      // HEIF is converted by preparePhoto instead.
       preferredAssetRepresentationMode:
         ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
-      // Re-encoded at 0.8 so an uncropped full-resolution photo still fits
-      // under the API's 5 MB limit.
-      quality: 0.8,
     });
 
     if (result.canceled) return;
 
-    const asset = result.assets[0];
-    const mimeType = asset.mimeType ?? "image/jpeg";
+    setPreparing(true);
+    try {
+      const prepared = await Promise.all(
+        result.assets.slice(0, room).map((asset) =>
+          preparePhoto({
+            uri: asset.uri,
+            width: asset.width,
+            height: asset.height,
+            mimeType: asset.mimeType,
+          }),
+        ),
+      );
 
-    // Checked here rather than letting the upload fail: a rejected 5 MB photo
-    // costs the user the whole upload before telling them anything.
-    if (!ACCEPTED_MIME_TYPES.includes(mimeType)) {
-      Alert.alert("Unsupported image", "Pick a JPEG, PNG or WebP.");
-      return;
+      // Checked on the PREPARED file, not the original: shrinking usually
+      // brings a photo well under the limit, and converts HEIF to JPEG. What
+      // is left over here only happens on a build without the manipulator.
+      const usable = prepared.filter(
+        (photo) =>
+          ACCEPTED_MIME_TYPES.includes(photo.mimeType) && photo.sizeBytes <= MAX_PHOTO_BYTES,
+      );
+      if (usable.length < prepared.length) {
+        Alert.alert(
+          "Some photos were skipped",
+          "Photos have to be a JPEG, PNG or WebP, under 5 MB.",
+        );
+      }
+
+      reset();
+      setPhotos((current) => [...current, ...usable].slice(0, MAX_POST_PHOTOS));
+    } catch {
+      Alert.alert("Couldn't add those photos", "Try picking them again.");
+    } finally {
+      setPreparing(false);
     }
+  };
 
-    if (asset.fileSize && asset.fileSize > MAX_PHOTO_BYTES) {
-      Alert.alert("Photo too large", "Photos have to be under 5 MB.");
-      return;
-    }
-
+  const removePhoto = (uri: string) => {
     reset();
-    setPhoto({ uri: asset.uri, mimeType, fileName: asset.fileName ?? undefined });
-    setPhotoRatio(clampPhotoRatio(asset.width, asset.height));
+    setPhotos((current) => current.filter((photo) => photo.uri !== uri));
   };
 
   const submit = async () => {
@@ -254,7 +278,7 @@ const NewPost = () => {
     const created = await createPost({
       title,
       caption,
-      photo: photo ?? undefined,
+      photos,
       sessionId: session?.id,
       routineId: routine?.id,
     });
@@ -337,37 +361,70 @@ const NewPost = () => {
           ) : null}
 
           <View style={newPostStyles.section}>
-            <Text style={newPostStyles.sectionTitle}>Photo</Text>
+            <Text style={newPostStyles.sectionTitle}>Photos</Text>
 
-            <Pressable
-              // Square while empty; the photo's own feed frame once picked.
-              style={[newPostStyles.photoWell, photo && { aspectRatio: photoRatio }]}
-              onPress={pickPhoto}
-              accessibilityRole="button"
-              accessibilityLabel={photo ? "Change photo" : "Add a photo"}
-            >
-              {photo ? (
-                <>
-                  <Image
-                    style={newPostStyles.photo}
-                    source={{ uri: photo.uri }}
-                    resizeMode="cover"
-                  />
-                  <View style={newPostStyles.photoChange}>
-                    <Feather name="camera" size={16} color={colors.text} />
-                    <Text style={newPostStyles.photoChangeLabel}>Change</Text>
+            {photos.length === 0 ? (
+              <Pressable
+                style={newPostStyles.photoWell}
+                onPress={pickPhotos}
+                disabled={preparing}
+                accessibilityRole="button"
+                accessibilityLabel="Add photos"
+              >
+                {preparing ? (
+                  <ActivityIndicator color={colors.textMuted} />
+                ) : (
+                  <>
+                    <Feather name="camera" size={28} color={colors.textMuted} />
+                    <Text style={newPostStyles.photoPrompt}>Add photos</Text>
+                    <Text style={newPostStyles.photoHint}>
+                      Up to {MAX_POST_PHOTOS} - JPEG, PNG or WebP
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            ) : (
+              <View style={newPostStyles.photoStrip}>
+                {photos.map((photo, index) => (
+                  <View key={photo.uri} style={newPostStyles.thumb}>
+                    <Image
+                      style={newPostStyles.thumbImage}
+                      source={{ uri: photo.uri }}
+                      resizeMode="cover"
+                      accessibilityLabel={`Photo ${index + 1}`}
+                    />
+                    <Pressable
+                      style={newPostStyles.thumbRemove}
+                      onPress={() => removePhoto(photo.uri)}
+                      disabled={isSubmitting}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove photo ${index + 1}`}
+                    >
+                      <Feather name="x" size={14} color={colors.text} />
+                    </Pressable>
                   </View>
-                </>
-              ) : (
-                <>
-                  <Feather name="camera" size={28} color={colors.textMuted} />
-                  <Text style={newPostStyles.photoPrompt}>Add a photo</Text>
-                  <Text style={newPostStyles.photoHint}>
-                    JPEG, PNG or WebP, up to 5 MB
-                  </Text>
-                </>
-              )}
-            </Pressable>
+                ))}
+                {room > 0 ? (
+                  <Pressable
+                    style={newPostStyles.addTile}
+                    onPress={pickPhotos}
+                    disabled={preparing || isSubmitting}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add photos, ${room} more allowed`}
+                  >
+                    {preparing ? (
+                      <ActivityIndicator color={colors.textMuted} />
+                    ) : (
+                      <>
+                        <Feather name="plus" size={22} color={colors.textMuted} />
+                        <Text style={newPostStyles.addTileLabel}>Add</Text>
+                      </>
+                    )}
+                  </Pressable>
+                ) : null}
+              </View>
+            )}
           </View>
 
           <View style={newPostStyles.section}>
@@ -480,7 +537,13 @@ const NewPost = () => {
               end={{ x: 0.5, y: 1 }}
               style={newPostStyles.submitFill}
             >
-              {isSubmitting ? (
+              {stage.step === "uploading" ? (
+                // Says how far along, since four photos on a slow connection
+                // can take long enough to look stuck behind a bare spinner.
+                <Text style={newPostStyles.submitLabel}>
+                  Uploading {Math.min(stage.done + 1, stage.total)} of {stage.total}...
+                </Text>
+              ) : isSubmitting ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
                 <Text style={newPostStyles.submitLabel}>Post</Text>

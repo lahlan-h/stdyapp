@@ -5,10 +5,19 @@ import {
   deleteFile,
   deleteFiles,
   publicUrlForKey,
+  createUploadUrl,
+  headFile,
+  readFileStart,
   createLogger,
 } from "@stdyapp/core";
 import { HttpError } from "../utils/httpError.js";
-import { detectImageType, IMAGE_EXTENSIONS } from "../utils/imageType.js";
+import {
+  detectImageType,
+  extensionForMime,
+  IMAGE_EXTENSIONS,
+  SNIFF_BYTES,
+} from "../utils/imageType.js";
+import { PHOTO_UPLOAD_URL_TTL_SEC } from "../config/upload.js";
 
 /**
  * Object-storage policy for user-uploaded photos, shared by avatars and posts.
@@ -30,11 +39,19 @@ import { detectImageType, IMAGE_EXTENSIONS } from "../utils/imageType.js";
  * "may this caller delete this object?" answerable from the key alone, with no
  * database lookup and no metadata round trip.
  *
- * ONE OBJECT PER REQUEST. Both callers upload inside the same request that writes
- * the row referencing the object, so a failed write can delete what it just made
- * and nothing is ever left unreferenced. That is a property of the multipart
- * transport rather than of this module - a two-step upload could not offer it,
- * and needed a staging prefix and a bucket lifecycle rule to compensate.
+ * TWO WAYS IN.
+ *
+ *  - uploadPhoto: the bytes arrive at the API (multipart, avatars). The object
+ *    is written in the same request as the row that references it, so a failed
+ *    write deletes what it just made and nothing is ever left unreferenced.
+ *
+ *  - createPhotoUpload + verifyUploadedPhoto: the app uploads straight to R2
+ *    through a presigned URL (post photos), so the API never holds the bytes -
+ *    which is what lets a post carry several photos without buffering them all
+ *    in memory. The price is that an upload can be abandoned between the two
+ *    steps; post_photos rows track every one, and jobs/photoUploadSweep.js
+ *    deletes those never attached to a post. No staging prefix: the object is
+ *    written to its final key, and the row is what says it is not in use yet.
  */
 
 const log = createLogger("photos");
@@ -218,4 +235,97 @@ export const uploadPhoto = async ({ prefix, ownerId, buffer }) => {
   }
 
   return { key, url };
+};
+
+/** An object we cannot use as an upload target - the public URL is broken. */
+const assertUsableUrl = (url, key) => {
+  if (url.startsWith("http://") || url.startsWith("https://")) return;
+  log.error(`R2_PUBLIC_URL is missing or malformed - built "${url}" for ${key}`);
+  throw new HttpError(502, STORAGE_UNAVAILABLE);
+};
+
+/**
+ * Reserves a fresh key for one photo and signs a URL the app can PUT it to.
+ *
+ * The key is final from the start - `<prefix>/<ownerId>/<uuid>.<ext>`, the
+ * layout parseOwnedKey enforces - with the extension taken from the DECLARED
+ * type. The URL only accepts exactly that type and exactly `sizeBytes` bytes
+ * (see createUploadUrl), so the size cap the caller validated is enforced by
+ * R2 itself. Nothing has been uploaded yet; verifyUploadedPhoto checks the
+ * bytes once they have been.
+ *
+ * @param {{ prefix: string, ownerId: string, mimeType: string, sizeBytes: number }} input
+ * @returns {Promise<{ url: string, uploadUrl: string }>} url is where the photo
+ *   will be served from; uploadUrl is the one-off PUT target
+ * @throws {HttpError} 415 for a type with no known format, 502 when R2 signing fails
+ */
+export const createPhotoUpload = async ({ prefix, ownerId, mimeType, sizeBytes }) => {
+  const ext = extensionForMime(mimeType);
+  if (!ext) throw new HttpError(415, UNSUPPORTED_IMAGE);
+
+  const key = `${prefix}/${ownerId}/${randomUUID()}.${ext}`;
+  const url = publicUrlForKey(key);
+  assertUsableUrl(url, key);
+
+  try {
+    const uploadUrl = await createUploadUrl({
+      key,
+      contentType: mimeType,
+      contentLength: sizeBytes,
+      expiresInSec: PHOTO_UPLOAD_URL_TTL_SEC,
+    });
+    return { url, uploadUrl };
+  } catch (err) {
+    log.error(`signing an upload for ${key} failed: ${err.message}`);
+    throw new HttpError(502, STORAGE_UNAVAILABLE, { cause: err });
+  }
+};
+
+const isNotFound = (err) =>
+  err?.$metadata?.httpStatusCode === 404 || err?.name === "NotFound" || err?.name === "NoSuchKey";
+
+/**
+ * Checks a presigned upload actually arrived, and is what it claims to be.
+ *
+ * The API never saw these bytes, so this is where the guarantees uploadPhoto
+ * gets from holding them are re-established, by asking R2:
+ *
+ *  1. It belongs to this owner - keyFromOwnedUrl, the same ownership check
+ *     every delete uses.
+ *  2. It exists. HEAD; a 404 means the app never finished the PUT.
+ *  3. It is within maxBytes. The upload URL already pinned the exact size, so
+ *     this is a second line, for a URL signed under an older, looser rule.
+ *  4. Its bytes are the image its key and stored Content-Type say. A ranged GET
+ *     of the first SNIFF_BYTES, sniffed exactly as uploadPhoto sniffs a whole
+ *     upload. This is the stored-XSS guard from utils/imageType.js: without it,
+ *     HTML signed as image/jpeg would be served from our public bucket.
+ *
+ * Returns why it failed rather than throwing, so the caller can delete the bad
+ * object and say which photo it was.
+ *
+ * @param {{ url: string, prefix: string, ownerId: string, maxBytes: number }} input
+ * @returns {Promise<string | null>} null when the photo is fine, else the reason
+ * @throws {HttpError} 502 when R2 cannot be asked
+ */
+export const verifyUploadedPhoto = async ({ url, prefix, ownerId, maxBytes }) => {
+  const key = keyFromOwnedUrl(url, { prefix, ownerId });
+  if (!key) return "is not one of your uploads";
+
+  try {
+    const head = await headFile(key);
+    if (!head.ContentLength || head.ContentLength > maxBytes) {
+      return `is larger than ${Math.round(maxBytes / (1024 * 1024))} MB`;
+    }
+
+    const image = detectImageType(await readFileStart(key, SNIFF_BYTES));
+    if (!image || !key.endsWith(`.${image.ext}`) || head.ContentType !== image.mime) {
+      return "is not a JPEG, PNG or WebP image";
+    }
+
+    return null;
+  } catch (err) {
+    if (isNotFound(err)) return "never finished uploading";
+    log.error(`verifying ${key} failed: ${err.message}`);
+    throw new HttpError(502, STORAGE_UNAVAILABLE, { cause: err });
+  }
 };

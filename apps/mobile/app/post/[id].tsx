@@ -37,7 +37,7 @@ import { formatRelativeTime, formatDuration } from "@stdyapp/shared";
 
 import ReportDialog from "@components/ReportDialog";
 import PostRoutineLink from "@components/PostRoutineLink";
-import PostPhoto from "@components/PostPhoto";
+import PostPhotos from "@components/PostPhotos";
 import StudiedWith from "@components/StudiedWith";
 import PostHighlights from "@components/PostHighlights";
 import { focusBand, focusBandColor } from "@components/focusBand";
@@ -170,9 +170,7 @@ const PostDetail = () => {
               </View>
             </View>
 
-            {post.imageUrl && (
-              <PostPhoto uri={post.imageUrl} title={post.title} style={styles.photo} />
-            )}
+            <PostPhotos photos={post.photos} title={post.title} style={styles.photo} />
 
             {post.caption ? (
               <Text style={styles.caption}>{post.caption}</Text>

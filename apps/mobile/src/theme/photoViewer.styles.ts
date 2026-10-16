@@ -22,8 +22,19 @@ export const createPhotoViewerStyles = (colors: ColorScheme) => {
       left: 0,
       backgroundColor: colors.lightbox.bg,
     },
+    // The gesture area: the whole screen, clipping the strip of photos so the
+    // neighbours wait just off either edge.
     stage: {
       flex: 1,
+      overflow: "hidden",
+    },
+    // Every photo side by side, a screen wide each; PhotoViewer slides it.
+    strip: {
+      flexDirection: "row",
+      height: "100%",
+    },
+    page: {
+      height: "100%",
       alignItems: "center",
       justifyContent: "center",
     },
@@ -50,6 +61,13 @@ export const createPhotoViewerStyles = (colors: ColorScheme) => {
       backgroundColor: colors.lightbox.control,
     },
     controlBusy: { opacity: 0.6 },
+    // "2 / 4", between the two buttons, on a post with several photos.
+    counter: {
+      alignSelf: "center",
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 15,
+      color: colors.lightbox.text,
+    },
 
     // --- Status ("Saved to Photos", an error) ---
     status: {

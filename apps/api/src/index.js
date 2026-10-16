@@ -24,6 +24,7 @@ import { corsOptions, warnIfCorsUnconfigured } from "./config/cors.js";
 import { HttpError } from "./utils/httpError.js";
 import { attachNotificationSocket } from "./realtime/notificationSocket.js";
 import { startSessionSweep } from "./jobs/sessionSweep.js";
+import { startPhotoUploadSweep } from "./jobs/photoUploadSweep.js";
 
 const log = createLogger("api");
 
@@ -135,6 +136,10 @@ const closeNotificationSocket = attachNotificationSocket(server);
 // sweepAbandonedSessions for the rule, and jobs/sessionSweep.js for the timer.
 const stopSessionSweep = startSessionSweep();
 
+// Deletes post photos uploaded straight to R2 but never attached to a post -
+// see services/photoUpload.service.js for the upload flow.
+const stopPhotoUploadSweep = startPhotoUploadSweep();
+
 // Guards against re-entry when Ctrl+C is pressed twice.
 let isShuttingDown = false;
 
@@ -161,6 +166,7 @@ const shutdown = async (signal) => {
     // server.close() would otherwise wait on every one of them until the force
     // exit above fired.
     stopSessionSweep();
+    stopPhotoUploadSweep();
     await closeNotificationSocket().catch(() => {});
     await new Promise((resolve) => server.close(resolve));
     await Promise.allSettled([

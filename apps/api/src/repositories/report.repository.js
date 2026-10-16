@@ -48,7 +48,9 @@ const REPORT_TARGET_INCLUDE = {
       // payload would show a moderator nothing at all on most posts.
       title: true,
       caption: true,
-      photoUrl: true,
+      // Every photo, in order - a moderator judging a post needs to see all
+      // of it, not just the first image.
+      photos: { orderBy: { position: "asc" }, select: { url: true } },
       createdAt: true,
     },
   },
@@ -242,7 +244,7 @@ export const deleteReportsByReporter = (reporterId) => {
  *
  * The mirror of findBookmarkerIdsByPosts, and used the same way:
  * invalidatePostFanout in post.service.js calls it because a report payload
- * embeds the reported post's caption and photoUrl, so an edited or deleted post
+ * embeds the reported post's caption and photos, so an edited or deleted post
  * leaves that report stale for everyone who filed one — and no report was
  * written, so nothing in report.service.js bumps.
  *

@@ -10,7 +10,7 @@ import PostCardBody from "./PostCardBody";
 import PostCardStats from "./PostCardStats";
 import PostCardFooter from "./PostCardFooter";
 import PostRoutineLink from "./PostRoutineLink";
-import PostPhoto from "./PostPhoto";
+import PostPhotos from "./PostPhotos";
 import StudiedWith from "./StudiedWith";
 import PostHighlights from "./PostHighlights";
 
@@ -89,14 +89,9 @@ const PostCard = ({ post, onToggleLike, onReport }: PostCardProps) => {
           highlights={post.session?.highlights ?? []}
           style={{ marginHorizontal: 12, marginBottom: 12 }}
         />
-        {/* Opens full size rather than the post - see PostPhoto. */}
-        {post.imageUrl && (
-          <PostPhoto
-            uri={post.imageUrl}
-            title={post.title}
-            style={homeStyles.postCardImage}
-          />
-        )}
+        {/* Opens full size rather than the post - see PostPhotos. Renders
+            nothing for a text-only post. */}
+        <PostPhotos photos={post.photos} title={post.title} style={homeStyles.postCardImage} />
       </Pressable>
       <PostCardFooter
         postId={post.id}

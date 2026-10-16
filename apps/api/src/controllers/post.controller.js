@@ -1,22 +1,31 @@
 import * as postService from "../services/post.service.js";
+import * as photoUploadService from "../services/photoUpload.service.js";
 
 /**
- * POST /api/posts - one multipart request carrying the photo and the caption.
+ * POST /api/posts/photos - a presigned upload URL for each photo the app is
+ * about to post. 201: a row now exists for each, waiting to be attached.
+ */
+export const createPhotoUploads = async (req, res, next) => {
+  try {
+    const uploads = await photoUploadService.createPhotoUploads(
+      req.user.id,
+      req.validated.body.photos,
+    );
+    res.status(201).json({ uploads });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/posts - JSON naming the photos already uploaded to R2 by id.
  *
- * The body arrives in two halves and they are read from different places, which
- * is the one thing worth knowing about this handler: uploadImage() puts the file
- * on req.file and the text fields on req.body, and validate() then parses those
- * fields onto req.validated.body. There is no schema for the file - Zod never
- * sees it - so uploadImage is what guarantees req.file.buffer is a non-empty
- * Buffer within the size cap, and imageType.js is what decides it is an image.
- *
- * Every check that used to live here is now in createPostSchema: shape, title
- * and caption length, uuid-ness of the links, and the loud 400 for a client
- * still sending a photoUrl.
+ * Every shape check is in createPostSchema; whether each photo really arrived,
+ * and is an image, is createPost's job - see verifyUploadedPhoto.
  */
 export const create = async (req, res, next) => {
   try {
-    const { sessionId, routineId, title, caption } = req.validated.body;
+    const { sessionId, routineId, title, caption, photoIds } = req.validated.body;
 
     const post = await postService.createPost({
       userId: req.user.id,
@@ -24,8 +33,7 @@ export const create = async (req, res, next) => {
       routineId,
       title,
       caption,
-      // Undefined for a text-only post - uploadImage is mounted optional.
-      photo: req.file?.buffer,
+      photoIds,
     });
     res.status(201).json(post);
   } catch (err) {
@@ -149,8 +157,8 @@ export const update = async (req, res, next) => {
     // the three-state link semantics (absent = leave, uuid = attach, null =
     // detach) that .nullish() preserves.
     //
-    // photoUrl is gone from the schema entirely: a post's photo is fixed at
-    // creation, so sending one is now a 400 rather than a silent no-op.
+    // Photos are not editable: they are fixed at creation, so sending any photo
+    // field here is a 400 rather than a silent no-op.
     const { title, caption, sessionId, routineId } = req.validated.body;
 
     const post = await postService.updatePost(req.params.id, req.user.id, {
