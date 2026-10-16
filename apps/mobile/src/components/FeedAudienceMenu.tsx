@@ -1,7 +1,7 @@
 import { Modal, Pressable, ScrollView, Text, View, ActivityIndicator } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 
-import { useTheme, useStyles, SEARCH_ROW_ICON_SIZE } from "@theme";
+import { useTheme, useStyles, haptics, SEARCH_ROW_ICON_SIZE } from "@theme";
 import { useGroups, type FeedAudience } from "@data";
 
 interface FeedAudienceMenuProps {
@@ -41,7 +41,10 @@ const FeedAudienceMenu = ({ audience, top, onSelect, onClose }: FeedAudienceMenu
         selected && styles.audienceOptionSelected,
         pressed && { opacity: 0.7 },
       ]}
-      onPress={() => onSelect(next)}
+      onPress={() => {
+        if (!selected) haptics.tick();
+        onSelect(next);
+      }}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={caption ? `${label}. ${caption}` : label}
