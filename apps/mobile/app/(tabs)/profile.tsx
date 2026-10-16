@@ -69,17 +69,15 @@ const Profile = () => {
    * Shown on the error screen too, because Settings is also where you sign out
    * - a profile that will not load must not trap you in the account.
    */
-  const topBar = (
-    <View style={[styles.topBar, styles.topBarEnd]}>
-      <Pressable
-        style={({ pressed }) => [styles.settingsButton, pressed && { opacity: 0.6 }]}
-        onPress={() => router.push("/settings")}
-        accessibilityRole="button"
-        accessibilityLabel="Settings"
-      >
-        <Feather name="settings" size={PROFILE_SETTINGS_ICON_SIZE} color={colors.text} />
-      </Pressable>
-    </View>
+  const gear = (
+    <Pressable
+      style={({ pressed }) => [styles.settingsButton, pressed && { opacity: 0.6 }]}
+      onPress={() => router.push("/settings")}
+      accessibilityRole="button"
+      accessibilityLabel="Settings"
+    >
+      <Feather name="settings" size={PROFILE_SETTINGS_ICON_SIZE} color={colors.text} />
+    </Pressable>
   );
 
   if (profileLoading) return <ProfileLoading />;
@@ -89,7 +87,7 @@ const Profile = () => {
       <ProfileMessage
         message={loadError ?? "Could not load your profile."}
         onRetry={reloadProfile}
-        topBar={topBar}
+        topBar={<View style={[styles.topBar, styles.topBarEnd]}>{gear}</View>}
       />
     );
   }
@@ -122,7 +120,7 @@ const Profile = () => {
           </View>
         </>
       }
-      topBar={topBar}
+      topBarEnd={gear}
       bottomPadding={tabBarClearance}
     />
   );
