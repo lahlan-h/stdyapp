@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { View, Text, Pressable } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 
@@ -9,6 +10,8 @@ interface FeedAudienceTitleProps {
   /** The menu is showing, so the arrow flips to say a tap will close it. */
   open: boolean;
   onPress: () => void;
+  /** Drawn at the row's far end - a group feed's leaderboard button. */
+  trailing?: ReactNode;
 }
 
 /** What the title reads for each audience. A group is named, not "Group". */
@@ -26,7 +29,7 @@ const titleOf = (audience: FeedAudience): string => {
  * "Home" with its circled arrow, reading as the audience on screen so the
  * feed always says what it is a feed of.
  */
-const FeedAudienceTitle = ({ audience, open, onPress }: FeedAudienceTitleProps) => {
+const FeedAudienceTitle = ({ audience, open, onPress, trailing }: FeedAudienceTitleProps) => {
   const { colors } = useTheme();
   const styles = useStyles("homeSearch");
   const title = titleOf(audience);
@@ -49,6 +52,7 @@ const FeedAudienceTitle = ({ audience, open, onPress }: FeedAudienceTitleProps) 
           color={colors.text}
         />
       </Pressable>
+      {trailing}
     </View>
   );
 };

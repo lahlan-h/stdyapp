@@ -26,6 +26,14 @@ interface HomeSearchPanelProps {
   topInset: number;
   /** The row above the search box - the feed's audience title. */
   title: ReactNode;
+  /**
+   * False on a study group's feed, which has no search, messages, filter or
+   * notifications - those are about your people, not one group. `children`
+   * takes the row's place there. Defaults to true.
+   */
+  showControls?: boolean;
+  /** What a group feed shows under its title instead of the controls. */
+  children?: ReactNode;
   query: string;
   onChangeQuery: (query: string) => void;
   /** Focusing the box is what opens search - there is no separate button. */
@@ -185,6 +193,38 @@ const CountButton = ({
 };
 
 /**
+ * One square button in the panel's style - the group feed's leaderboard
+ * button, sitting at the end of the title row.
+ */
+export const PanelButton = ({
+  onPress,
+  accessibilityLabel,
+  renderIcon,
+}: {
+  onPress: () => void;
+  accessibilityLabel: string;
+  renderIcon: (color: string) => ReactNode;
+}) => {
+  const { colors } = useTheme();
+  const styles = useStyles("homeSearch");
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      hitSlop={4}
+      style={({ pressed }) => [
+        styles.filterButton,
+        styles.panelTitleButton,
+        pressed && { opacity: 0.6 },
+      ]}
+    >
+      {renderIcon(colors.text)}
+    </Pressable>
+  );
+};
+
+/**
  * The bar pinned over the top of the feed: user search, messages, the feed
  * filter, and notifications.
  *
@@ -201,6 +241,8 @@ const HomeSearchPanel = forwardRef<TextInput, HomeSearchPanelProps>(
     {
       topInset,
       title,
+      showControls = true,
+      children,
       query,
       onChangeQuery,
       onFocusSearch,
@@ -262,83 +304,87 @@ const HomeSearchPanel = forwardRef<TextInput, HomeSearchPanelProps>(
 
         {title}
 
-        <View style={styles.panelRow}>
-          <View style={[styles.searchBox, open === "search" && styles.searchBoxFocused]}>
-            <Feather
-              name="search"
-              size={HOME_SEARCH_ICON_SIZE}
-              color={open === "search" ? colors.primary : colors.textMuted}
+        {showControls ? (
+          <View style={styles.panelRow}>
+            <View style={[styles.searchBox, open === "search" && styles.searchBoxFocused]}>
+              <Feather
+                name="search"
+                size={HOME_SEARCH_ICON_SIZE}
+                color={open === "search" ? colors.primary : colors.textMuted}
+              />
+              <TextInput
+                ref={inputRef}
+                style={styles.searchInput}
+                value={query}
+                onChangeText={onChangeQuery}
+                onFocus={onFocusSearch}
+                // Shorter than the mockup's first "Search for a user...": with
+                // four objects in the row, this is what fits a 360pt phone.
+                placeholder="Search users..."
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                clearButtonMode="while-editing"
+                accessibilityLabel="Search for a user"
+              />
+            </View>
+
+            <CountButton
+              isOpen={open === "messages"}
+              count={unreadMessages}
+              onPress={onPressMessages}
+              accessibilityLabel={
+                unreadMessages > 0
+                  ? `Messages, ${unreadMessages} unread ${unreadMessages === 1 ? "conversation" : "conversations"}`
+                  : "Messages"
+              }
+              renderIcon={(color) => (
+                <Feather name="message-circle" size={HOME_SEARCH_ICON_SIZE} color={color} />
+              )}
             />
-            <TextInput
-              ref={inputRef}
-              style={styles.searchInput}
-              value={query}
-              onChangeText={onChangeQuery}
-              onFocus={onFocusSearch}
-              // Shorter than the mockup's first "Search for a user...": with
-              // four objects in the row, this is what fits a 360pt phone.
-              placeholder="Search users..."
-              placeholderTextColor={colors.textMuted}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-              clearButtonMode="while-editing"
-              accessibilityLabel="Search for a user"
+
+            <Pressable
+              onPress={onPressFilter}
+              accessibilityRole="button"
+              accessibilityLabel={hasFilters ? "Filter posts, filters on" : "Filter posts"}
+              accessibilityState={{ expanded: filterOpen }}
+              style={({ pressed }) => [
+                styles.filterButton,
+                filterOpen && styles.filterButtonActive,
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              <Animated.View
+                pointerEvents="none"
+                style={[styles.filterTint, { opacity: tint }]}
+              />
+              <Feather
+                name="filter"
+                size={HOME_SEARCH_ICON_SIZE}
+                color={filterOpen ? colors.primary : colors.text}
+              />
+              <Animated.View
+                pointerEvents="none"
+                style={[styles.filterDot, { transform: [{ scale: dot }] }]}
+              />
+            </Pressable>
+
+            <CountButton
+              isOpen={open === "notifications"}
+              count={unread}
+              onPress={onPressNotifications}
+              accessibilityLabel={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+              // Ionicons, not Feather like its neighbours: Feather has no
+              // lightbulb, and the outline weight matches closely.
+              renderIcon={(color) => (
+                <Ionicons name="bulb-outline" size={HOME_SEARCH_ICON_SIZE + 2} color={color} />
+              )}
             />
           </View>
-
-          <CountButton
-            isOpen={open === "messages"}
-            count={unreadMessages}
-            onPress={onPressMessages}
-            accessibilityLabel={
-              unreadMessages > 0
-                ? `Messages, ${unreadMessages} unread ${unreadMessages === 1 ? "conversation" : "conversations"}`
-                : "Messages"
-            }
-            renderIcon={(color) => (
-              <Feather name="message-circle" size={HOME_SEARCH_ICON_SIZE} color={color} />
-            )}
-          />
-
-          <Pressable
-            onPress={onPressFilter}
-            accessibilityRole="button"
-            accessibilityLabel={hasFilters ? "Filter posts, filters on" : "Filter posts"}
-            accessibilityState={{ expanded: filterOpen }}
-            style={({ pressed }) => [
-              styles.filterButton,
-              filterOpen && styles.filterButtonActive,
-              pressed && { opacity: 0.6 },
-            ]}
-          >
-            <Animated.View
-              pointerEvents="none"
-              style={[styles.filterTint, { opacity: tint }]}
-            />
-            <Feather
-              name="filter"
-              size={HOME_SEARCH_ICON_SIZE}
-              color={filterOpen ? colors.primary : colors.text}
-            />
-            <Animated.View
-              pointerEvents="none"
-              style={[styles.filterDot, { transform: [{ scale: dot }] }]}
-            />
-          </Pressable>
-
-          <CountButton
-            isOpen={open === "notifications"}
-            count={unread}
-            onPress={onPressNotifications}
-            accessibilityLabel={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
-            // Ionicons, not Feather like its neighbours: Feather has no
-            // lightbulb, and the outline weight matches closely.
-            renderIcon={(color) => (
-              <Ionicons name="bulb-outline" size={HOME_SEARCH_ICON_SIZE + 2} color={color} />
-            )}
-          />
-        </View>
+        ) : (
+          <View style={styles.panelGroupBody}>{children}</View>
+        )}
       </View>
     );
   },

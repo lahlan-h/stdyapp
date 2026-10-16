@@ -46,6 +46,13 @@ const PANEL_TITLE_ICON_SIZE = 24;
 const HOME_PANEL_HEIGHT =
   PANEL_TITLE_HEIGHT + PANEL_PADDING_TOP + CONTROL_HEIGHT + PANEL_PADDING_BOTTOM;
 
+/**
+ * The same panel on a study group's feed, which has no control row: the title
+ * (with the leaderboard button at its end) and the group's body under it.
+ * Fixed for HOME_PANEL_HEIGHT's reason.
+ */
+const GROUP_PANEL_HEIGHT = PANEL_TITLE_HEIGHT + PANEL_PADDING_BOTTOM;
+
 const HOME_SEARCH_ICON_SIZE = 20;
 const SEARCH_ROW_ICON_SIZE = 18;
 const SEARCH_AVATAR_SIZE = 44;
@@ -107,18 +114,35 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
     },
 
     // --- Title: whose posts the feed shows ---
+    // space-between for a group feed's leaderboard button at the far end; with
+    // the title alone it simply sits at the start.
     panelTitleRow: {
       height: PANEL_TITLE_HEIGHT,
       flexDirection: "row",
       alignItems: "flex-end",
+      justifyContent: "space-between",
+      gap: 12,
       paddingHorizontal: 16,
     },
     // Wraps text and arrow, so the whole title is the target, not the icon.
+    // Shrinks rather than pushing the button off a narrow phone: a long group
+    // name truncates instead.
     panelTitle: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
       maxWidth: "100%",
+      flexShrink: 1,
+    },
+    // A button at the title row's end. The row aligns to its bottom edge, which
+    // puts a 44pt button's centre above the 28pt title's; nudged down so the
+    // two read as one line.
+    panelTitleButton: {
+      marginBottom: -4,
+    },
+    // Under a group feed's title, in the control row's place.
+    panelGroupBody: {
+      paddingBottom: PANEL_PADDING_BOTTOM,
     },
     panelTitleText: {
       flexShrink: 1,
@@ -641,6 +665,7 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
 
 export {
   HOME_PANEL_HEIGHT,
+  GROUP_PANEL_HEIGHT,
   PANEL_TITLE_ICON_SIZE,
   HOME_SEARCH_ICON_SIZE,
   SEARCH_ROW_ICON_SIZE,

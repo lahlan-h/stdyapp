@@ -92,6 +92,7 @@ export {
 export {
   createHomeSearchStyles,
   HOME_PANEL_HEIGHT,
+  GROUP_PANEL_HEIGHT,
   PANEL_TITLE_ICON_SIZE,
   HOME_SEARCH_ICON_SIZE,
   SEARCH_ROW_ICON_SIZE,

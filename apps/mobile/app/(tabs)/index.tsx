@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   StatusBar,
@@ -13,6 +13,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect, useNavigation } from "expo-router";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import type { BottomTabNavigationProp } from "expo-router/js-tabs";
 
 import {
@@ -22,6 +23,8 @@ import {
   useTabBarInset,
   useReducedMotion,
   HOME_PANEL_HEIGHT,
+  GROUP_PANEL_HEIGHT,
+  HOME_SEARCH_ICON_SIZE,
 } from "@theme";
 import {
   usePosts,
@@ -48,7 +51,7 @@ import FeedAudienceTitle from "@components/FeedAudienceTitle";
 import FeedAudienceMenu from "@components/FeedAudienceMenu";
 import { useSessionBarClearance } from "@components/SessionBar";
 import ReportDialog from "@components/ReportDialog";
-import HomeSearchPanel, { type HomeSheetMode } from "@components/HomeSearchPanel";
+import HomeSearchPanel, { PanelButton, type HomeSheetMode } from "@components/HomeSearchPanel";
 import HomeDropSheet from "@components/HomeDropSheet";
 import UserSearchList from "@components/UserSearchList";
 import FeedFilterPanel from "@components/FeedFilterPanel";
@@ -102,6 +105,13 @@ const Index = () => {
    */
   const [audience, setAudience] = useState<FeedAudience>(DEFAULT_FEED_AUDIENCE);
   const [audienceMenuOpen, setAudienceMenuOpen] = useState(false);
+  /**
+   * A study group's feed has no filter page to set or reset a filter from, so
+   * it is read unfiltered rather than through one left on from Following -
+   * which is still there, untouched, on the way back.
+   */
+  const inGroup = audience.kind === "group";
+  const unfiltered = useMemo(defaultFeedFilters, []);
   const [sheet, setSheet] = useState<HomeSheetMode | null>(null);
   const [query, setQuery] = useState("");
 
@@ -117,7 +127,7 @@ const Index = () => {
     error,
     refresh,
     setLiked,
-  } = usePosts(filters, audience);
+  } = usePosts(inGroup ? unfiltered : filters, audience);
   // usePosts owns the array, so the optimistic update is handed back to it
   // rather than kept a second time over there - see SetLiked.
   const { toggleLike, error: likeError } = useLikePost(setLiked);
@@ -364,11 +374,21 @@ const Index = () => {
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   }, [filterKey]);
 
-  const hasFilters = !isDefaultFilters(filters);
+  const hasFilters = !inGroup && !isDefaultFilters(filters);
 
   // Everything below the panel starts here: the panel is drawn over the status
-  // bar and owns the top inset itself.
-  const panelBottom = insets.top + HOME_PANEL_HEIGHT;
+  // bar and owns the top inset itself. A group's panel is shorter - it has no
+  // control row.
+  const panelBottom = insets.top + (inGroup ? GROUP_PANEL_HEIGHT : HOME_PANEL_HEIGHT);
+
+  /** A group's own board - the same leaderboard screen, ranked by its members. */
+  const openGroupLeaderboard = useCallback(() => {
+    if (audience.kind !== "group") return;
+    router.push({
+      pathname: "/leaderboard",
+      params: { groupId: audience.groupId, groupName: audience.groupName },
+    });
+  }, [audience]);
 
   /**
    * An empty feed means different things filtered and unfiltered. With no
@@ -534,8 +554,22 @@ const Index = () => {
               audience={audience}
               open={audienceMenuOpen}
               onPress={() => setAudienceMenuOpen((open) => !open)}
+              trailing={
+                inGroup ? (
+                  <PanelButton
+                    onPress={openGroupLeaderboard}
+                    accessibilityLabel={`${audience.groupName} leaderboard`}
+                    renderIcon={(color) => (
+                      <Ionicons name="trophy-outline" size={HOME_SEARCH_ICON_SIZE} color={color} />
+                    )}
+                  />
+                ) : null
+              }
             />
           }
+          // Search, messages, filter and notifications are about your people,
+          // not one group, so a group's feed leaves them out.
+          showControls={!inGroup}
           query={query}
           onChangeQuery={setQuery}
           onFocusSearch={openSearch}
@@ -553,6 +587,9 @@ const Index = () => {
             audience={audience}
             top={panelBottom - 8}
             onSelect={(next) => {
+              // A group's feed has none of the pages the panel drops, so one
+              // left open from Following would have no button to close it.
+              if (next.kind === "group") closeSheet();
               setAudience(next);
               setAudienceMenuOpen(false);
             }}
