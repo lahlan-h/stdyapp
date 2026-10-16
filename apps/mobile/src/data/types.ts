@@ -88,6 +88,12 @@ export interface FeedPhoto {
   height?: number;
 }
 
+/** Who a post went to, as its author chose. */
+export interface PostAudience {
+  followers: boolean;
+  groups: { id: string; name: string }[];
+}
+
 export interface FeedPost {
   id: string;
   /** The headline, and the only text a post must have. */
@@ -151,6 +157,11 @@ export interface FeedPost {
    * throws away the user the dev-token response arrives with.
    */
   isMine: boolean;
+  /**
+   * Where the post was shared - followers, groups, or both. Only for the
+   * viewer's OWN posts: the API tells nobody else which groups saw a post.
+   */
+  sharedTo?: PostAudience;
   commentCount: number;
   /** Epoch milliseconds. */
   createdAt: number;

@@ -15,6 +15,7 @@ export type {
   FeedSession,
   FeedRoutine,
   PostHighlight,
+  PostAudience,
 } from "./types";
 export {
   useIsSignedIn,

@@ -60,6 +60,8 @@ export interface SessionDetail {
   breakCount: number;
   breakSec: number;
   isGroup: boolean;
+  /** The group it was studied in, if any - the composer shares to it by default. */
+  groupId: string | null;
   /** The 0-100 focus ESTIMATE, or null when there is none. Never 0 for "none". */
   focusScore: number | null;
   focusWeightedMinutes: number | null;
@@ -135,6 +137,7 @@ export const useSessionDetail = (id: string | undefined): SessionDetailState => 
         breakCount: row.pauseCount ?? 0,
         breakSec: row.pausedSeconds ?? 0,
         isGroup: row.groupId !== null,
+        groupId: row.groupId,
         focusScore: f.focusScore,
         focusWeightedMinutes: f.focusWeightedMinutes,
         completionFactor: f.completionFactor,

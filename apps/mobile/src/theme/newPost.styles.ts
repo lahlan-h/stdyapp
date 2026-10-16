@@ -150,6 +150,7 @@ export const createNewPostStyles = (colors: ColorScheme) => {
       color: colors.textMuted,
       paddingHorizontal: 4,
     },
+    sectionHintDanger: { color: colors.danger },
 
     // --- Focus rating: five circles, changeable until Post ---
     ratingRow: {

@@ -70,6 +70,8 @@ export interface RawFeedRow {
    * dev-token response hands it.
    */
   isMine: boolean;
+  /** Where the post went - only ever sent to its author. */
+  sharedTo?: { followers: boolean; groups: { id: string; name: string }[] } | null;
 }
 
 /**
@@ -185,6 +187,7 @@ export const toFeedPost = (row: RawFeedRow): FeedPost => {
     // was renamed would arrive as a string this app has no label for.
     reportReason: toReportReason(row.reportReason),
     isMine: row.isMine,
+    sharedTo: row.sharedTo ?? undefined,
     commentCount: row._count.comments,
     createdAt: new Date(row.createdAt).getTime(),
     author: toAuthor(row.user),

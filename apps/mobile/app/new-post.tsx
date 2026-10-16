@@ -8,6 +8,7 @@ import {
   Pressable,
   ScrollView,
   StatusBar,
+  Switch,
   ActivityIndicator,
   Alert,
   BackHandler,
@@ -32,6 +33,7 @@ import {
   useSessionDetail,
   useSessionRating,
   useDiscardSession,
+  useGroups,
   preparePhoto,
   defaultPostTitle,
   MAX_PHOTO_BYTES,
@@ -116,6 +118,52 @@ const LinkRow = ({
         <Feather name="chevron-right" size={NEW_POST_ROW_ICON_SIZE} color={colors.textMuted} />
       )}
     </Pressable>
+  );
+};
+
+/** One audience a post can go to, with its switch. */
+const ShareRow = ({
+  icon,
+  label,
+  hint,
+  value,
+  onChange,
+  divider = false,
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  hint: string;
+  value: boolean;
+  onChange: (on: boolean) => void;
+  divider?: boolean;
+}) => {
+  const { colors } = useTheme();
+  const newPostStyles = useNewPostStyles();
+
+  return (
+    <View style={[newPostStyles.row, divider && newPostStyles.rowDivider]}>
+      <View style={newPostStyles.rowIconBox}>
+        <Feather
+          name={icon}
+          size={NEW_POST_ROW_ICON_SIZE}
+          color={value ? colors.primary : colors.textMuted}
+        />
+      </View>
+      <View style={newPostStyles.rowText}>
+        <Text style={newPostStyles.rowLabel} numberOfLines={1}>
+          {label}
+        </Text>
+        <Text style={newPostStyles.rowValue} numberOfLines={1}>
+          {hint}
+        </Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ true: colors.primary, false: colors.border }}
+        accessibilityLabel={`Share to ${label}`}
+      />
+    </View>
   );
 };
 
@@ -215,6 +263,29 @@ const NewPost = () => {
   const [picker, setPicker] = useState<"session" | "routine" | null>(null);
 
   /**
+   * Who the post is for. Followers by default - where every post went before
+   * there was a choice - and the session's own group too, when it was studied
+   * in one: a group session's post plainly belongs on that group's feed. Any
+   * other group is the author's to add; a session need not have been studied
+   * in a group to be shared to it.
+   */
+  const { myGroups } = useGroups();
+  const [shareToFollowers, setShareToFollowers] = useState(true);
+  const [groupIds, setGroupIds] = useState<string[]>([]);
+  const preselected = useRef(false);
+  useEffect(() => {
+    if (preselected.current || !finished || !myGroups) return;
+    preselected.current = true;
+    const studiedIn = finished.groupId;
+    if (studiedIn && myGroups.some((group) => group.id === studiedIn)) setGroupIds([studiedIn]);
+  }, [finished, myGroups]);
+  const toggleGroup = (id: string, on: boolean) => {
+    haptics.tick();
+    setGroupIds((current) => (on ? [...current, id] : current.filter((g) => g !== id)));
+  };
+  const hasAudience = shareToFollowers || groupIds.length > 0;
+
+  /**
    * What an empty title becomes: named for when the session started, or now
    * until the session has loaded - the same part of the day either way for
    * anything but a session that ran across a boundary.
@@ -223,7 +294,7 @@ const NewPost = () => {
 
   // Mirrors the API's rule: a session is enough; without one, photos or words.
   const hasBody = Boolean(session) || photos.length > 0 || caption.trim().length > 0;
-  const canSubmit = hasBody && !isSubmitting && !preparing;
+  const canSubmit = hasBody && hasAudience && !isSubmitting && !preparing;
   const room = MAX_POST_PHOTOS - photos.length;
 
   const pickPhotos = async () => {
@@ -304,6 +375,8 @@ const NewPost = () => {
       photos,
       sessionId: session?.id,
       routineId: routine?.id,
+      shareToFollowers,
+      groupIds,
     });
     // A null result means the hook has set `error`, which is already on screen.
     if (created) {
@@ -555,6 +628,48 @@ const NewPost = () => {
             already at the top. Swapping it for another would leave the one
             just studied posted nowhere.
           */}
+          <View style={newPostStyles.section}>
+            <Text style={newPostStyles.sectionTitle}>Share to</Text>
+            <LinearGradient
+              style={newPostStyles.sectionCard}
+              colors={colors.gradients.surface}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+            >
+              <ShareRow
+                icon="users"
+                label="Followers"
+                hint="Your profile, and your followers' feeds"
+                value={shareToFollowers}
+                onChange={(on) => {
+                  haptics.tick();
+                  setShareToFollowers(on);
+                }}
+              />
+              {(myGroups ?? []).map((group) => (
+                <ShareRow
+                  key={group.id}
+                  icon="book-open"
+                  label={group.name}
+                  hint="Its members, on the group's feed"
+                  value={groupIds.includes(group.id)}
+                  onChange={(on) => toggleGroup(group.id, on)}
+                  divider
+                />
+              ))}
+            </LinearGradient>
+            {myGroups && myGroups.length === 0 ? (
+              <Text style={newPostStyles.sectionHint}>
+                Join a study group to share your sessions there too.
+              </Text>
+            ) : null}
+            {!hasAudience ? (
+              <Text style={[newPostStyles.sectionHint, newPostStyles.sectionHintDanger]}>
+                Choose at least one - followers, a group, or both.
+              </Text>
+            ) : null}
+          </View>
+
           <View style={newPostStyles.section}>
             <Text style={newPostStyles.sectionTitle}>Links</Text>
 

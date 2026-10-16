@@ -30,6 +30,12 @@ export interface NewPost {
   sessionId?: string;
   /** One of the user's own routines. Anyone else's is a 403. */
   routineId?: string;
+  /**
+   * Who it is for: the user's followers, any of their groups, or both - at
+   * least one, which the API also insists on. A group they are not in is a 403.
+   */
+  shareToFollowers: boolean;
+  groupIds: string[];
 }
 
 /** The created row, as POST /api/posts returns it - a bare object, not `{ data }`. */
@@ -171,6 +177,8 @@ export const useCreatePost = (): CreatePostState => {
             ...(post.sessionId ? { sessionId: post.sessionId } : {}),
             ...(post.routineId ? { routineId: post.routineId } : {}),
             ...(photoIds ? { photoIds } : {}),
+            shareToFollowers: post.shareToFollowers,
+            ...(post.groupIds.length > 0 ? { groupIds: post.groupIds } : {}),
           },
         }),
       );
