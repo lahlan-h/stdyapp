@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
@@ -68,9 +68,23 @@ const explain = (board: Leaderboard): string => {
   }
 };
 
-/** "You + 3 friends · this week" - who is being compared, over what. */
-const subtitleOf = (board: Leaderboard | undefined, range: LeaderboardRange) => {
+/**
+ * "You + 3 friends · this week", or "Library Night Owls · 5 members · this
+ * week" - who is being compared, over what.
+ */
+const subtitleOf = (
+  board: Leaderboard | undefined,
+  range: LeaderboardRange,
+  groupName: string | undefined,
+) => {
   const period = range === "week" ? "this week" : "all time";
+  if (groupName) {
+    // Named before the board lands, so the subtitle never reads as someone
+    // else's board for the moment the first request takes.
+    return board?.memberCount
+      ? `${groupName} · ${plural(board.memberCount, "member")} · ${period}`
+      : `${groupName} · ${period}`;
+  }
   if (!board || board.followingCount === null) return `Everyone · ${period}`;
   return board.followingCount === 0
     ? `Just you so far · ${period}`
@@ -138,7 +152,8 @@ const Rise = ({ order, children }: { order: number; children: ReactNode }) => {
 // --- Screen ---------------------------------------------------------------------
 
 /**
- * How you compare with the people you follow.
+ * How you compare with the people you follow - or, opened from a study group's
+ * feed with its id and name, with that group's members.
  *
  * Three tiers, in the order the eye should take them: your standing and the gap
  * to the next place (what you came to check), the podium (the race), then
@@ -151,7 +166,10 @@ const LeaderboardScreen = () => {
   const styles = useStyles("leaderboard");
   const [metric, setMetric] = useState<LeaderboardMetric>("weightedMinutes");
   const [range, setRange] = useState<LeaderboardRange>("week");
-  const { board, isLoading, loadError, reload } = useLeaderboard(metric, range);
+  // Both or neither: the group feed's trophy passes the name along so the
+  // header can say whose board this is without a second request.
+  const { groupId, groupName } = useLocalSearchParams<{ groupId?: string; groupName?: string }>();
+  const { board, isLoading, loadError, reload } = useLeaderboard(metric, range, groupId);
 
   // The board can belong to the PREVIOUS tab for a moment while the next
   // loads; rows are formatted by the metric they were ranked by, not the tab.
@@ -182,7 +200,7 @@ const LeaderboardScreen = () => {
       <View style={styles.titleColumn}>
         <Text style={styles.screenTitle}>Leaderboard</Text>
         <Text style={styles.screenSubtitle} numberOfLines={1}>
-          {subtitleOf(board, range)}
+          {subtitleOf(board, range, groupName)}
         </Text>
       </View>
 
@@ -236,7 +254,7 @@ const LeaderboardScreen = () => {
             !board ? (
               isLoading ? <ActivityIndicator color={colors.textMuted} /> : null
             ) : board.entries.length === 0 ? (
-              <EmptyBoard board={board} />
+              <EmptyBoard board={board} groupName={groupName} />
             ) : null
           }
           ListFooterComponent={
@@ -573,14 +591,16 @@ const InviteNudge = () => {
 
 /**
  * Nobody on the board. Two different stories: following nobody (the fix is to
- * follow people) and following people who have not studied in this period.
+ * follow people) and following people who have not studied in this period. A
+ * group board only ever tells the second, in the group's name.
  */
-const EmptyBoard = ({ board }: { board: Leaderboard }) => {
+const EmptyBoard = ({ board, groupName }: { board: Leaderboard; groupName?: string }) => {
   const { colors } = useTheme();
   const styles = useStyles("leaderboard");
 
   const followsNobody = board.scope === "following" && board.followingCount === 0;
   const period = board.days === "all" ? "yet" : "this week";
+  const who = board.scope === "group" && groupName ? `No one in ${groupName}` : "No one";
 
   return (
     <View style={styles.empty}>
@@ -590,7 +610,7 @@ const EmptyBoard = ({ board }: { board: Leaderboard }) => {
         color={colors.textMuted}
       />
       <Text style={styles.emptyTitle}>
-        {followsNobody ? "Follow people to see them here" : `No one has ranked ${period}`}
+        {followsNobody ? "Follow people to see them here" : `${who} has ranked ${period}`}
       </Text>
       <Text style={styles.emptyText}>
         {followsNobody
