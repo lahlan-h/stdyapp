@@ -115,6 +115,7 @@ export {
   type SessionTask,
   type SessionGroup,
 } from "./useFocusSession";
+export { MAX_BREAKS, MAX_BREAK_SEC, studiedSeconds, studiedMinutes } from "./sessionTime";
 export {
   requestStudySession,
   consumeStudyRequest,
