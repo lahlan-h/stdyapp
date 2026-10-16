@@ -5,7 +5,13 @@ import { useFocusEffect } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 import { formatDuration } from "@stdyapp/shared";
 
-import { useTheme, useStyles, MIN_VISIBLE_BAR, WEEK_CHART_HEIGHT, WEEK_PILL_ICON_SIZE } from "@theme";
+import {
+  useTheme,
+  useAnalyticsStyles,
+  MIN_VISIBLE_BAR,
+  WEEK_CHART_HEIGHT,
+  WEEK_PILL_ICON_SIZE,
+} from "@theme";
 import { useAnalytics, toWeekComparison } from "@data";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -17,21 +23,22 @@ const NONE = "–";
 const toHours = (minutes: number): string => (minutes / 60).toFixed(1);
 
 /**
- * The analytics card at the top of the Study tab: hours this week, the change
- * on last week, and the two weeks side by side, a day at a time.
+ * The card at the top of the analytics page: hours this week, the change on
+ * last week, and the two weeks side by side, a day at a time.
  *
- * A glance, not the analysis - "See Advanced Analytics" under it opens the
- * full page. So there is no range switch and nothing to tap on the chart.
+ * A glance, ahead of the analysis below it - so it keeps its own fixed week
+ * and ignores the page's 7/30-day switch, and there is nothing to tap on the
+ * chart. It lived on the Study tab until analytics moved to the profile.
  */
 const WeeklyStudyCard = () => {
   const { colors } = useTheme();
-  const styles = useStyles("study");
+  const styles = useAnalyticsStyles();
   // 30 days rather than 7: the chart needs last week's days one by one, and the
   // 7-day range only totals them. See toWeekComparison.
   const { analytics, loadError, reload } = useAnalytics("30d");
 
   /**
-   * Re-read whenever Study comes back into view, so a session finished a
+   * Re-read whenever the page comes back into view, so a session finished a
    * moment ago is already in today's bar. The first focus is skipped because
    * the hook has just loaded on mount, and two identical requests at once
    * would only race each other.
@@ -73,7 +80,8 @@ const WeeklyStudyCard = () => {
       end={{ x: 0.5, y: 1 }}
       style={styles.weekCard}
     >
-      <Text style={styles.weekTitle}>Analytics</Text>
+      {/* Not "Analytics": that is the page's own title now, right above. */}
+      <Text style={styles.weekTitle}>Your week</Text>
 
       <View style={styles.weekHeadline}>
         <View>

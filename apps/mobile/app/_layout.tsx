@@ -91,7 +91,7 @@ export default function RootLayout() {
             a push for the same reason, with Save to my routines on it.
           */}
           <Stack.Screen name="routine-preview/[id]" />
-          {/* The full analytics page, a push from the Study tab's weekly card. */}
+          {/* The analytics page, a push from the Analytics button on your profile. */}
           <Stack.Screen name="analytics" />
           {/* A push from the Study tab's Groups view, for routine/[id]'s reason. */}
           <Stack.Screen name="group/[id]" />

@@ -31,9 +31,6 @@ export {
   TASK_ICON_SIZE,
   TOUCH_MIN,
   STUDY_FOOTER_ROOM,
-  WEEK_CHART_HEIGHT,
-  WEEK_PILL_ICON_SIZE,
-  ADVANCED_ANALYTICS_ICON_SIZE,
   BEGIN_CHEVRON_SIZE,
 } from "./study.styles";
 export {
@@ -114,6 +111,8 @@ export {
   DAILY_CHART_HEIGHT,
   HOURLY_CHART_HEIGHT,
   MIN_VISIBLE_BAR,
+  WEEK_CHART_HEIGHT,
+  WEEK_PILL_ICON_SIZE,
 } from "./analytics.styles";
 export {
   createRoutinesStyles,

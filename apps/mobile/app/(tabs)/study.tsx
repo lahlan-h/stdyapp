@@ -31,8 +31,6 @@ import RoutineList from "@components/RoutineList";
 import { focusBand, focusBandColor } from "@components/focusBand";
 import GroupList from "@components/GroupList";
 import { formatClock } from "@components/sessionFormat";
-import WeeklyStudyCard from "@components/WeeklyStudyCard";
-import AdvancedAnalyticsRow from "@components/AdvancedAnalyticsRow";
 import BeginCard from "@components/BeginCard";
 import RoomParticipants from "@components/RoomParticipants";
 import { confirmGroupAction } from "@components/confirmGroup";
@@ -56,8 +54,8 @@ const VIEWS: { key: StudyView; label: string }[] = [
  * survives is the line saying the score is an estimate, because that claim is
  * the one we may not leave implied.
  *
- * THE DIAL IS FOR THE LIVE SESSION ONLY. Setting up shows the week instead,
- * and a finished session is summed up where it is posted.
+ * THE DIAL IS FOR THE LIVE SESSION ONLY. A finished session is summed up
+ * where it is posted, and the week is on the analytics page.
  *
  * Every colour is a palette token; the screen holds no hex of its own.
  *
@@ -294,9 +292,6 @@ const Study = () => {
           {/* ---------------- set up ---------------- */}
           {showingSessions && phase === "idle" ? (
             <>
-              <WeeklyStudyCard />
-              <AdvancedAnalyticsRow />
-
               {/* Chosen from a group's screen; clearing it makes the next
                   session solo again. Above Begin, because it changes what
                   Begin starts. */}
@@ -362,8 +357,8 @@ const Study = () => {
                 </Text>
               </View>
 
-              {/* Past sessions live behind the profile's Session history
-                  button; the weekly card is this tab's look back. */}
+              {/* Looking back - past sessions and the week's analytics -
+                  lives behind the profile's History and Analytics buttons. */}
             </>
           ) : null}
 
