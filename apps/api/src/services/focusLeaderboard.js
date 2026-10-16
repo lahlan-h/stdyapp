@@ -38,20 +38,22 @@ export const minSessionsFor = (metric) =>
   metric === METRICS.FOCUS_SCORE ? MIN_SCORED_SESSIONS : 1;
 
 /**
- * Who a "following" board is about: everyone the caller follows, plus the
- * caller, minus anyone on either side of a block.
+ * Who a bounded board is about: everyone the caller follows (a "following"
+ * board) or every member of a group (a "group" board), plus the caller, minus
+ * anyone on either side of a block.
  *
  * The caller is included so their own row ranks among the people they compare
  * themselves with - a board of only other people would never say "you're 3rd".
+ * A group roll already contains the caller; the Set keeps them once.
  *
  * @param {string} userId
- * @param {string[]} followingIds
+ * @param {string[]} peopleIds - who the caller follows, or the group's members
  * @param {string[]} blockedIds
  * @returns {string[]}
  */
-export const audienceIds = (userId, followingIds, blockedIds) => {
+export const audienceIds = (userId, peopleIds, blockedIds) => {
   const blocked = new Set(blockedIds);
-  const ids = new Set([userId, ...followingIds]);
+  const ids = new Set([userId, ...peopleIds]);
   return [...ids].filter((id) => id === userId || !blocked.has(id));
 };
 

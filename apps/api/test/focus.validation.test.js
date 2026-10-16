@@ -228,11 +228,14 @@ describe("leaderboardQuerySchema", () => {
     });
   });
 
-  it("accepts every metric and both scopes", () => {
+  it("accepts every metric and every scope", () => {
+    const groupId = "6f1c1c1e-6f6e-4f8a-9d55-0c2b8e7f3a21";
     for (const metric of LEADERBOARD_METRICS) {
       for (const scope of LEADERBOARD_SCOPES) {
+        // A group board names its group; the others must not.
+        const query = scope === "group" ? { metric, scope, groupId } : { metric, scope };
         assert.equal(
-          leaderboardQuerySchema.safeParse({ metric, scope }).success,
+          leaderboardQuerySchema.safeParse(query).success,
           true,
           `${metric}/${scope} should be accepted`,
         );
@@ -243,6 +246,27 @@ describe("leaderboardQuerySchema", () => {
   it("rejects an unknown metric or scope rather than silently ranking by the default", () => {
     assert.equal(leaderboardQuerySchema.safeParse({ metric: "minutes" }).success, false);
     assert.equal(leaderboardQuerySchema.safeParse({ scope: "friends" }).success, false);
+  });
+
+  it("requires a groupId with the group scope, and refuses one anywhere else", () => {
+    const groupId = "6f1c1c1e-6f6e-4f8a-9d55-0c2b8e7f3a21";
+    assert.equal(leaderboardQuerySchema.safeParse({ scope: "group" }).success, false);
+    assert.equal(leaderboardQuerySchema.safeParse({ groupId }).success, false);
+    assert.equal(
+      leaderboardQuerySchema.safeParse({ scope: "global", groupId }).success,
+      false,
+    );
+    assert.equal(
+      leaderboardQuerySchema.parse({ scope: "group", groupId }).groupId,
+      groupId,
+    );
+  });
+
+  it("refuses a groupId that is not a UUID", () => {
+    assert.equal(
+      leaderboardQuerySchema.safeParse({ scope: "group", groupId: "night-owls" }).success,
+      false,
+    );
   });
 
   it("coerces a query-string day count", () => {

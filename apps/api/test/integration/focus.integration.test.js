@@ -392,4 +392,71 @@ describe("focus feature against a real database", { skip }, () => {
       await destroyUser(rival);
     }
   });
+
+  it("ranks a group's own board for its members, and only for them", async () => {
+    const member = await makeUser("member");
+    const outsider = await makeUser("outsider");
+    let groupId;
+    try {
+      const run = async (owner, minutes) => {
+        const id = await openSession(owner, { minutes });
+        await focusService.ingestSamples(id, owner, [
+          { motionVariance: 0.05, inApp: true },
+          { motionVariance: 0.05, inApp: true },
+        ]);
+        await sessionService.endSession(id, owner);
+      };
+      await run(member, 45);
+      await run(outsider, 120);
+
+      // The caller owns the group; `member` joins it; `outsider` never does.
+      const group = await prisma.studyGroup.create({
+        data: {
+          ownerId: userId,
+          name: `board-${randomUUID().slice(0, 8)}`,
+          memberships: { create: [{ userId }, { userId: member }] },
+        },
+        select: { id: true },
+      });
+      groupId = group.id;
+
+      const board = await focusService.getLeaderboard(userId, {
+        scope: "group",
+        groupId,
+        days: 7,
+        limit: 50,
+      });
+      assert.equal(board.scope, "group");
+      assert.equal(board.groupId, groupId);
+      assert.equal(board.memberCount, 2, "the caller and the one other member");
+      assert.equal(board.followingCount, null);
+      assert.ok(board.entries.some((e) => e.userId === member), "members are ranked");
+      assert.ok(
+        !board.entries.some((e) => e.userId === outsider),
+        "someone outside the group must not be on its board, however much they studied",
+      );
+      assert.ok(board.me.rank !== null, "the caller's rank is known on a group board");
+
+      await assert.rejects(
+        focusService.getLeaderboard(outsider, { scope: "group", groupId, days: 7 }),
+        (err) => err.status === 403,
+        "a non-member may not read a group's standings",
+      );
+
+      // A block hides a member here exactly as it does on every other board.
+      await prisma.block.create({ data: { blockerId: userId, blockedId: member } });
+      const blocked = await focusService.getLeaderboard(userId, {
+        scope: "group",
+        groupId,
+        days: 7,
+      });
+      assert.ok(!blocked.entries.some((e) => e.userId === member));
+      assert.equal(blocked.memberCount, 1);
+    } finally {
+      if (groupId) await prisma.studyGroup.delete({ where: { id: groupId } }).catch(() => {});
+      await prisma.groupMembership.deleteMany({ where: { userId: { in: [member, outsider] } } });
+      await destroyUser(member);
+      await destroyUser(outsider);
+    }
+  });
 });

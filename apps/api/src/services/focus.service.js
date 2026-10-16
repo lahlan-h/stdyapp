@@ -1,5 +1,8 @@
 import * as focusRepo from "../repositories/focus.repository.js";
 import * as sessionRepo from "../repositories/session.repository.js";
+// A group board's audience and its gate - the same two reads the group feed
+// makes in post.service.js.
+import { findMembership, findMemberIds } from "../repositories/studyGroup.repository.js";
 import { HttpError } from "../utils/httpError.js";
 import { bumpVersions, sessionOwnerVersionKey } from "../utils/cache.js";
 import {
@@ -441,29 +444,52 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *     MIN_SCORED_SESSIONS scored sessions in the window;
  *   - tasksCompleted: checklist items ticked.
  *
- * Two audiences: "following" (default) is the people the caller follows plus
- * the caller; "global" is everyone. Both hide blocked users in either
- * direction.
+ * Three audiences: "following" (default) is the people the caller follows plus
+ * the caller; "global" is everyone; "group" is one study group's members, the
+ * caller included. All three hide blocked users in either direction.
  *
- * A following board is loaded WHOLE and paged here, because its size is
- * bounded by one person's follow list and that is what lets the caller's rank
- * be known even off the first page. A global board is paged in the query.
+ * A following or group board is loaded WHOLE and paged here, because its size
+ * is bounded - by one person's follow list, or one group's roll - and that is
+ * what lets the caller's rank be known even off the first page. A global board
+ * is paged in the query.
+ *
+ * A group board is for its members only, the same gate as the group's feed:
+ * 403 for anyone else, which also covers a group that does not exist - its
+ * existence is not the secret, its standings are.
  *
  * @param {string} userId - the caller
- * @param {{ scope?: "following"|"global", metric?: string, days?: number|"all", limit?: number }} options
+ * @param {{ scope?: "following"|"global"|"group", groupId?: string, metric?: string, days?: number|"all", limit?: number }} options
  */
 export const getLeaderboard = async (
   userId,
-  { scope = "following", metric = METRICS.WEIGHTED_MINUTES, days = 7, limit = 20 } = {},
+  {
+    scope = "following",
+    groupId,
+    metric = METRICS.WEIGHTED_MINUTES,
+    days = 7,
+    limit = 20,
+  } = {},
 ) => {
   const since = days === "all" ? null : new Date(Date.now() - days * DAY_MS);
   const isFollowing = scope === "following";
+  const isGroup = scope === "group";
 
-  const [blocked, following] = await Promise.all([
+  if (isGroup && !(await findMembership(userId, groupId))) {
+    throw new HttpError(403, "Only members can see this group's leaderboard");
+  }
+
+  const [blocked, people] = await Promise.all([
     focusRepo.findBlockedUserIds(userId),
-    isFollowing ? focusRepo.findFollowingIds(userId) : Promise.resolve(null),
+    isFollowing
+      ? focusRepo.findFollowingIds(userId)
+      : isGroup
+        ? findMemberIds(groupId)
+        : Promise.resolve(null),
   ]);
-  const audience = isFollowing ? audienceIds(userId, following, blocked) : undefined;
+  // A bounded board - see above. The caller is in their own group's roll
+  // already; audienceIds adds them for a following board and dedupes either way.
+  const bounded = isFollowing || isGroup;
+  const audience = bounded ? audienceIds(userId, people, blocked) : undefined;
 
   const [rows, mine] = await Promise.all([
     focusRepo.aggregateSessionsByUser({
@@ -472,7 +498,7 @@ export const getLeaderboard = async (
       userIds: audience,
       excludeUserIds: blocked,
       minSessions: minSessionsFor(metric),
-      take: isFollowing ? undefined : limit,
+      take: bounded ? undefined : limit,
     }),
     focusRepo.aggregateSessionsForUser({ metric, userId, since }),
   ]);
@@ -487,6 +513,8 @@ export const getLeaderboard = async (
 
   return {
     scope,
+    // Echoed so a client can tell which group's board a response belongs to.
+    groupId: isGroup ? groupId : null,
     metric,
     days,
     since,
@@ -494,8 +522,11 @@ export const getLeaderboard = async (
     // where there is one.
     minScoredSessions: metric === METRICS.FOCUS_SCORE ? MIN_SCORED_SESSIONS : null,
     // Lets a client tell "you follow nobody" apart from "nobody you follow has
-    // studied yet" - two different empty states. Null on the global board.
+    // studied yet" - two different empty states. Null on the other boards.
     followingCount: isFollowing ? audience.length - 1 : null,
+    // A group board's equivalent: how many members it compares, the caller
+    // included and blocked members not. Null on the other boards.
+    memberCount: isGroup ? audience.length : null,
     entries: page.map((row) => toEntry(row, byId.get(row.userId), metric)),
     // Always returned, even when the caller is already in `entries`: a client
     // showing "you" in a sticky footer should not have to scan the page to
