@@ -2,12 +2,13 @@ import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
+  Share,
   StatusBar,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -15,19 +16,14 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 
-import { useTheme, useGroupsStyles, GROUPS_HEADER_ICON_SIZE } from "@theme";
-import {
-  useGroup,
-  requestStudySession,
-  MAX_JOIN_CODE_LENGTH,
-  type GroupPerson,
-  type LiveSession,
-} from "@data";
+import { useTheme, useGroupsStyles, haptics, GROUPS_HEADER_ICON_SIZE } from "@theme";
+import { useGroup, requestStudySession, type GroupPerson, type LiveSession } from "@data";
 
 import { defaultAvatar } from "@components/defaultAvatar";
 import GroupEditCard from "@components/GroupEditCard";
 import GroupMemberRow from "@components/GroupMemberRow";
 import { confirmGroupAction } from "@components/confirmGroup";
+import JoinCodeInput from "@components/JoinCodeInput";
 
 const minutesSince = (iso: string) =>
   Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -109,7 +105,10 @@ const GroupScreen = () => {
   } = useGroup(id);
 
   const [joinCode, setJoinCode] = useState("");
+  const [shakeKey, setShakeKey] = useState(0);
   const [editing, setEditing] = useState(false);
+  /** "Code copied", for a moment, on the web - which has no share sheet. */
+  const [copied, setCopied] = useState(false);
   /** Which member has their actions open. One at a time. */
   const [openMemberId, setOpenMemberId] = useState<string | null>(null);
 
@@ -126,8 +125,35 @@ const GroupScreen = () => {
     }, [reload]),
   );
 
-  const submitJoin = async () => {
-    if (await join(joinCode)) setJoinCode("");
+  const submitJoin = async (code = joinCode) => {
+    if (await join(code)) {
+      haptics.success();
+      setJoinCode("");
+    } else {
+      haptics.failure();
+      setShakeKey((key) => key + 1);
+    }
+  };
+
+  /**
+   * Hands the code on - the system share sheet on a phone, the clipboard on
+   * the web, whose desktop browsers mostly have no sheet at all.
+   */
+  const shareCode = async () => {
+    if (!group?.joinCode) return;
+    haptics.tap();
+    const message = `Join ${group.name} on stdy - type ${group.joinCode} on the Study tab.`;
+    if (Platform.OS !== "web") {
+      void Share.share({ message });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* the code is on screen, selectable, either way */
+    }
   };
 
   const askLeave = () => {
@@ -295,52 +321,70 @@ const GroupScreen = () => {
                   ) : null}
                 </View>
 
-                {/* Only the owner is ever sent the code - the API strips it for everyone else. */}
-                {group.isOwner && group.isPrivate && group.joinCode ? (
+                {/* Every member is sent the code, to pass on - the API strips
+                    it for everyone else. Only the owner can replace it. */}
+                {group.isMember && group.joinCode ? (
                   <View style={styles.codeRow}>
                     <View>
                       <Text style={styles.cardTitle}>Join code</Text>
                       <Text style={styles.codeText} selectable>
                         {group.joinCode}
                       </Text>
+                      {copied ? <Text style={styles.personMeta}>Invite copied</Text> : null}
                     </View>
-                    <Pressable
-                      style={({ pressed }) => [styles.panelButton, pressed && styles.pressed]}
-                      onPress={askNewCode}
-                      disabled={busy}
-                      accessibilityRole="button"
-                      accessibilityLabel="Make a new join code"
-                    >
-                      <Feather name="refresh-cw" size={14} color={colors.text} />
-                      <Text style={styles.panelButtonText}>New code</Text>
-                    </Pressable>
+                    <View style={styles.codeActions}>
+                      <Pressable
+                        style={({ pressed }) => [styles.panelButton, pressed && styles.pressed]}
+                        onPress={shareCode}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Share the join code ${group.joinCode}`}
+                      >
+                        <Feather name="share" size={14} color={colors.text} />
+                        <Text style={styles.panelButtonText}>Share</Text>
+                      </Pressable>
+                      {group.isOwner ? (
+                        <Pressable
+                          style={({ pressed }) => [styles.panelButton, pressed && styles.pressed]}
+                          onPress={askNewCode}
+                          disabled={busy}
+                          accessibilityRole="button"
+                          accessibilityLabel="Make a new join code"
+                        >
+                          <Feather name="refresh-cw" size={14} color={colors.text} />
+                          <Text style={styles.panelButtonText}>New code</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
                   </View>
                 ) : null}
 
                 {!group.isMember ? (
-                  <>
-                    {group.isPrivate ? (
-                      <TextInput
-                        style={styles.input}
+                  group.isPrivate ? (
+                    // The same six boxes as the Study tab's Join a group, and
+                    // the same rule: a full row tries it.
+                    <>
+                      <Text style={styles.cardTitle}>Enter its code to join</Text>
+                      <JoinCodeInput
                         value={joinCode}
-                        onChangeText={setJoinCode}
-                        onSubmitEditing={submitJoin}
-                        placeholder="Join code"
-                        placeholderTextColor={colors.textMuted}
-                        autoCapitalize="characters"
-                        autoCorrect={false}
-                        maxLength={MAX_JOIN_CODE_LENGTH}
-                        accessibilityLabel="Join code"
+                        onChange={(next) => {
+                          if (actionError) clearActionError();
+                          setJoinCode(next);
+                        }}
+                        onComplete={(code) => void submitJoin(code)}
+                        invalid={Boolean(actionError)}
+                        shakeKey={shakeKey}
+                        disabled={busy}
                       />
-                    ) : null}
+                    </>
+                  ) : (
                     <Pressable
                       style={({ pressed }) => [
                         styles.primaryButton,
-                        (busy || (group.isPrivate && !joinCode.trim())) && styles.disabled,
+                        busy && styles.disabled,
                         pressed && styles.pressed,
                       ]}
-                      onPress={submitJoin}
-                      disabled={busy || (group.isPrivate && !joinCode.trim())}
+                      onPress={() => void submitJoin()}
+                      disabled={busy}
                       accessibilityRole="button"
                       accessibilityLabel="Join group"
                     >
@@ -351,7 +395,7 @@ const GroupScreen = () => {
                       )}
                       <Text style={styles.primaryButtonText}>Join group</Text>
                     </Pressable>
-                  </>
+                  )
                 ) : (
                   <Pressable
                     style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
