@@ -16,8 +16,6 @@ const titleOf = (audience: FeedAudience): string => {
   switch (audience.kind) {
     case "following":
       return "Following";
-    case "everyone":
-      return "Everyone";
     case "group":
       return audience.groupName;
   }

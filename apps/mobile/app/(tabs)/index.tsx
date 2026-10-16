@@ -376,7 +376,8 @@ const Index = () => {
    * and the filter ruled them out, so it says that and offers the way back.
    *
    * The audience is the same question one level up: an empty Following feed
-   * usually means following nobody yet, so it points at Everyone.
+   * usually means following nobody yet, so it points at the search box that
+   * finds people to follow.
    */
   const emptyFeed = hasFilters ? (
     <View style={homeStyles.emptyContainer}>
@@ -397,11 +398,12 @@ const Index = () => {
         Your posts and those of people you follow show up here.
       </Text>
       <Pressable
-        onPress={() => setAudience({ kind: "everyone" })}
+        // Focusing the box is what opens search - see HomeSearchPanel.
+        onPress={() => inputRef.current?.focus()}
         accessibilityRole="button"
         hitSlop={8}
       >
-        <Text style={[homeStyles.bold, { color: colors.primary }]}>See everyone</Text>
+        <Text style={[homeStyles.bold, { color: colors.primary }]}>Find people to follow</Text>
       </Pressable>
     </View>
   ) : audience.kind === "group" ? (

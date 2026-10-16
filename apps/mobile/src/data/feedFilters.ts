@@ -31,16 +31,16 @@ export type FeedSort =
  *
  * A group carries its name as well as its id, so the title can say which
  * group without a second request.
+ *
+ * There is no "everyone": the feed is your people or one of your groups, never
+ * a stream of strangers. A post is shared to followers, to groups, or both, so
+ * a feed of every post would also be the one place a group-only post leaked.
  */
 export type FeedAudience =
   | { kind: "following" }
-  | { kind: "everyone" }
   | { kind: "group"; groupId: string; groupName: string };
 
-/**
- * Where the feed opens: you and the people you follow. Everyone's posts are
- * one tap away in the menu.
- */
+/** Where the feed opens: you and the people you follow. */
 export const DEFAULT_FEED_AUDIENCE: FeedAudience = { kind: "following" };
 
 /** The audience as GET /api/posts/all's parameters, joined like toFeedQuery's. */
