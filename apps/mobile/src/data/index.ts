@@ -34,6 +34,7 @@ export { useLogin, type LoginState } from "./useLogin";
 export {
   buildFocusTimeline,
   interruptionsToSpells,
+  traceAxisLabels,
   FOCUS_SAMPLE_INTERVAL_SEC,
   type FocusTimeline,
   type FocusSpell,

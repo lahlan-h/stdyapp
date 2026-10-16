@@ -195,3 +195,25 @@ export const interruptionsToSpells = (
     .filter((i) => (i.type === "BREAK") === (kind === "break"))
     .map((i) => ({ endMs: new Date(i.startedAt).getTime(), durationSec: i.durationSec }))
     .filter((s) => Number.isFinite(s.endMs) && s.durationSec > 0);
+
+/**
+ * The focus chart's time axis: five marks, at the start, each quarter and the
+ * end, in whatever unit keeps them distinct. The unit is chosen from the WHOLE
+ * session - minutes on a 90-second session round every mark to "0m" and the
+ * axis reads as broken - and a session of a few seconds gets tenths, since
+ * whole seconds would print the same mark twice ("2s 2s").
+ */
+export const traceAxisLabels = (totalSec: number): string[] => {
+  const label = (sec: number) => {
+    if (totalSec < 10) return `${Number(sec.toFixed(1))}s`;
+    if (totalSec < 300) return `${Math.round(sec)}s`;
+
+    const m = Math.round(sec / 60);
+    if (m < 60) return `${m}m`;
+
+    const h = Math.floor(m / 60);
+    const rest = m % 60;
+    return rest === 0 ? `${h}h` : `${h}h ${rest}m`;
+  };
+  return [0, 0.25, 0.5, 0.75, 1].map((f) => label(totalSec * f));
+};

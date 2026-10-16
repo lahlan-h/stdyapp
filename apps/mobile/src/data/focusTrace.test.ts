@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildFocusTimeline, interruptionsToSpells } from "./focusTrace.ts";
+import { buildFocusTimeline, interruptionsToSpells, traceAxisLabels } from "./focusTrace.ts";
 
 /**
  * The focus chart's timeline: every 15 seconds of a session is focus, time
@@ -89,5 +89,24 @@ describe("interruptionsToSpells", () => {
 
   it("reads only breaks when asked for breaks", () => {
     assert.deepEqual(interruptionsToSpells(rows, "break"), [{ endMs: s(200), durationSec: 120 }]);
+  });
+});
+
+describe("traceAxisLabels", () => {
+  it("never prints the same mark twice, even for a few seconds", () => {
+    assert.deepEqual(traceAxisLabels(3), ["0s", "0.8s", "1.5s", "2.3s", "3s"]);
+    for (const total of [1, 2, 3, 5, 7, 9, 10, 11, 59, 90, 299, 300, 301, 3600, 7200]) {
+      const labels = traceAxisLabels(total);
+      assert.equal(new Set(labels).size, labels.length, `${total}s: ${labels.join(" ")}`);
+    }
+  });
+
+  it("counts in seconds under five minutes, and minutes from there", () => {
+    assert.deepEqual(traceAxisLabels(90), ["0s", "23s", "45s", "68s", "90s"]);
+    assert.deepEqual(traceAxisLabels(600), ["0m", "3m", "5m", "8m", "10m"]);
+  });
+
+  it("reads an hour or more in hours and minutes", () => {
+    assert.deepEqual(traceAxisLabels(7200), ["0m", "30m", "1h", "1h 30m", "2h"]);
   });
 });

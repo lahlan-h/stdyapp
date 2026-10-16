@@ -1,7 +1,7 @@
 import { Text, View } from "react-native";
 
 import { useTheme, useStyles, TRACE_GRID_LINES } from "@theme";
-import type { FocusTimeline, TraceSegment } from "@data";
+import { traceAxisLabels, type FocusTimeline, type TraceSegment } from "@data";
 
 /**
  * How focus moved across a session, and where the time went.
@@ -53,22 +53,6 @@ const downsample = (segments: TraceSegment[]): TraceSegment[] => {
   });
 };
 
-/**
- * Axis labels in whatever unit keeps the four marks distinct. The unit is chosen
- * from the WHOLE session: minutes on a 90-second session round every mark to
- * "0m" and the axis reads as broken.
- */
-const timeLabel = (sec: number, totalSec: number) => {
-  if (totalSec < 300) return `${Math.round(sec)}s`;
-
-  const m = Math.round(sec / 60);
-  if (m < 60) return `${m}m`;
-
-  const h = Math.floor(m / 60);
-  const rest = m % 60;
-  return rest === 0 ? `${h}h` : `${h}h ${rest}m`;
-};
-
 const duration = (sec: number) => {
   const s = Math.max(0, Math.round(sec));
   if (s < 60) return `${s}s`;
@@ -108,7 +92,7 @@ const FocusTrace = ({ timeline, live = false }: FocusTraceProps) => {
   }
 
   const presentSec = Math.max(0, totalSec - awaySec - downSec - breakSec);
-  const ticks = [0.25, 0.5, 0.75, 1].map((f) => timeLabel(totalSec * f, totalSec));
+  const ticks = traceAxisLabels(totalSec);
 
   return (
     <View style={styles.traceCard}>
@@ -163,7 +147,6 @@ const FocusTrace = ({ timeline, live = false }: FocusTraceProps) => {
 
       {live ? null : (
         <View style={styles.traceXAxis}>
-          <Text style={styles.traceTick}>{totalSec < 300 ? "0s" : "0m"}</Text>
           {ticks.map((label, i) => (
             <Text key={i} style={styles.traceTick}>
               {label}
