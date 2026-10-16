@@ -6,6 +6,7 @@ import {
   findSessionRefsByGroup,
   findLiveSessionsByGroup,
   findLiveSessionsByUsers,
+  findSessionByInviteCode,
 } from "../repositories/session.repository.js";
 // Both directions of the block relation - the leaderboard's own read, reused
 // rather than written a second time for the same social-surface rule.
@@ -182,14 +183,33 @@ export const getGroup = async (groupId, requesterId) => {
  * its id so the client can simply open it - typing your own group's code is
  * not really an error, just a short trip.
  *
+ * ONE BOX FOR BOTH KINDS OF CODE. A running group session has a code of its
+ * own, shared from the session to bring a friend into the room, and people type
+ * it into the same six boxes. So a code no group has is looked up as a session
+ * code too, and a live one is named in the 404's body - `sessionCode` - for the
+ * client to join that session instead (POST /api/sessions/join, which applies
+ * its own membership rules). Only that the code is live and which group it is
+ * in are said, never who is studying.
+ *
  * @param {string} userId
  * @param {string} rawCode - as typed; normalised here
  */
 export const joinGroupByCode = async (userId, rawCode) => {
-  const group = await groupRepo.findGroupByJoinCode(normalizeJoinCode(rawCode));
+  const code = normalizeJoinCode(rawCode);
+  const group = await groupRepo.findGroupByJoinCode(code);
   if (!group) {
-    const err = new Error("No group has that code. Check it and try again.");
+    const session = await findSessionByInviteCode(code);
+    const live = session && !session.endedAt && session.groupId;
+    const err = new Error(
+      live
+        ? "That's a study session's code - joining it"
+        : "No group or session has that code. Check it and try again.",
+    );
     err.status = 404;
+    if (live) {
+      const sessionGroup = await groupRepo.findGroupById(session.groupId);
+      err.data = { sessionCode: code, groupName: sessionGroup?.name ?? null };
+    }
     throw err;
   }
 

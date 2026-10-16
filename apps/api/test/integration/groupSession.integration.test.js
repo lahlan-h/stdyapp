@@ -388,7 +388,30 @@ describe("group sessions against a real database", { skip }, () => {
       assert.equal("joinCode" in before, false);
 
       // Wrong codes say so without giving anything away.
-      await rejectsWith(groupService.joinGroupByCode(joinerId, "ZZZZZZ"), 404);
+      await assert.rejects(groupService.joinGroupByCode(joinerId, "ZZZZZZ"), (err) => {
+        assert.equal(err.status, 404);
+        assert.equal(err.data, undefined, "an unknown code points nowhere");
+        return true;
+      });
+
+      // A live group SESSION's code, typed into the same boxes, is pointed at.
+      const live = await sessionService.startSession({ userId: hostId, groupId: hidden.id });
+      assert.match(live.inviteCode, /^[A-HJ-NP-Z2-9]{6}$/, "session codes skip I, O, 0 and 1 too");
+      await assert.rejects(
+        groupService.joinGroupByCode(joinerId, live.inviteCode.toLowerCase()),
+        (err) => {
+          assert.equal(err.status, 404);
+          assert.equal(err.data?.sessionCode, live.inviteCode);
+          assert.equal(err.data?.groupName, hidden.name);
+          return true;
+        },
+      );
+      await sessionService.endSession(live.id, hostId);
+      // Once it has ended, it is just an unknown code.
+      await assert.rejects(groupService.joinGroupByCode(joinerId, live.inviteCode), (err) => {
+        assert.equal(err.data, undefined);
+        return true;
+      });
 
       // Typed the way people type a code read out to them.
       const spaced = `${hidden.joinCode.slice(0, 3)}-${hidden.joinCode.slice(3).toLowerCase()}`;

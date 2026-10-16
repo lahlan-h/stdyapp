@@ -4,6 +4,8 @@ import * as sessionRepo from "../repositories/session.repository.js";
 import { findMembership, findGroupById } from "../repositories/studyGroup.repository.js";
 import * as focusService from "./focus.service.js";
 import { toSessionHistoryRow } from "./sessionHistory.js";
+import { generateJoinCode } from "./joinCode.js";
+import { isPrismaError } from "../utils/prismaError.js";
 import {
   activeMinutes,
   activeMs,
@@ -414,17 +416,24 @@ const openSession = async ({ userId, groupId, plannedMinutes = null, hostSession
   // invite codes only make sense for group sessions — solo sessions get none.
   // Participants get their own too, so a room can be joined through anyone in
   // it - joinSession resolves every code to the room's host.
-  const inviteCode = groupId
-    ? Math.random().toString(36).slice(2, 8).toUpperCase()
-    : null;
-
-  const session = await sessionRepo.createSession({
-    userId,
-    groupId,
-    inviteCode,
-    plannedMinutes,
-    hostSessionId,
-  });
+  //
+  // From the same generator as group codes (see joinCode.js): six characters
+  // without I, O, 0 or 1, since it is typed into the same six boxes. The column
+  // is unique, so a collision is retried with a fresh code rather than
+  // surfacing as a 500.
+  const create = (inviteCode) =>
+    sessionRepo.createSession({ userId, groupId, inviteCode, plannedMinutes, hostSessionId });
+  let session;
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      session = await create(groupId ? generateJoinCode() : null);
+      break;
+    } catch (err) {
+      const codeTaken =
+        isPrismaError(err, "P2002") && String(err.meta?.target ?? "").includes("inviteCode");
+      if (!codeTaken || attempt >= 5) throw err;
+    }
+  }
 
   // Only the OWNER scope. A brand new session has no cached single-session
   // payload to orphan — nobody can have read an id that did not exist — but it
