@@ -14,6 +14,7 @@ const TEST_DB = process.env.TEST_DATABASE_URL;
 const skip = TEST_DB ? false : "TEST_DATABASE_URL not set";
 
 let prisma, postService, sessionService, groupService, closeRedis, closeRabbitMq;
+let app, signAccessToken;
 const userIds = [];
 
 if (TEST_DB) {
@@ -23,7 +24,25 @@ if (TEST_DB) {
   postService = await import("../../src/services/post.service.js");
   sessionService = await import("../../src/services/session.service.js");
   groupService = await import("../../src/services/studyGroup.service.js");
+  ({ default: app } = await import("../../src/app.js"));
+  ({ signAccessToken } = await import("../../src/services/token.service.js"));
 }
+
+/**
+ * The real app on an ephemeral port, for the tests that must go through HTTP:
+ * the route, its validation and the controller in front of the service. A
+ * service-only test once passed while the controller silently dropped the
+ * sharing fields, and only a request from outside could have caught it.
+ */
+const withServer = async (run) => {
+  const server = app.listen(0);
+  await new Promise((resolve) => server.once("listening", resolve));
+  try {
+    return await run(`http://127.0.0.1:${server.address().port}`);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+};
 
 const makeUser = async (suffix) => {
   const user = await prisma.user.create({
@@ -136,6 +155,38 @@ describe("posts against a real database", { skip }, () => {
       toFollowers = await post("followers only", { shareToFollowers: true });
       toGroup = await post("group only", { shareToFollowers: false, groupIds: [group.id] });
       toBoth = await post("both", { shareToFollowers: true, groupIds: [group.id] });
+    });
+
+    it("shares to exactly what the request asked for, over HTTP", async () => {
+      const user = await prisma.user.findUnique({ where: { id: authorId } });
+      const session = await finishedSession(authorId);
+      const created = await withServer(async (base) => {
+        const res = await fetch(`${base}/api/posts`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${signAccessToken(user)}`,
+          },
+          body: JSON.stringify({
+            title: "over http",
+            sessionId: session.id,
+            shareToFollowers: false,
+            groupIds: [group.id],
+          }),
+        });
+        assert.equal(res.status, 201);
+        return res.json();
+      });
+
+      const row = await prisma.post.findUnique({
+        where: { id: created.id },
+        include: { groupShares: true },
+      });
+      assert.equal(row.shareToFollowers, false);
+      assert.deepEqual(
+        row.groupShares.map((share) => share.groupId),
+        [group.id],
+      );
     });
 
     it("refuses a post shared to nobody, and a group you are not in", async () => {
