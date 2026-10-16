@@ -39,6 +39,14 @@ export const createHomeStyles = (colors: ColorScheme) => {
       padding: 12,
       alignItems: "center",
     },
+    // flexShrink, so a long list of groups truncates rather than overflowing.
+    postCardHeaderText: { flexShrink: 1 },
+    postCardAudience: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      marginTop: 2,
+    },
     postCardAvatar: {
       borderColor: colors.border,
       borderWidth: 1,

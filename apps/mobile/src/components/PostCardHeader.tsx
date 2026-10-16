@@ -1,7 +1,9 @@
 import { View, Text, Image } from "react-native";
+import Feather from "@expo/vector-icons/Feather";
 
-import { useStyles } from "@theme";
+import { useTheme, useStyles } from "@theme";
 import { formatRelativeTime } from "@stdyapp/shared";
+import type { PostAudience } from "@data";
 
 import { defaultAvatar } from "./defaultAvatar";
 
@@ -10,9 +12,23 @@ interface PostCardHeaderProps {
   avatarUrl?: string;
   /** Epoch milliseconds. */
   createdAt: number;
+  /** Where the post went - present only on the viewer's own posts. */
+  sharedTo?: PostAudience;
 }
 
-const PostCardHeader = ({ displayName, avatarUrl, createdAt }: PostCardHeaderProps) => {
+/** "Followers · Night Owls", "Night Owls only", or "Followers". */
+const audienceLabel = ({ followers, groups }: PostAudience): string => {
+  const names = groups.map((group) => group.name);
+  if (!followers) return names.length === 1 ? `${names[0]} only` : names.join(" · ");
+  return ["Followers", ...names].join(" · ");
+};
+
+/**
+ * Who posted it, and when - and, on your own posts, who you shared it with:
+ * the one place you can check a group-only post did not go to your followers.
+ */
+const PostCardHeader = ({ displayName, avatarUrl, createdAt, sharedTo }: PostCardHeaderProps) => {
+  const { colors } = useTheme();
   const homeStyles = useStyles("home");
 
   return (
@@ -21,9 +37,25 @@ const PostCardHeader = ({ displayName, avatarUrl, createdAt }: PostCardHeaderPro
         source={{ uri: avatarUrl ?? defaultAvatar(displayName) }}
         style={homeStyles.postCardAvatar}
       />
-      <View>
+      <View style={homeStyles.postCardHeaderText}>
         <Text style={homeStyles.bold}>{displayName}</Text>
         <Text style={homeStyles.soft}>{formatRelativeTime(createdAt)}</Text>
+        {sharedTo ? (
+          <View
+            style={homeStyles.postCardAudience}
+            accessible
+            accessibilityLabel={`Shared to ${audienceLabel(sharedTo)}`}
+          >
+            <Feather
+              name={sharedTo.followers ? "users" : "lock"}
+              size={12}
+              color={colors.textMuted}
+            />
+            <Text style={homeStyles.soft} numberOfLines={1}>
+              {audienceLabel(sharedTo)}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
