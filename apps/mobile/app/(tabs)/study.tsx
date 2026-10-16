@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -20,6 +21,7 @@ import {
   STUDY_FOOTER_ROOM,
   STUDY_ICON_SIZE,
   TASK_ICON_SIZE,
+  haptics,
 } from "@theme";
 import { useFocusSession, consumeStudyRequest } from "@data";
 
@@ -87,6 +89,12 @@ const Study = () => {
     awaySec,
     phoneDownSec,
     isPhoneDown,
+    isPaused,
+    breakRemainingSec,
+    breaksLeft,
+    breakTimedOut,
+    pause,
+    resume,
     liveTimeline,
     tasks,
     addTask,
@@ -187,6 +195,44 @@ const Study = () => {
   };
 
   const running = phase === "running";
+
+  /**
+   * A break, from the button beside End. The last one asks first: after it
+   * there are no more, and time away from the app counts against the focus
+   * estimate again - worth knowing before spending it.
+   */
+  const takeBreak = () => {
+    if (breaksLeft === 1) {
+      haptics.warning();
+      Alert.alert(
+        "Last break",
+        "This is your last break this session. After it you can't pause again, so any time away from the app will count against your focus score.",
+        [
+          { text: "Not yet", style: "cancel" },
+          {
+            text: "Take break",
+            onPress: () => {
+              haptics.tap();
+              pause();
+            },
+          },
+        ],
+      );
+      return;
+    }
+    haptics.tap();
+    pause();
+  };
+
+  const endBreak = () => {
+    haptics.thud();
+    resume();
+  };
+
+  // A break that ran its five minutes ended on its own - say so in the hand.
+  useEffect(() => {
+    if (breakTimedOut) haptics.warning();
+  }, [breakTimedOut]);
   const score = running ? liveFocus : null;
   // Shared with the session history, so a score reads the same in both.
   const scoreBand = focusBand(score);
@@ -331,12 +377,17 @@ const Study = () => {
           {showingSessions && running ? (
             <>
               <View style={styles.dialWrap}>
-                <FocusDial progress={dialProgress} color={bandColor}>
+                {/* On a break the dial counts the break down instead, in a
+                    quiet colour: the session clock is stopped. */}
+                <FocusDial
+                  progress={isPaused ? breakRemainingSec / 300 : dialProgress}
+                  color={isPaused ? colors.textMuted : bandColor}
+                >
                   <Text style={styles.dialValue}>
-                    {formatClock(remainingSec ?? elapsedSec)}
+                    {formatClock(isPaused ? breakRemainingSec : (remainingSec ?? elapsedSec))}
                   </Text>
                   <Text style={styles.dialCaption}>
-                    {remainingSec === null ? "elapsed" : "left"}
+                    {isPaused ? "break left" : remainingSec === null ? "elapsed" : "left"}
                   </Text>
                 </FocusDial>
               </View>
@@ -348,7 +399,9 @@ const Study = () => {
                     ? "Ending… reconnecting"
                     : ending === "failed"
                       ? "Not ended yet"
-                      : liveFocus === null
+                      : isPaused
+                        ? "On a break"
+                        : liveFocus === null
                         ? "Reading…"
                         : scoreBand.label}
                 </Text>
@@ -417,6 +470,44 @@ const Study = () => {
                 onRemoveTask={removeTask}
               />
 
+              {breakTimedOut && !isPaused ? (
+                <Text style={[styles.helpText, styles.centeredText]} accessibilityLiveRegion="polite">
+                  Break's over - back to it.
+                </Text>
+              ) : null}
+
+              {/* Breaks: three a session, five minutes each. Greyed out once
+                  they are used up. */}
+              <Pressable
+                style={[
+                  styles.action,
+                  (busy || (!isPaused && breaksLeft === 0)) && styles.actionDisabled,
+                ]}
+                disabled={busy || (!isPaused && breaksLeft === 0)}
+                onPress={isPaused ? endBreak : takeBreak}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isPaused
+                    ? "Resume session"
+                    : breaksLeft === 0
+                      ? "No breaks left"
+                      : `Take a break, ${breaksLeft} left`
+                }
+              >
+                <Feather
+                  name={isPaused ? "play" : "pause"}
+                  size={STUDY_ICON_SIZE}
+                  color={colors.text}
+                />
+                <Text style={styles.actionText}>
+                  {isPaused
+                    ? "Resume"
+                    : breaksLeft === 0
+                      ? "No breaks left"
+                      : `Break · ${breaksLeft} left`}
+                </Text>
+              </Pressable>
+
               <Pressable
                 style={[styles.action, styles.actionDanger, busy && styles.actionDisabled]}
                 disabled={busy}
@@ -454,7 +545,7 @@ const Study = () => {
       </SafeAreaView>
 
       {/* Face-down mode: nobody can see the screen, so it goes black. */}
-      {running && isPhoneDown ? (
+      {running && isPhoneDown && !isPaused ? (
         <View style={styles.phoneDownOverlay} accessibilityLabel="Phone down, still focusing">
           <Text style={styles.phoneDownText}>Phone down · focusing</Text>
           <Text style={styles.phoneDownHint}>Pick it up to see your session</Text>
