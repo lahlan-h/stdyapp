@@ -176,6 +176,8 @@ const postInclude = (viewerId) => ({
     select: {
       startedAt: true,
       endedAt: true,
+      // A post's time is studied time, breaks left out - see sessionPause.js.
+      pausedSeconds: true,
       focusPoints: true,
       tasksTotal: true,
       tasksCompleted: true,

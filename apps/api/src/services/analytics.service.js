@@ -15,6 +15,7 @@ import {
 } from "../utils/timeZone.js";
 import { ANALYTICS_RANGES } from "../validation/analytics.validation.js";
 import { summariseFocusEstimate, focusScoreChange } from "./analyticsFocus.js";
+import { activeMs } from "./sessionPause.js";
 
 /**
  * Personal study analytics: GET /api/analytics/me.
@@ -64,12 +65,11 @@ const toMinutes = (ms) => Math.round(ms / MILLISECONDS_PER_MINUTE);
 const percent = (part, whole) => (whole > 0 ? Math.round((part / whole) * 100) : null);
 
 /**
- * How long a session ran.
- *
- * Floored at 0 for the reason sumMinutes in goal.service.js gives: a clock
- * adjustment can make a session appear to end before it started.
+ * How long a session was studied - its breaks left out, through the one
+ * definition every duration shares (see sessionPause.js). Floored at 0 there,
+ * for the reason sumMinutes in goal.service.js gives.
  */
-const durationMs = (session) => Math.max(0, session.endedAt - session.startedAt);
+const durationMs = (session) => activeMs(session);
 
 /**
  * Minutes a session contributed to each local hour of the day.
@@ -81,14 +81,22 @@ const durationMs = (session) => Math.max(0, session.endedAt - session.startedAt)
  * 10am. Crediting the whole session to its start hour would be simpler, but a
  * two-hour evening session would then read as "you study at 7pm" and never as
  * "you study at 8pm", which is the question the chart exists to answer.
+ *
+ * Breaks are spread evenly across the hours rather than placed: a session
+ * stores how long its breaks were, not when, so each hour gives up its share.
+ * That keeps the chart's total equal to the session's studied time.
  */
 const addToHours = (session, timeZone, hourly) => {
+  const start = session.startedAt.getTime();
   const end = session.endedAt.getTime();
-  let cursor = session.startedAt.getTime();
+  const wall = end - start;
+  if (wall <= 0) return;
+  const studiedShare = durationMs(session) / wall;
+  let cursor = start;
 
   while (cursor < end) {
     const sliceEnd = Math.min(end, (Math.floor(cursor / HOUR_SLICE_MS) + 1) * HOUR_SLICE_MS);
-    hourly[localParts(new Date(cursor), timeZone).hour] += sliceEnd - cursor;
+    hourly[localParts(new Date(cursor), timeZone).hour] += (sliceEnd - cursor) * studiedShare;
     cursor = sliceEnd;
   }
 };

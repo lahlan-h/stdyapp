@@ -78,6 +78,9 @@ const activitySelect = {
   startedAt: true,
   endedAt: true,
   plannedMinutes: true,
+  // A break is a sign of life, and a plan runs late by its breaks.
+  pausedAt: true,
+  pausedSeconds: true,
   focusSamples: latestForegroundSample,
   interruptions: {
     select: { startedAt: true },
@@ -236,6 +239,40 @@ export const findLiveSessionsByUsers = (userIds, since) => {
   });
 };
 
+/**
+ * Starts a break - but only if the session is still running, has no break
+ * open and has one left. updateMany for the condition: update() can only
+ * match on unique fields, and the condition is the point. Resolves true when
+ * this call started it.
+ *
+ * @param {string} id
+ * @param {Date} at
+ * @param {number} maxPauses
+ */
+export const startPause = async (id, at, maxPauses) => {
+  const { count } = await prisma.session.updateMany({
+    where: { id, endedAt: null, pausedAt: null, pauseCount: { lt: maxPauses } },
+    data: { pausedAt: at, pauseCount: { increment: 1 } },
+  });
+  return count === 1;
+};
+
+/**
+ * Ends a break, crediting its seconds - only if it is still the break that
+ * began at `pausedAt`, so a racing second resume cannot credit it twice.
+ *
+ * @param {string} id
+ * @param {Date} pausedAt
+ * @param {number} creditedSeconds
+ */
+export const finishPause = async (id, pausedAt, creditedSeconds) => {
+  const { count } = await prisma.session.updateMany({
+    where: { id, pausedAt },
+    data: { pausedAt: null, pausedSeconds: { increment: creditedSeconds } },
+  });
+  return count === 1;
+};
+
 export const updateSession = (id, data) => {
   return prisma.session.update({ where: { id }, data });
 };
@@ -314,7 +351,8 @@ export const findCompletedSessionsSince = (userId, since) => {
       // person would describe it: the study happened, and it happened today.
       startedAt: { gte: since },
     },
-    select: { startedAt: true, endedAt: true },
+    // pausedSeconds: a goal counts studied time, breaks left out.
+    select: { startedAt: true, endedAt: true, pausedSeconds: true },
   });
 };
 
@@ -359,6 +397,8 @@ export const findCompletedSessionsForAnalytics = (userId, since) => {
     select: {
       startedAt: true,
       endedAt: true,
+      // Breaks come off every duration - see sessionPause.js.
+      pausedSeconds: true,
       focusPoints: true,
       groupId: true,
       // The focus estimate and checklist totals, as finaliseSessionFocus

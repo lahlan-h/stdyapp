@@ -12,6 +12,7 @@
  * folded into summary numbers and dropped, so the payload carries counts
  * rather than an array per row.
  */
+import { activeMinutes } from "./sessionPause.js";
 
 /**
  * A session still open after this long was not finished, it was left.
@@ -39,20 +40,17 @@ export const sessionStatus = (session, now = new Date()) => {
 };
 
 /**
- * Whole minutes between start and end, rounded and floored at zero exactly as
- * endSession derives minutesStudied - so the history agrees with the XP the
- * session banked. Null while there is no end: a running session has no
- * duration yet, and 0 would read as a session that lasted no time.
+ * Whole minutes studied, breaks left out, rounded and floored at zero exactly
+ * as endSession derives minutesStudied - the same activeMinutes - so the
+ * history agrees with the XP the session banked. Null while there is no end:
+ * a running session has no duration yet, and 0 would read as a session that
+ * lasted no time.
  *
- * @param {{ startedAt: Date | string, endedAt: Date | string | null }} session
+ * @param {{ startedAt: Date | string, endedAt: Date | string | null, pausedSeconds?: number }} session
  * @returns {number | null}
  */
-export const sessionDurationMinutes = (session) => {
-  if (!session.endedAt) return null;
-  const ms =
-    new Date(session.endedAt).getTime() - new Date(session.startedAt).getTime();
-  return Math.max(0, Math.round(ms / 60000));
-};
+export const sessionDurationMinutes = (session) =>
+  session.endedAt ? activeMinutes(session) : null;
 
 /**
  * One list row: the session's own columns plus what the history screen needs

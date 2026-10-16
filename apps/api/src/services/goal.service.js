@@ -9,6 +9,7 @@ import { startOfUtcDay, startOfUtcWeek } from "../utils/calendar.js";
 import { HttpError } from "../utils/httpError.js";
 import { MAX_DAILY_TARGET_MINUTES } from "../validation/goal.validation.js";
 import { bumpVersions, goalOwnerVersionKey } from "../utils/cache.js";
+import { activeMs } from "./sessionPause.js";
 
 const MILLISECONDS_PER_MINUTE = 60 * 1000;
 
@@ -69,14 +70,14 @@ const periodStart = (period, now) => {
  * 29-second sessions round to zero and vanish, where they are really six
  * minutes of study.
  *
- * @param {Array<{ startedAt: Date, endedAt: Date }>} sessions
+ * Each session counts its STUDIED time, breaks left out - activeMs, the one
+ * definition every duration shares.
+ *
+ * @param {Array<{ startedAt: Date, endedAt: Date, pausedSeconds?: number }>} sessions
  * @returns {number}
  */
 const sumMinutes = (sessions) => {
-  const totalMs = sessions.reduce(
-    (total, session) => total + (session.endedAt - session.startedAt),
-    0,
-  );
+  const totalMs = sessions.reduce((total, session) => total + activeMs(session), 0);
 
   // Floored at 0 rather than trusted: a clock adjustment between the two
   // timestamps can make a session appear to end before it started, and a

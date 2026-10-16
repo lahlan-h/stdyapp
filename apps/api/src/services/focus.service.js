@@ -3,6 +3,8 @@ import * as sessionRepo from "../repositories/session.repository.js";
 // A group board's audience and its gate - the same two reads the group feed
 // makes in post.service.js.
 import { findMembership, findMemberIds } from "../repositories/studyGroup.repository.js";
+// Break time comes off every duration - see sessionPause.js.
+import { activeMs, pausedSecondsAt } from "./sessionPause.js";
 import { HttpError } from "../utils/httpError.js";
 import { bumpVersions, sessionOwnerVersionKey } from "../utils/cache.js";
 import {
@@ -163,10 +165,13 @@ export const finaliseSessionFocus = async (sessionId, userId) => {
     focusRepo.findCalibration(userId),
   ]);
 
+  const endedAt = session.endedAt ?? new Date();
   const result = scoreSession({
     samples,
     startedAt: session.startedAt,
-    endedAt: session.endedAt ?? new Date(),
+    endedAt,
+    // A session's breaks are neither study nor distraction - see sessionPause.js.
+    pausedMs: pausedSecondsAt(session, endedAt) * 1000,
     baselines: toBaselineMap(baselineRows),
     plannedMinutes: session.plannedMinutes,
     // findSessionById includes these. Without them the estimate cannot see
@@ -186,10 +191,8 @@ export const finaliseSessionFocus = async (sessionId, userId) => {
    * stored on the row cannot disagree.
    */
   const calibratedScore = applyCalibration(result.focusScore, calibration);
-  const elapsedMinutes = Math.max(
-    0,
-    ((session.endedAt ?? new Date()).getTime() - session.startedAt.getTime()) / 60000,
-  );
+  // Studied minutes, breaks left out - the same time the leaderboard ranks.
+  const elapsedMinutes = activeMs(session, endedAt) / 60000;
   const calibratedWeighted =
     calibratedScore === null ? null : elapsedMinutes * (calibratedScore / 100);
 
@@ -323,6 +326,10 @@ export const getSessionFocus = async (sessionId, userId) => {
     // glances away is a different session from one long one, and a recap that
     // shows only minutes cannot tell them apart.
     interruptionCount: (session.interruptions ?? []).length,
+    // Breaks, apart from time away: they do not count against the estimate,
+    // and a recap that lumped them in with distraction would say they did.
+    pauseCount: session.pauseCount ?? 0,
+    pausedSeconds: pausedSecondsAt(session, session.endedAt ?? new Date()),
     tasksTotal: tasks.length,
     tasksCompleted: tasks.filter((t) => t.isComplete).length,
     selfRating: rating?.selfRating ?? null,

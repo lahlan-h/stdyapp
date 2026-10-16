@@ -883,3 +883,83 @@ describe("scoreSession with a checklist", () => {
     );
   });
 });
+
+/**
+ * A break is neither study nor distraction: a session that took one must score
+ * exactly like the same session without the break in it, and must not be
+ * credited the break's minutes.
+ */
+describe("scoreSession with breaks", () => {
+  it("scores a session with a break like the same session without it", () => {
+    // 45 minutes of the same study, with a 5-minute break in the middle of the
+    // second one's 50 minutes of wall clock.
+    const plain = scoreSession({
+      samples: [typicalSample(), typicalSample({ timestamp: at(45) })],
+      startedAt: START,
+      endedAt: at(45),
+      plannedMinutes: 45,
+    });
+    const withBreak = scoreSession({
+      samples: [typicalSample(), typicalSample({ timestamp: at(50) })],
+      startedAt: START,
+      endedAt: at(50),
+      plannedMinutes: 45,
+      pausedMs: 5 * 60_000,
+    });
+
+    assert.equal(withBreak.focusScore, plain.focusScore);
+    closeTo(withBreak.completionFactor, plain.completionFactor);
+    closeTo(withBreak.focusWeightedMinutes, plain.focusWeightedMinutes);
+  });
+
+  it("does not let a break dilute time spent away", () => {
+    // Ten minutes away in a 40-minute session is a quarter of it - whether or
+    // not a 10-minute break also happened on the wall clock.
+    const interruptions = [{ durationSec: 600 }];
+    const plain = scoreSession({
+      samples: [typicalSample(), typicalSample({ timestamp: at(40) })],
+      startedAt: START,
+      endedAt: at(40),
+      interruptions,
+    });
+    const withBreak = scoreSession({
+      samples: [typicalSample(), typicalSample({ timestamp: at(50) })],
+      startedAt: START,
+      endedAt: at(50),
+      interruptions,
+      pausedMs: 10 * 60_000,
+    });
+
+    closeTo(withBreak.awayFraction, plain.awayFraction);
+    closeTo(withBreak.awayFraction, 0.25);
+  });
+});
+
+describe("computeCompletionFactor with breaks", () => {
+  it("measures a plan by studied time, not the wall clock", () => {
+    // 65 minutes of wall clock with a 5-minute break is the planned hour.
+    closeTo(
+      computeCompletionFactor({
+        startedAt: START,
+        endedAt: at(65),
+        samples: [],
+        plannedMinutes: 60,
+        pausedMs: 5 * 60_000,
+      }),
+      1,
+    );
+  });
+
+  it("does not count a break's gap in the samples as drifting off", () => {
+    // Samples across the whole 50 minutes, 10 of which were a break: full coverage.
+    closeTo(
+      computeCompletionFactor({
+        startedAt: START,
+        endedAt: at(50),
+        samples: [{ timestamp: START }, { timestamp: at(50) }],
+        pausedMs: 10 * 60_000,
+      }),
+      1,
+    );
+  });
+});

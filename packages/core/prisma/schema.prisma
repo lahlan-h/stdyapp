@@ -267,6 +267,19 @@ model Session {
   startedAt     DateTime  @default(now())
   endedAt       DateTime?
 
+  /// Breaks: a pause for a bathroom trip or a call, when the clock stops and
+  /// the time counts as neither study nor distraction. Three per session, each
+  /// credited for at most five minutes - see apps/api/src/services/sessionPause.js,
+  /// which every duration in the app goes through.
+  ///
+  /// pausedAt is set while a break is running and cleared when it ends.
+  /// pauseCount is how many breaks have been STARTED, so a running one counts.
+  /// pausedSeconds is the credited time of every FINISHED break - a running
+  /// one's share is worked out from pausedAt when it is needed.
+  pausedAt      DateTime?
+  pauseCount    Int       @default(0)
+  pausedSeconds Int       @default(0)
+
   /// How long the user MEANT to study, set when the session starts. Nullable: a
   /// session opened without a plan is still valid, and every session created
   /// before this column existed has none. When present it drives the focus
