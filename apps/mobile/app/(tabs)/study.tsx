@@ -292,7 +292,10 @@ const Study = () => {
                 <Pressable
                   key={key}
                   style={[styles.viewSwitchItem, selected && styles.viewSwitchItemSelected]}
-                  onPress={() => setView(key)}
+                  onPress={() => {
+                    if (!selected) haptics.tick();
+                    setView(key);
+                  }}
                   accessibilityRole="tab"
                   accessibilityState={{ selected }}
                   accessibilityLabel={live ? `${label}, session running` : label}
