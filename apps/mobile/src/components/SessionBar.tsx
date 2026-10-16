@@ -1,4 +1,4 @@
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, Platform } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Feather from "@expo/vector-icons/Feather";
 
@@ -8,16 +8,27 @@ import { useFocusSession, useIsSessionRunning } from "@data";
 import { confirmDiscardSession } from "./confirmDiscardSession";
 import { formatClock } from "./sessionFormat";
 
+/**
+ * Whether the native tab bar has iOS 26's bottom accessory slot. Where it
+ * does, the session shows there (SessionAccessory); everywhere else, this bar
+ * floats over the tab bar instead.
+ */
+export const SUPPORTS_BOTTOM_ACCESSORY =
+  Platform.OS === "ios" && Number.parseInt(String(Platform.Version), 10) >= 26;
+
 interface SessionBarProps {
   /** Takes the user to the session itself - the Study tab. */
   onExpand: () => void;
 }
 
 /**
- * The session in progress, riding above the tab bar on every tab but Study -
+ * The session in progress, floating over the tab bar on every tab but Study -
  * the bar Hevy shows for a workout. It says a session is running and for how
  * long, opens it, and throws it away; ending it happens on the Study tab,
  * where the session's own controls are.
+ *
+ * The fallback for platforms without the native accessory slot - on iOS 26
+ * SessionAccessory shows the same session in the tab bar's glass instead.
  *
  * Its own component, reading the full session state, so the once-a-second
  * clock re-renders this and nothing else.
@@ -83,7 +94,10 @@ const SessionBar = ({ onExpand }: SessionBarProps) => {
  * Lives with the bar rather than in the theme, because the answer depends on
  * the session - which the theme layer has no business knowing about.
  */
-export const useSessionBarClearance = (): number =>
-  useIsSessionRunning() ? SESSION_BAR_CLEARANCE : 0;
+export const useSessionBarClearance = (): number => {
+  const running = useIsSessionRunning();
+  // The accessory is part of the native bar, which insets the content itself.
+  return running && !SUPPORTS_BOTTOM_ACCESSORY ? SESSION_BAR_CLEARANCE : 0;
+};
 
 export default SessionBar;
