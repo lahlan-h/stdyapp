@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { Pressable, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
@@ -43,8 +43,8 @@ const Profile = () => {
   const { posts, isLoading: postsLoading, setLiked, reload: reloadPosts } =
     useUserPosts();
   const { summary } = useFollowCounts();
-  const { streak } = useStreak();
-  const { totals } = useStudySessions();
+  const { streak, reload: reloadStreak } = useStreak();
+  const { totals, reload: reloadTotals } = useStudySessions();
 
   /**
    * Re-reads on every focus, which the FEED deliberately does not do.
@@ -54,11 +54,22 @@ const Profile = () => {
    * first. And consumeFeedStale is a ONE-BIT flag that clears when read, so a
    * second screen consuming it would leave the feed thinking nothing had
    * changed; it belongs to the feed alone.
+   *
+   * The study figures in the top bar - streak, sessions, time - come along on
+   * every focus after the first, when their hooks have only just loaded them:
+   * a session finished on the Study tab should count here the moment you come
+   * back, not on the next launch.
    */
+  const focusedOnce = useRef(false);
   useFocusEffect(
     useCallback(() => {
       reloadPosts();
-    }, [reloadPosts]),
+      if (focusedOnce.current) {
+        reloadStreak();
+        reloadTotals();
+      }
+      focusedOnce.current = true;
+    }, [reloadPosts, reloadStreak, reloadTotals]),
   );
 
   /**
