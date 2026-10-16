@@ -88,24 +88,26 @@ export const createProfileStyles = (colors: ColorScheme) => {
     },
 
     // --- Actions ---
-    // Stacked rather than side by side, and centred under the name.
+    // Two to a row: your own four make a 2x2 grid, someone else's Follow and
+    // Message one row. Wrapping rather than fixed rows, so either count lays
+    // itself out.
     actions: {
-      alignItems: "center",
-      gap: 8,
-      paddingTop: 4,
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
     },
-    // A shared minimum width is what makes the stack read as one control
-    // rather than two pills of different lengths: "Edit profile" and "Sign out"
-    // are six characters apart, so intrinsic sizing would stagger their edges.
+    // Half the row less the gap, so two always share one: equal cells are what
+    // make the grid read as one control rather than pills of different lengths.
     actionButton: {
+      flexBasis: "45%",
+      flexGrow: 1,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
       gap: 7,
-      minWidth: 190,
-      paddingVertical: 11,
-      paddingHorizontal: 18,
-      borderRadius: 999,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderRadius: 16,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
@@ -130,7 +132,10 @@ export const createProfileStyles = (colors: ColorScheme) => {
     actionLabelOnPrimary: {
       color: colors.bg,
     },
+    // Full width, so in the wrapping grid it takes a row of its own under the
+    // button it is about rather than squeezing in as a third cell.
     actionError: {
+      width: "100%",
       fontFamily: "PlusJakartaSans_400Regular",
       fontSize: 13,
       color: colors.danger,

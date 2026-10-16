@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 
@@ -7,7 +7,6 @@ import {
   useTabBarClearance,
   useTheme,
   useStyles,
-  PROFILE_ACTION_ICON_SIZE,
   PROFILE_SETTINGS_ICON_SIZE,
 } from "@theme";
 import {
@@ -103,23 +102,7 @@ const Profile = () => {
       totals={totals}
       followers={summary?.followers}
       following={summary?.following}
-      actions={
-        <>
-          <ProfileActions />
-          {/* Session history: a push to app/sessions.tsx. */}
-          <View style={styles.actions}>
-            <Pressable
-              onPress={() => router.push("/sessions")}
-              accessibilityRole="button"
-              accessibilityLabel="Session history"
-              style={({ pressed }) => [styles.actionButton, pressed ? { opacity: 0.6 } : undefined]}
-            >
-              <Feather name="clock" size={PROFILE_ACTION_ICON_SIZE} color={colors.text} />
-              <Text style={styles.actionLabel}>Session history</Text>
-            </Pressable>
-          </View>
-        </>
-      }
+      actions={<ProfileActions />}
       topBarEnd={gear}
       bottomPadding={tabBarClearance}
     />
