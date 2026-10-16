@@ -201,6 +201,11 @@ export {
 export { useRoutines, type RoutinesState } from "./useRoutines";
 export { useGroups, type GroupsState, type NewGroup } from "./useGroups";
 export { useGroup, type GroupState, type GroupEdit } from "./useGroup";
+export {
+  useStudyingNow,
+  type StudyingMember,
+  type StudyingNowState,
+} from "./useStudyingNow";
 export { useRoom, type RoomState, type RoomParticipant } from "./useRoom";
 export {
   MAX_GROUP_NAME_LENGTH,
