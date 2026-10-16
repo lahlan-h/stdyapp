@@ -103,6 +103,7 @@ export {
   SEND_ICON_SIZE,
 } from "./messages.styles";
 export { useReducedMotion } from "./useReducedMotion";
+export { haptics } from "./haptics";
 export { useKeyboardLift, type KeyboardLift } from "./useKeyboardLift";
 export {
   createAnalyticsStyles,
