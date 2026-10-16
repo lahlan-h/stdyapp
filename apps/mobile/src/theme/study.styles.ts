@@ -587,6 +587,11 @@ export const createStudyStyles = (colors: ColorScheme) => {
     },
     actionSecondaryText: { fontSize: 16, fontWeight: "600", color: colors.text },
 
+    // Break and End side by side under the dial: the two things a running
+    // session is controlled by, equal halves of one row.
+    controlRow: { flexDirection: "row", gap: 10, alignSelf: "stretch" },
+    controlButton: { flex: 1, alignSelf: "auto" },
+
     linkButton: { alignItems: "center", paddingVertical: 12 },
     linkText: { fontSize: 14, fontWeight: "600", color: colors.textMuted },
 

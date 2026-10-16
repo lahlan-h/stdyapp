@@ -393,7 +393,12 @@ const Study = () => {
               </View>
 
               <View style={styles.statusPill}>
-                <View style={[styles.statusDot, { backgroundColor: bandColor }]} />
+                <View
+                  style={[
+                    styles.statusDot,
+                    { backgroundColor: isPaused ? colors.textMuted : bandColor },
+                  ]}
+                />
                 <Text style={styles.statusText}>
                   {ending === "retrying"
                     ? "Ending… reconnecting"
@@ -406,6 +411,71 @@ const Study = () => {
                         : scoreBand.label}
                 </Text>
               </View>
+
+              {/* The session's two controls, right under the clock they act
+                  on: a break - three a session, five minutes each, greyed out
+                  once used - and End. While on a break, Resume takes the
+                  lead. */}
+              <View style={styles.controlRow}>
+                <Pressable
+                  style={[
+                    isPaused ? styles.action : styles.actionSecondary,
+                    styles.controlButton,
+                    (busy || (!isPaused && breaksLeft === 0)) && styles.actionDisabled,
+                  ]}
+                  disabled={busy || (!isPaused && breaksLeft === 0)}
+                  onPress={isPaused ? endBreak : takeBreak}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    isPaused
+                      ? "Resume session"
+                      : breaksLeft === 0
+                        ? "No breaks left"
+                        : `Take a break, ${breaksLeft} left`
+                  }
+                >
+                  <Feather
+                    name={isPaused ? "play" : "pause"}
+                    size={STUDY_ICON_SIZE}
+                    color={isPaused ? colors.surface : colors.text}
+                  />
+                  <Text style={isPaused ? styles.actionText : styles.actionSecondaryText}>
+                    {isPaused
+                      ? "Resume"
+                      : breaksLeft === 0
+                        ? "No breaks left"
+                        : `Break · ${breaksLeft} left`}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[
+                    styles.action,
+                    styles.actionDanger,
+                    styles.controlButton,
+                    busy && styles.actionDisabled,
+                  ]}
+                  disabled={busy}
+                  onPress={end}
+                  accessibilityRole="button"
+                  accessibilityLabel={ending === "failed" ? "Try ending again" : "End session"}
+                >
+                  <Feather
+                    name={ending === "failed" ? "refresh-cw" : "square"}
+                    size={STUDY_ICON_SIZE}
+                    color={colors.danger}
+                  />
+                  <Text style={[styles.actionText, styles.actionDangerText]}>
+                    {ending === "retrying" ? "Ending…" : ending === "failed" ? "Try again" : "End"}
+                  </Text>
+                </Pressable>
+              </View>
+
+              {breakTimedOut && !isPaused ? (
+                <Text style={[styles.helpText, styles.centeredText]} accessibilityLiveRegion="polite">
+                  Break's over - back to it.
+                </Text>
+              ) : null}
 
               {/* The code is what lets someone else join; tapping shares it. */}
               {activeGroup ? (
@@ -469,61 +539,6 @@ const Study = () => {
                 onToggle={toggleTask}
                 onRemoveTask={removeTask}
               />
-
-              {breakTimedOut && !isPaused ? (
-                <Text style={[styles.helpText, styles.centeredText]} accessibilityLiveRegion="polite">
-                  Break's over - back to it.
-                </Text>
-              ) : null}
-
-              {/* Breaks: three a session, five minutes each. Greyed out once
-                  they are used up. */}
-              <Pressable
-                style={[
-                  styles.action,
-                  (busy || (!isPaused && breaksLeft === 0)) && styles.actionDisabled,
-                ]}
-                disabled={busy || (!isPaused && breaksLeft === 0)}
-                onPress={isPaused ? endBreak : takeBreak}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  isPaused
-                    ? "Resume session"
-                    : breaksLeft === 0
-                      ? "No breaks left"
-                      : `Take a break, ${breaksLeft} left`
-                }
-              >
-                <Feather
-                  name={isPaused ? "play" : "pause"}
-                  size={STUDY_ICON_SIZE}
-                  color={colors.text}
-                />
-                <Text style={styles.actionText}>
-                  {isPaused
-                    ? "Resume"
-                    : breaksLeft === 0
-                      ? "No breaks left"
-                      : `Break · ${breaksLeft} left`}
-                </Text>
-              </Pressable>
-
-              <Pressable
-                style={[styles.action, styles.actionDanger, busy && styles.actionDisabled]}
-                disabled={busy}
-                onPress={end}
-                accessibilityRole="button"
-                accessibilityLabel={ending === "failed" ? "Try ending again" : "End session"}
-              >
-                <Feather
-                  name={ending === "failed" ? "refresh-cw" : "square"}
-                  size={STUDY_ICON_SIZE}
-                  color={colors.danger}
-                />
-                <Text style={[styles.actionText, styles.actionDangerText]}>
-                  {ending === "retrying" ? "Ending…" : ending === "failed" ? "Try again" : "End"}
-                </Text>
-              </Pressable>
 
               {/* After the retries run out: the clock is already stopped, and
                   the session is closed properly the next time they study. */}
