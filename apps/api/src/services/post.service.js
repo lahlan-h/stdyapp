@@ -196,8 +196,19 @@ export const invalidateDetachedPosts = async (posts) => {
  * checked, and they are checked in parallel so supplying both still costs one
  * round trip's latency rather than two.
  */
-/** A post is a title plus at least one of these. */
-const NEEDS_PHOTO_OR_CAPTION = "A post needs a photo or a caption";
+/**
+ * What a post must carry beyond its title.
+ *
+ * A post ABOUT A SESSION needs nothing more: the session is its content - the
+ * time, the focus, the chart - and a photo or a caption is a bonus on top. A
+ * post with no session behind it is only words and pictures, so a title alone
+ * would be an empty card; it needs at least a photo or a caption.
+ */
+const NEEDS_PHOTO_OR_CAPTION = "A post without a session needs a photo or a caption";
+
+/** Whether a post's body meets the rule above. */
+const hasEnoughToPost = ({ sessionId, photoCount, caption }) =>
+  Boolean(sessionId) || photoCount > 0 || Boolean(caption);
 
 /** The R2 keys behind some photo rows - null for any not in our bucket. */
 const keysOf = (photos) =>
@@ -224,7 +235,7 @@ const keysOf = (photos) =>
  *           title: string, caption?: string, photoIds?: string[] }} input -
  *           photoIds from POST /api/posts/photos, in display order
  * @returns {Promise<object>} the created post
- * @throws 400 with neither a photo nor a caption, or an unusable photo;
+ * @throws 400 with neither a session, a photo nor a caption, or an unusable photo;
  *         403 when a link is not the caller's; 502 when R2 cannot be reached
  */
 export const createPost = async ({
@@ -235,9 +246,11 @@ export const createPost = async ({
   caption,
   photoIds = [],
 }) => {
-  // A title alone is not a post. caption has already been trimmed and refused
+  // See NEEDS_PHOTO_OR_CAPTION. caption has already been trimmed and refused
   // when empty by createPostSchema, so presence is the whole test.
-  if (photoIds.length === 0 && !caption) throw new HttpError(400, NEEDS_PHOTO_OR_CAPTION);
+  if (!hasEnoughToPost({ sessionId, photoCount: photoIds.length, caption })) {
+    throw new HttpError(400, NEEDS_PHOTO_OR_CAPTION);
+  }
 
   const checks = [];
   if (sessionId) checks.push(assertOwnsSession(sessionId, userId));
@@ -518,11 +531,17 @@ export const updatePost = async (
 ) => {
   const existing = await getOwnedPostOrThrow(postId, requesterId);
 
-  // Clearing the caption (null) of a post with no photo would leave a title
-  // alone, which createPost refuses - so this must too. The photo is fixed at
-  // creation, so the stored row is the whole answer.
-  if (caption === null && (await postPhotoRepo.findPhotosOfPosts({ postId })).length === 0) {
-    throw new HttpError(400, NEEDS_PHOTO_OR_CAPTION);
+  // An edit may not leave a post that createPost would refuse: clearing the
+  // caption, or unlinking the session, of a post with nothing else to show.
+  // Photos are fixed at creation, so the stored rows are the whole answer.
+  if (caption === null || sessionId === null) {
+    const photoCount = (await postPhotoRepo.findPhotosOfPosts({ postId })).length;
+    const after = {
+      sessionId: sessionId === undefined ? existing.sessionId : sessionId,
+      caption: caption === undefined ? existing.caption : caption,
+      photoCount,
+    };
+    if (!hasEnoughToPost(after)) throw new HttpError(400, NEEDS_PHOTO_OR_CAPTION);
   }
 
   const checks = [];
