@@ -2,17 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, request } from "./api";
 import { withAuth } from "./auth";
+import { deviceTimeZone } from "./deviceTimeZone";
+import {
+  leaderboardQuery,
+  type LeaderboardMetric,
+  type LeaderboardRange,
+  type LeaderboardScope,
+} from "./leaderboardQuery";
 
-/** What a board ranks by - mirrors LEADERBOARD_METRICS in focus.validation.js. */
-export type LeaderboardMetric = "weightedMinutes" | "focusScore" | "tasksCompleted";
-
-/** Who is on it - mirrors LEADERBOARD_SCOPES. */
-export type LeaderboardScope = "following" | "global" | "group";
-
-/** This week, or all time. Sent as `days=7` / `days=all`. */
-export type LeaderboardRange = "week" | "all";
-
-const RANGE_DAYS: Record<LeaderboardRange, string> = { week: "7", all: "all" };
+export type { LeaderboardMetric, LeaderboardRange, LeaderboardScope };
 
 /** One ranked person, as GET /api/focus/leaderboard answers it. */
 export interface LeaderboardEntry {
@@ -41,7 +39,8 @@ export interface Leaderboard {
   /** The group a "group" board ranks; null on the other boards. */
   groupId: string | null;
   metric: LeaderboardMetric;
-  days: number | "all";
+  /** "week" is the calendar week so far, from Monday midnight in the device's zone. */
+  days: number | "week" | "all";
   since: string | null;
   /** Only set on the focus board, which needs this many scored sessions. */
   minScoredSessions: number | null;
@@ -85,11 +84,7 @@ export const useLeaderboard = (
     const requestId = ++latest.current;
     setIsLoading(true);
 
-    // A group board names its group; the API refuses a groupId anywhere else.
-    const scope = groupId
-      ? `scope=group&groupId=${encodeURIComponent(groupId)}`
-      : "scope=following";
-    const query = `${scope}&metric=${metric}&days=${RANGE_DAYS[range]}`;
+    const query = leaderboardQuery({ metric, range, groupId, timeZone: deviceTimeZone() });
 
     try {
       const { data } = await withAuth((token) =>
