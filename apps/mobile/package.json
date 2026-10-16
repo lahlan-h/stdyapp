@@ -10,7 +10,8 @@
     "refresh": "npx expo start --clear",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "tsc -p tsconfig.test.json && node --test --experimental-strip-types \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
@@ -59,6 +60,7 @@
   },
   "devDependencies": {
     "@expo/env": "^2.4.3",
+    "@types/node": "^26.6.5",
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
   },

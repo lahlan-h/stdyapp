@@ -1,0 +1,10 @@
+{
+  "//": "The app's pure-logic tests, type-checked apart from the app. They run under Node (node --test with type stripping), so they get Node's types and the .ts import extensions Node needs - neither of which the app should have.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/**/*.test.ts"],
+  "exclude": ["node_modules"]
+}
