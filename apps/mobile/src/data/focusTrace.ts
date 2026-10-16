@@ -113,9 +113,13 @@ export const buildFocusTimeline = ({
   const fillGap = (fromMs: number, slots: number) => {
     for (let i = 0; i < slots; i += 1) {
       const at = fromMs + (i + 0.5) * intervalMs;
-      // A break first: it is the one the user declared, and its edges can
-      // touch a trip away that followed it.
-      if (covers(breakSpells, at, 0)) segments.push({ kind: "break" });
+      // A break first: it is the one the user declared. Matched at the moment
+      // the missing sample was DUE, not the slot's midpoint - the sampler
+      // skips exactly the samples that fall due during a break, and a break
+      // begun a few seconds into a slot would otherwise miss its own gap and
+      // be drawn as time away.
+      const due = fromMs + (i + 1) * intervalMs;
+      if (covers(breakSpells, due, intervalMs / 2)) segments.push({ kind: "break" });
       else if (covers(awaySpells, at, intervalMs)) segments.push({ kind: "away" });
       else if (covers(downSpells, at, intervalMs)) segments.push({ kind: "down" });
       else segments.push({ kind: unmatchedGap });
