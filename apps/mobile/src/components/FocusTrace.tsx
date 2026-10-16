@@ -15,6 +15,8 @@ import type { FocusTimeline, TraceSegment } from "@data";
  *    two Instagram breaks look perfect.
  *  - Phone-down time (locked and left on the desk) is a calm blue block, so it
  *    is visibly different from both.
+ *  - A break is a quiet grey block: a pause the user took, which counts for
+ *    nothing either way.
  * Underneath, a one-line strip and totals say the same thing in proportions and
  * minutes.
  *
@@ -44,6 +46,7 @@ const downsample = (segments: TraceSegment[]): TraceSegment[] => {
     const count = (kind: TraceSegment["kind"]) => slice.filter((s) => s.kind === kind).length;
     const focus = slice.filter((s): s is Extract<TraceSegment, { kind: "focus" }> => s.kind === "focus");
 
+    if (count("break") > focus.length && count("break") >= count("away")) return { kind: "break" };
     if (count("away") >= focus.length && count("away") >= count("down")) return { kind: "away" };
     if (count("down") > focus.length) return { kind: "down" };
     return { kind: "focus", value: focus.reduce((a, s) => a + s.value, 0) / Math.max(1, focus.length) };
@@ -78,7 +81,7 @@ const FocusTrace = ({ timeline, live = false }: FocusTraceProps) => {
   const { colors } = useTheme();
   const styles = useStyles("study");
 
-  const { segments, average, totalSec, awaySec, downSec, awayCount } = timeline;
+  const { segments, average, totalSec, awaySec, downSec, breakSec, awayCount } = timeline;
   if (segments.length === 0) return null;
 
   const bars = downsample(segments);
@@ -87,7 +90,13 @@ const FocusTrace = ({ timeline, live = false }: FocusTraceProps) => {
     v >= 0.7 ? colors.success : v >= 0.45 ? colors.warning : colors.danger;
 
   const colorOf = (s: TraceSegment) =>
-    s.kind === "away" ? colors.danger : s.kind === "down" ? colors.primary : bandColor(s.value);
+    s.kind === "away"
+      ? colors.danger
+      : s.kind === "down"
+        ? colors.primary
+        : s.kind === "break"
+          ? colors.textMuted
+          : bandColor(s.value);
 
   // Consecutive same-colour bars merged into runs, for the strip.
   const runs: { color: string; length: number }[] = [];
@@ -98,7 +107,7 @@ const FocusTrace = ({ timeline, live = false }: FocusTraceProps) => {
     else runs.push({ color, length: 1 });
   }
 
-  const presentSec = Math.max(0, totalSec - awaySec - downSec);
+  const presentSec = Math.max(0, totalSec - awaySec - downSec - breakSec);
   const ticks = [0.25, 0.5, 0.75, 1].map((f) => timeLabel(totalSec * f, totalSec));
 
   return (
@@ -125,6 +134,8 @@ const FocusTrace = ({ timeline, live = false }: FocusTraceProps) => {
                 <View key={i} style={styles.traceAwayBar} />
               ) : bar.kind === "down" ? (
                 <View key={i} style={styles.traceDownBar} />
+              ) : bar.kind === "break" ? (
+                <View key={i} style={styles.traceBreakBar} />
               ) : (
                 <View
                   key={i}
@@ -191,6 +202,14 @@ const FocusTrace = ({ timeline, live = false }: FocusTraceProps) => {
             <View style={[styles.traceLegendDot, { backgroundColor: colors.primary }]} />
             <Text style={styles.traceLegendText}>
               <Text style={styles.traceLegendStrong}>{duration(downSec)}</Text> phone down
+            </Text>
+          </View>
+        ) : null}
+        {breakSec > 0 ? (
+          <View style={styles.traceLegendItem}>
+            <View style={[styles.traceLegendDot, { backgroundColor: colors.textMuted }]} />
+            <Text style={styles.traceLegendText}>
+              <Text style={styles.traceLegendStrong}>{duration(breakSec)}</Text> on a break
             </Text>
           </View>
         ) : null}

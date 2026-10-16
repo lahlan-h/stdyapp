@@ -428,6 +428,18 @@ export const createStudyStyles = (colors: ColorScheme) => {
       backgroundColor: colors.primary,
       opacity: 0.28,
     },
+    /**
+     * An interval on one of the session's breaks: a quiet grey block, so it
+     * reads as time set aside rather than time won or lost.
+     */
+    traceBreakBar: {
+      flex: 1,
+      minWidth: 2,
+      height: "100%",
+      borderRadius: 2,
+      backgroundColor: colors.textMuted,
+      opacity: 0.22,
+    },
     /** A one-line "where the time went" strip under the plot. */
     traceRibbon: {
       flexDirection: "row",

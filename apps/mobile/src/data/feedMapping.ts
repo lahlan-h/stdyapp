@@ -1,5 +1,6 @@
 import { REPORT_REASONS, type ReportReason } from "./reportReasons";
 import type { FeedAuthor, FeedPhoto, FeedPost, FeedSession, PostHighlight } from "./types";
+import { studiedMinutes } from "./sessionTime";
 
 /**
  * One row as GET /api/posts/all returns it.
@@ -27,6 +28,8 @@ export interface RawFeedRow {
   session: {
     startedAt: string;
     endedAt: string | null;
+    /** Credited break seconds - absent from an API that predates breaks. */
+    pausedSeconds?: number;
     focusPoints: number;
     /** Null when the session had no task list. */
     tasksTotal?: number | null;
@@ -93,6 +96,7 @@ const toSession = (row: RawFeedRow): FeedSession | undefined => {
   const {
     startedAt,
     endedAt,
+    pausedSeconds,
     focusPoints,
     tasksTotal,
     tasksCompleted,
@@ -103,15 +107,8 @@ const toSession = (row: RawFeedRow): FeedSession | undefined => {
   } = row.session;
 
   return {
-    durationMinutes: endedAt
-      ? Math.max(
-          0,
-          Math.round(
-            (new Date(endedAt).getTime() - new Date(startedAt).getTime()) /
-              60000,
-          ),
-        )
-      : null,
+    // Studied time, breaks left out - the post says what the history says.
+    durationMinutes: endedAt ? studiedMinutes({ startedAt, endedAt, pausedSeconds }) : null,
     focusPoints,
     tasks: tasksTotal ? { done: tasksCompleted ?? 0, total: tasksTotal } : undefined,
     studiedWith: (studiedWith ?? []).map(toAuthor),
