@@ -13,6 +13,14 @@ const AVATAR_SIZE = 32;
 const TOUCH_MIN = 44;
 
 /**
+ * One box of the six a join code is typed into. Tall rather than square, so
+ * a row of six fits a 360pt phone with room between them and the characters
+ * still read at a glance across a desk.
+ */
+const CODE_BOX_WIDTH = 46;
+const CODE_BOX_HEIGHT = 56;
+
+/**
  * Groups list and group detail.
  *
  * BUILT ON the routines sheet rather than beside it: a group row and a routine
@@ -95,6 +103,142 @@ export const createGroupsStyles = (colors: ColorScheme) => {
 
     // --- Codes ---
     codeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    // The code's own buttons - share it, or make a new one.
+    codeActions: { flexDirection: "row", gap: 8 },
+
+    // --- Typing a code: six boxes over one invisible input ---
+    codeBoxes: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    codeBox: {
+      width: CODE_BOX_WIDTH,
+      height: CODE_BOX_HEIGHT,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 14,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      backgroundColor: colors.backgrounds.input,
+    },
+    codeBoxFilled: {
+      borderColor: colors.textMuted,
+    },
+    // The box the next character goes in, while the keyboard is up.
+    codeBoxActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryTint,
+    },
+    codeBoxInvalid: {
+      borderColor: colors.danger,
+    },
+    codeBoxChar: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 24,
+      color: colors.text,
+    },
+    // Covers the boxes so a tap anywhere on them focuses it; never seen.
+    codeHiddenInput: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      opacity: 0,
+      color: "transparent",
+    },
+
+    // --- Join or create, before a session starts ---
+    joinCardCaption: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.textMuted,
+    },
+    joinError: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.danger,
+    },
+    // "or" between the boxes and Create, rules either side.
+    orRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    orRule: {
+      flex: 1,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+    },
+    orText: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 12,
+      color: colors.textMuted,
+    },
+    // While a session runs: why joining and making groups is not here.
+    lockedNote: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      padding: 14,
+      borderRadius: 14,
+      backgroundColor: colors.primaryTint,
+      borderWidth: 1,
+      borderColor: colors.primaryEdge,
+    },
+    lockedNoteText: {
+      flex: 1,
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.text,
+    },
+
+    // --- The create sheet ---
+    sheetBackdrop: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: colors.scrim,
+    },
+    sheet: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      gap: 14,
+      paddingTop: 10,
+      paddingHorizontal: 20,
+      borderTopLeftRadius: 26,
+      borderTopRightRadius: 26,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    sheetHandle: {
+      alignSelf: "center",
+      width: 40,
+      height: 5,
+      borderRadius: 3,
+      backgroundColor: colors.border,
+      marginBottom: 4,
+    },
+    sheetTitle: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 22,
+      color: colors.text,
+    },
+    sheetCaption: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.textMuted,
+    },
+    // A single-line input that is not in a row with a button, so it does not
+    // take flex: 1 from the shared input style's row layout.
+    sheetInput: {
+      flex: 0,
+    },
     codeText: {
       fontFamily: "PlusJakartaSans_700Bold",
       fontSize: 22,

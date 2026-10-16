@@ -199,7 +199,18 @@ export {
   type ProfileState,
 } from "./useProfile";
 export { useRoutines, type RoutinesState } from "./useRoutines";
-export { useGroups, type GroupsState, type NewGroup } from "./useGroups";
+export {
+  useGroups,
+  createGroupRequest,
+  type GroupsState,
+  type NewGroup,
+} from "./useGroups";
+export { useCreateGroup, type CreateGroupState } from "./useCreateGroup";
+export {
+  useJoinGroupByCode,
+  type JoinGroupByCodeState,
+  type JoinByCodeResult,
+} from "./useJoinGroupByCode";
 export { useGroup, type GroupState, type GroupEdit } from "./useGroup";
 export {
   useStudyingNow,
@@ -211,6 +222,8 @@ export {
   MAX_GROUP_NAME_LENGTH,
   MAX_GROUP_DESCRIPTION_LENGTH,
   MAX_JOIN_CODE_LENGTH,
+  JOIN_CODE_LENGTH,
+  cleanJoinCodeInput,
   type StudyGroup,
   type GroupMember,
   type GroupRole,

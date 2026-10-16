@@ -6,7 +6,6 @@ import {
   Share,
   StatusBar,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -22,7 +21,7 @@ import {
   STUDY_ICON_SIZE,
   TASK_ICON_SIZE,
 } from "@theme";
-import { useFocusSession, consumeStudyRequest, MAX_JOIN_CODE_LENGTH } from "@data";
+import { useFocusSession, consumeStudyRequest } from "@data";
 
 import FocusDial from "@components/FocusDial";
 import FocusTrace from "@components/FocusTrace";
@@ -33,6 +32,7 @@ import GroupList from "@components/GroupList";
 import { formatClock } from "@components/sessionFormat";
 import BeginCard from "@components/BeginCard";
 import RoomParticipants from "@components/RoomParticipants";
+import JoinOrCreateGroupCard from "@components/JoinOrCreateGroupCard";
 import { confirmGroupAction } from "@components/confirmGroup";
 
 /** The three views under the Study tab. */
@@ -107,7 +107,6 @@ const Study = () => {
   } = useFocusSession();
 
   const [view, setView] = useState<StudyView>("sessions");
-  const [inviteDraft, setInviteDraft] = useState("");
 
   /**
    * Takes a request a group screen left on the way here - see studyRequest.ts.
@@ -135,12 +134,6 @@ const Study = () => {
       }
     }, [join, setSelectedGroup, phase]),
   );
-
-  const submitInvite = () => {
-    if (!inviteDraft.trim()) return;
-    join(inviteDraft);
-    setInviteDraft("");
-  };
 
   /** "Invite copied", shown under the chip for a moment after a web copy. */
   const [inviteNotice, setInviteNotice] = useState<string | null>(null);
@@ -269,7 +262,9 @@ const Study = () => {
           </View>
 
           {view === "routines" ? <RoutineList /> : null}
-          {view === "groups" ? <GroupList /> : null}
+          {/* While a session runs the Groups view only shows your groups:
+              joining and making them is for before you start. */}
+          {view === "groups" ? <GroupList sessionRunning={phase === "running"} /> : null}
 
           {showingSessions && error ? (
             <View style={styles.errorBox}>
@@ -322,40 +317,10 @@ const Study = () => {
                 Focus is an estimate, not a measurement.
               </Text>
 
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Join a session</Text>
-                <View style={styles.taskAddRow}>
-                  <TextInput
-                    style={styles.taskInput}
-                    value={inviteDraft}
-                    onChangeText={setInviteDraft}
-                    onSubmitEditing={submitInvite}
-                    placeholder="Invite code"
-                    placeholderTextColor={colors.textMuted}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                    returnKeyType="go"
-                    maxLength={MAX_JOIN_CODE_LENGTH}
-                    accessibilityLabel="Session invite code"
-                  />
-                  <Pressable
-                    style={[
-                      styles.taskAddButton,
-                      (busy || !inviteDraft.trim()) && styles.actionDisabled,
-                    ]}
-                    disabled={busy || !inviteDraft.trim()}
-                    onPress={submitInvite}
-                    accessibilityRole="button"
-                    accessibilityLabel="Join session"
-                  >
-                    <Feather name="log-in" size={STUDY_ICON_SIZE} color={colors.surface} />
-                  </Pressable>
-                </View>
-                <Text style={styles.emptyText}>
-                  Joining a public group's session adds you to the group. Or
-                  open one of your groups to see who is studying now.
-                </Text>
-              </View>
+              {/* Into a group by its code, or a new one - before a session
+                  only. Joining someone's live session is on the group's
+                  own page, under Studying now. */}
+              <JoinOrCreateGroupCard />
 
               {/* Looking back - past sessions and the week's analytics -
                   lives behind the profile's History and Analytics buttons. */}
