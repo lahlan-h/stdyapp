@@ -1,8 +1,12 @@
 import type { ColorScheme } from "./colors";
 import { StyleSheet } from "react-native";
 
-/** Diameter of the profile avatar. Larger than the feed's, which is AVATAR_SIZE in home.styles. */
-const AVATAR_SIZE = 96;
+/**
+ * Diameter of the profile avatar. Larger than the feed's, which is AVATAR_SIZE
+ * in home.styles, and a little under the old centred 96: it shares its row with
+ * the name now, and the name needs the width on a small phone.
+ */
+const AVATAR_SIZE = 84;
 
 /** Leading icon on an action button. */
 export const PROFILE_ACTION_ICON_SIZE = 16;
@@ -42,10 +46,16 @@ export const createProfileStyles = (colors: ColorScheme) => {
     },
 
     // --- Header ---
+    // The avatar to the left with the name beside it, the way a contact card
+    // reads, and the bio under both at full width.
     header: {
+      gap: 12,
+      paddingTop: 4,
+    },
+    headerRow: {
+      flexDirection: "row",
       alignItems: "center",
-      gap: 10,
-      paddingTop: 12,
+      gap: 16,
     },
     avatar: {
       width: AVATAR_SIZE,
@@ -54,15 +64,15 @@ export const createProfileStyles = (colors: ColorScheme) => {
       borderWidth: 1,
       borderColor: colors.border,
     },
+    // flex: 1 so a long name wraps inside the row rather than running off it.
     identity: {
-      alignItems: "center",
+      flex: 1,
       gap: 2,
     },
     displayName: {
       fontFamily: "PlusJakartaSans_700Bold",
       fontSize: 24,
       color: colors.text,
-      textAlign: "center",
     },
     username: {
       fontFamily: "PlusJakartaSans_400Regular",
@@ -74,9 +84,7 @@ export const createProfileStyles = (colors: ColorScheme) => {
       fontSize: 15,
       lineHeight: 21,
       color: colors.text,
-      textAlign: "center",
-      paddingHorizontal: 8,
-      paddingTop: 4,
+      paddingHorizontal: 2,
     },
 
     // --- Actions ---

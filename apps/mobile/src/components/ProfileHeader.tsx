@@ -25,22 +25,32 @@ interface ProfileHeaderProps {
 const displayNameOf = ({ firstName, lastName, username }: PublicProfile): string =>
   [firstName, lastName].filter(Boolean).join(" ") || username;
 
-/** Avatar, name and bio. Renders from the profile it is given and queries nothing. */
+/**
+ * Avatar, name and bio: the avatar on the left with the name and username
+ * beside it, and the bio underneath. Renders from the profile it is given and
+ * queries nothing.
+ */
 const ProfileHeader = ({ profile }: ProfileHeaderProps) => {
   const styles = useStyles("profile");
   const displayName = displayNameOf(profile);
 
   return (
     <View style={styles.header}>
-      <Image
-        source={{ uri: profile.avatarUrl ?? defaultAvatar(displayName) }}
-        style={styles.avatar}
-        accessibilityIgnoresInvertColors
-      />
+      <View style={styles.headerRow}>
+        <Image
+          source={{ uri: profile.avatarUrl ?? defaultAvatar(displayName) }}
+          style={styles.avatar}
+          accessibilityIgnoresInvertColors
+        />
 
-      <View style={styles.identity}>
-        <Text style={styles.displayName}>{displayName}</Text>
-        <Text style={styles.username}>@{profile.username}</Text>
+        <View style={styles.identity}>
+          <Text style={styles.displayName} numberOfLines={2}>
+            {displayName}
+          </Text>
+          <Text style={styles.username} numberOfLines={1}>
+            @{profile.username}
+          </Text>
+        </View>
       </View>
 
       {/* Absent rather than blank when unset: an empty line under the username
