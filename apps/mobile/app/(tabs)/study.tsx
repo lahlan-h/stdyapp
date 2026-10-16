@@ -85,6 +85,7 @@ const Study = () => {
     elapsedSec,
     remainingSec,
     plannedSec,
+    setPlannedSec,
     liveFocus,
     awaySec,
     phoneDownSec,
@@ -333,31 +334,17 @@ const Study = () => {
           {/* ---------------- set up ---------------- */}
           {showingSessions && phase === "idle" ? (
             <>
-              {/* Chosen from a group's screen; clearing it makes the next
-                  session solo again. Above Begin, because it changes what
-                  Begin starts. */}
-              {selectedGroup ? (
-                <View style={styles.groupChip}>
-                  <Feather name="users" size={TASK_ICON_SIZE} color={colors.primary} />
-                  <Text style={styles.groupChipText} numberOfLines={1}>
-                    Studying with {selectedGroup.name}
-                  </Text>
-                  <Pressable
-                    style={styles.groupChipClear}
-                    onPress={() => setSelectedGroup(null)}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Study solo instead"
-                  >
-                    <Feather name="x" size={TASK_ICON_SIZE} color={colors.textMuted} />
-                  </Pressable>
-                </View>
-              ) : null}
-
-              {/* No length to pick and no checklist to fill first: a session
-                  starts the moment a mode is chosen. Tasks can still be added
-                  once it is running. */}
-              <BeginCard busy={busy} onStartNormal={start} />
+              {/* Length, who with, then slide to lock in. A group chosen on
+                  a group's screen arrives here already picked. Tasks are
+                  added once the session runs. */}
+              <BeginCard
+                busy={busy}
+                plannedSec={plannedSec}
+                onChangePlannedSec={setPlannedSec}
+                group={selectedGroup}
+                onChangeGroup={setSelectedGroup}
+                onStart={start}
+              />
 
               <Text style={styles.helpText}>
                 Focus is an estimate, not a measurement.

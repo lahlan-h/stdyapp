@@ -43,6 +43,13 @@ export const STUDY_FOOTER_ROOM = 32;
 /** The chevron on a Begin card row that starts something. */
 export const BEGIN_CHEVRON_SIZE = 18;
 
+/**
+ * The big Start button that is slid along its track to lock in - large
+ * enough to hold with a thumb, and to read as the screen's one big action.
+ */
+export const LOCK_IN_THUMB_SIZE = 64;
+const LOCK_IN_TRACK_PADDING = 6;
+
 export const createStudyStyles = (colors: ColorScheme) => {
   const styles = StyleSheet.create({
     container: { flex: 1 },
@@ -727,53 +734,224 @@ export const createStudyStyles = (colors: ColorScheme) => {
       fontSize: 18,
       color: colors.text,
     },
-    // A transparent edge on every row, so the lit one's border does not make
-    // it a pixel taller than the rest.
-    beginOption: {
+    beginHeader: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
-      minHeight: TOUCH_MIN,
-      paddingVertical: 14,
-      paddingHorizontal: 16,
-      borderRadius: 14,
+      justifyContent: "space-between",
+      gap: 10,
+    },
+    // The streak, as the reason to begin.
+    streakPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingVertical: 5,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+      backgroundColor: colors.bg,
       borderWidth: 1,
-      borderColor: "transparent",
+      borderColor: colors.border,
+      flexShrink: 1,
     },
-    // The mode that works today, lit the way the design lights it.
-    beginOptionPrimary: {
-      backgroundColor: colors.primaryTint,
-      borderColor: colors.primaryEdge,
-    },
-    beginOptionDisabled: {
-      opacity: 0.55,
-    },
-    beginOptionText: {
-      flex: 1,
-      gap: 2,
-    },
-    beginOptionTitle: {
+    streakPillText: {
       fontFamily: "PlusJakartaSans_600SemiBold",
-      fontSize: 16,
+      fontSize: 12,
       color: colors.text,
     },
-    beginOptionCaption: {
+    beginLabel: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 12,
+      letterSpacing: 0.6,
+      textTransform: "uppercase",
+      color: colors.textMuted,
+    },
+    beginCaption: {
       fontFamily: "PlusJakartaSans_400Regular",
       fontSize: 13,
       color: colors.textMuted,
     },
-    beginBadge: {
-      paddingVertical: 3,
-      paddingHorizontal: 8,
-      borderRadius: 999,
+
+    // --- How long: chips, Custom opening the wheels ---
+    // One row of equal chips: five lengths read as one choice, not a list.
+    lengthChips: { flexDirection: "row", gap: 6 },
+    lengthChip: {
+      flex: 1,
+      minHeight: 40,
+      paddingHorizontal: 4,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.border,
+      backgroundColor: colors.bg,
     },
-    beginBadgeText: {
+    lengthChipSelected: {
+      backgroundColor: colors.primaryTint,
+      borderColor: colors.primary,
+    },
+    lengthChipText: {
       fontFamily: "PlusJakartaSans_600SemiBold",
-      fontSize: 10,
-      letterSpacing: 0.8,
+      fontSize: 14,
+      color: colors.text,
+    },
+    lengthChipTextSelected: { color: colors.primary },
+
+    // --- Studying with ---
+    withRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: TOUCH_MIN,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.bg,
+    },
+    withText: { flex: 1, gap: 2 },
+    withValue: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 16,
+      color: colors.text,
+    },
+
+    // --- The lock-in track: the big Start button, slid across ---
+    lockInWrap: { gap: 8, marginTop: 4 },
+    lockInTrack: {
+      height: LOCK_IN_THUMB_SIZE + LOCK_IN_TRACK_PADDING * 2,
+      borderRadius: (LOCK_IN_THUMB_SIZE + LOCK_IN_TRACK_PADDING * 2) / 2,
+      justifyContent: "center",
+      padding: LOCK_IN_TRACK_PADDING,
+      backgroundColor: colors.primaryTint,
+      borderWidth: 1,
+      borderColor: colors.primaryEdge,
+    },
+    // Centred in the space right of the thumb, so the words never sit under it.
+    lockInLabelRow: {
+      position: "absolute",
+      left: LOCK_IN_THUMB_SIZE + LOCK_IN_TRACK_PADDING,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 4,
+    },
+    lockInLabel: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 16,
+      color: colors.primary,
+      letterSpacing: 0.2,
+    },
+    lockInThumbWrap: {
+      width: LOCK_IN_THUMB_SIZE,
+      height: LOCK_IN_THUMB_SIZE,
+    },
+    // The thumb's glow, swelling behind it - drawn outside its box, unclipped.
+    lockInHalo: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: LOCK_IN_THUMB_SIZE,
+      height: LOCK_IN_THUMB_SIZE,
+      borderRadius: LOCK_IN_THUMB_SIZE / 2,
+      backgroundColor: colors.primary,
+    },
+    lockInThumb: {
+      width: LOCK_IN_THUMB_SIZE,
+      height: LOCK_IN_THUMB_SIZE,
+      borderRadius: LOCK_IN_THUMB_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
+      shadowColor: colors.primary,
+      shadowOpacity: 0.5,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 6,
+    },
+    // Optically centred: a play triangle's weight sits left of its box.
+    lockInThumbIcon: { marginLeft: 3 },
+    lockInHint: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 12,
       color: colors.textMuted,
+      textAlign: "center",
+    },
+    lockInBusy: {
+      height: LOCK_IN_THUMB_SIZE + LOCK_IN_TRACK_PADDING * 2,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+    },
+
+    // --- The 3, 2, 1 ---
+    // The scrim's dark in both themes, for the scrim's reason: it is there to
+    // push everything behind it away.
+    countdown: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 18,
+      paddingHorizontal: 32,
+      backgroundColor: colors.lightbox.bg,
+    },
+    countdownNumber: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 140,
+      lineHeight: 160,
+      color: colors.lightbox.text,
+      fontVariant: ["tabular-nums"],
+    },
+    countdownGo: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 56,
+      lineHeight: 160,
+      color: colors.lightbox.text,
+    },
+    countdownLine: {
+      minHeight: 22,
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 16,
+      color: colors.lightbox.text,
+      opacity: 0.7,
+      textAlign: "center",
+    },
+    countdownCancel: {
+      position: "absolute",
+      bottom: 80,
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+      borderRadius: 999,
+      backgroundColor: colors.lightbox.control,
+    },
+    countdownCancelText: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 15,
+      color: colors.lightbox.text,
+    },
+
+    // --- Picking who you study with ---
+    pickSheet: { alignItems: "stretch", maxHeight: "70%" },
+    pickList: { alignSelf: "stretch" },
+    pickListContent: { gap: 8, paddingVertical: 10 },
+    pickRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: TOUCH_MIN,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.bg,
+    },
+    pickRowSelected: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryTint,
     },
   });
 

@@ -32,6 +32,7 @@ export {
   TOUCH_MIN,
   STUDY_FOOTER_ROOM,
   BEGIN_CHEVRON_SIZE,
+  LOCK_IN_THUMB_SIZE,
 } from "./study.styles";
 export {
   createSettingsStyles,
