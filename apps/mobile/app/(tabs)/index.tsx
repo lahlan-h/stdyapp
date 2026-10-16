@@ -57,6 +57,7 @@ import UserSearchList from "@components/UserSearchList";
 import FeedFilterPanel from "@components/FeedFilterPanel";
 import NotificationList from "@components/NotificationList";
 import MessagesPage from "@components/MessagesPage";
+import StudyingNowStrip from "@components/StudyingNowStrip";
 
 /** Space between the panel's lower edge and the first card. Matches the old list padding. */
 const FEED_TOP_GAP = 8;
@@ -112,6 +113,19 @@ const Index = () => {
    */
   const inGroup = audience.kind === "group";
   const unfiltered = useMemo(defaultFeedFilters, []);
+
+  /**
+   * Whether Home is the tab on screen. The tab stays mounted behind the
+   * others, so the group strip would otherwise keep polling for a row nobody
+   * can see.
+   */
+  const [focused, setFocused] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
   const [sheet, setSheet] = useState<HomeSheetMode | null>(null);
   const [query, setQuery] = useState("");
 
@@ -568,7 +582,8 @@ const Index = () => {
             />
           }
           // Search, messages, filter and notifications are about your people,
-          // not one group, so a group's feed leaves them out.
+          // not one group, so a group's feed leaves them out - and shows who
+          // in it is studying instead.
           showControls={!inGroup}
           query={query}
           onChangeQuery={setQuery}
@@ -580,7 +595,15 @@ const Index = () => {
           unreadMessages={unreadMessages}
           hasFilters={hasFilters}
           unread={unread}
-        />
+        >
+          {audience.kind === "group" ? (
+            <StudyingNowStrip
+              groupId={audience.groupId}
+              groupName={audience.groupName}
+              active={focused}
+            />
+          ) : null}
+        </HomeSearchPanel>
 
         {audienceMenuOpen ? (
           <FeedAudienceMenu

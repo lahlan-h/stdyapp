@@ -47,11 +47,27 @@ const HOME_PANEL_HEIGHT =
   PANEL_TITLE_HEIGHT + PANEL_PADDING_TOP + CONTROL_HEIGHT + PANEL_PADDING_BOTTOM;
 
 /**
- * The same panel on a study group's feed, which has no control row: the title
- * (with the leaderboard button at its end) and the group's body under it.
- * Fixed for HOME_PANEL_HEIGHT's reason.
+ * The group feed's "who's studying" strip: a row of live avatars, each over a
+ * name and a running time. The height is every part stacked, so the strip -
+ * and the panel around it - is the same size empty, loading or full.
  */
-const GROUP_PANEL_HEIGHT = PANEL_TITLE_HEIGHT + PANEL_PADDING_BOTTOM;
+const STRIP_AVATAR_SIZE = 48;
+// Room above the avatars for the title's descenders and for the halo, which
+// swells past the avatar and would be clipped by the scroller's edge.
+const STRIP_PADDING_TOP = 14;
+const STRIP_NAME_HEIGHT = 16;
+const STRIP_TIME_HEIGHT = 15;
+const STRIP_ITEM_GAP = 4;
+const STRIP_ITEM_WIDTH = 62;
+const STRIP_HEIGHT =
+  STRIP_PADDING_TOP + STRIP_AVATAR_SIZE + STRIP_ITEM_GAP + STRIP_NAME_HEIGHT + STRIP_TIME_HEIGHT;
+
+/**
+ * The same panel on a study group's feed, which has no control row: the title
+ * (with the leaderboard button at its end) and the strip under it. Fixed for
+ * HOME_PANEL_HEIGHT's reason.
+ */
+const GROUP_PANEL_HEIGHT = PANEL_TITLE_HEIGHT + STRIP_HEIGHT + PANEL_PADDING_BOTTOM;
 
 const HOME_SEARCH_ICON_SIZE = 20;
 const SEARCH_ROW_ICON_SIZE = 18;
@@ -143,6 +159,148 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
     // Under a group feed's title, in the control row's place.
     panelGroupBody: {
       paddingBottom: PANEL_PADDING_BOTTOM,
+    },
+
+    // --- Who's studying: the group feed's live strip ---
+    strip: {
+      height: STRIP_HEIGHT,
+    },
+    stripContent: {
+      paddingTop: STRIP_PADDING_TOP,
+      paddingHorizontal: 16,
+      gap: 10,
+    },
+    stripItem: {
+      width: STRIP_ITEM_WIDTH,
+      alignItems: "center",
+    },
+    // Holds the avatar and its halo, which grows OUT of this box - so the box
+    // is the avatar's size and the halo is drawn behind it, unclipped.
+    stripAvatarWrap: {
+      width: STRIP_AVATAR_SIZE,
+      height: STRIP_AVATAR_SIZE,
+      marginBottom: STRIP_ITEM_GAP,
+    },
+    // The live ring: green because green is "in session" everywhere else in
+    // the app (the status dot, the trace's in-app bars).
+    stripAvatar: {
+      width: STRIP_AVATAR_SIZE,
+      height: STRIP_AVATAR_SIZE,
+      borderRadius: STRIP_AVATAR_SIZE / 2,
+      borderWidth: 2,
+      borderColor: colors.success,
+      backgroundColor: colors.backgrounds.input,
+    },
+    // The pulse: a ring of the same green that swells and fades behind the
+    // avatar, so the row reads as live without any one face blinking.
+    stripHalo: {
+      ...FILL,
+      borderRadius: STRIP_AVATAR_SIZE / 2,
+      borderWidth: 2,
+      borderColor: colors.success,
+    },
+    // "Studying in this group" - a small mark on the avatar's corner rather
+    // than a second ring colour, which would read as a different state.
+    stripHereBadge: {
+      position: "absolute",
+      right: -2,
+      bottom: -2,
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.primary,
+      borderWidth: 2,
+      borderColor: colors.bg,
+    },
+    stripName: {
+      height: STRIP_NAME_HEIGHT,
+      maxWidth: STRIP_ITEM_WIDTH,
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 12,
+      color: colors.text,
+    },
+    stripTime: {
+      height: STRIP_TIME_HEIGHT,
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 11,
+      color: colors.textMuted,
+      fontVariant: ["tabular-nums"],
+    },
+    // The count tile that leads the row - the strip's own label.
+    stripCount: {
+      width: STRIP_AVATAR_SIZE,
+      height: STRIP_AVATAR_SIZE,
+      borderRadius: STRIP_AVATAR_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.successTint,
+      borderWidth: 1,
+      borderColor: colors.successEdge,
+      marginBottom: STRIP_ITEM_GAP,
+    },
+    stripCountValue: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 18,
+      color: colors.success,
+      fontVariant: ["tabular-nums"],
+    },
+    stripCountLabel: {
+      height: STRIP_NAME_HEIGHT + STRIP_TIME_HEIGHT,
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 11,
+      color: colors.success,
+      textAlign: "center",
+    },
+    // Nobody studying: one line of invitation in the strip's own height.
+    stripEmpty: {
+      height: STRIP_HEIGHT,
+      paddingTop: STRIP_PADDING_TOP,
+      paddingHorizontal: 16,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    stripEmptyIcon: {
+      width: STRIP_AVATAR_SIZE,
+      height: STRIP_AVATAR_SIZE,
+      borderRadius: STRIP_AVATAR_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderStyle: "dashed",
+      borderColor: colors.border,
+    },
+    stripEmptyText: {
+      flex: 1,
+      gap: 2,
+    },
+    stripEmptyTitle: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 14,
+      color: colors.text,
+    },
+    stripEmptyCaption: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 12,
+      color: colors.textMuted,
+    },
+    stripStart: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 14,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: colors.primary,
+    },
+    // White in both themes: it sits on primary, the same blue in each, as the
+    // session bar's title does.
+    stripStartLabel: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 13,
+      color: "#ffffff",
     },
     panelTitleText: {
       flexShrink: 1,
