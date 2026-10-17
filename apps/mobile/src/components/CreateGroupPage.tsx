@@ -1,22 +1,23 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
+  ScrollView,
+  StatusBar,
   Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Feather from "@expo/vector-icons/Feather";
 
 import { useTheme, useGroupsStyles, haptics, GROUPS_HEADER_ICON_SIZE } from "@theme";
 import { useCreateGroup, MAX_GROUP_NAME_LENGTH, type StudyGroup } from "@data";
 
-interface CreateGroupSheetProps {
+interface CreateGroupPageProps {
   visible: boolean;
   onClose: () => void;
   /** The new group - open it, so its code is right there to share. */
@@ -26,14 +27,16 @@ interface CreateGroupSheetProps {
 /**
  * Making a study group: a name, whether it is private, and done.
  *
- * A sheet rather than a screen, because it is two fields and a button, and
- * the place it was opened from - the Study tab, before a session - is where
- * the user goes straight back to. Creating opens the new group, whose code is
- * the first thing anyone needs from it.
+ * A WHOLE PAGE, not a sheet. It was a sheet at the foot of the screen, and the
+ * keyboard - which opens straight away, for the name - rose over it, hiding the
+ * field being typed into and the button that finishes. Here everything sits at
+ * the top, under the close button, so the keyboard only ever covers empty page.
  *
- * Only offered before a session starts, never during one: see GroupList.
+ * Creating opens the new group, whose code is the first thing anyone needs
+ * from it. Only offered before a session starts: the Study tab drops its
+ * Groups view while one runs.
  */
-const CreateGroupSheet = ({ visible, onClose, onCreated }: CreateGroupSheetProps) => {
+const CreateGroupPage = ({ visible, onClose, onCreated }: CreateGroupPageProps) => {
   const { colors } = useTheme();
   const styles = useGroupsStyles();
   const insets = useSafeAreaInsets();
@@ -65,27 +68,44 @@ const CreateGroupSheet = ({ visible, onClose, onCreated }: CreateGroupSheetProps
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable
-        style={styles.sheetBackdrop}
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-      />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={{ flex: 1, justifyContent: "flex-end" }}
-        pointerEvents="box-none"
-      >
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + 20 }]}>
-          <View style={styles.sheetHandle} />
-          <Text style={styles.sheetTitle}>New study group</Text>
-          <Text style={styles.sheetCaption}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={onClose}
+    >
+      <StatusBar barStyle={colors.statusBarStyle} />
+      <LinearGradient colors={colors.gradients.background} style={styles.createPage}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.createContent,
+            { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 },
+          ]}
+          // A tap on Create while the keyboard is up creates, rather than only
+          // putting the keyboard away and needing a second tap.
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.createHeader}>
+            <Pressable
+              style={({ pressed }) => [styles.createClose, pressed && styles.pressed]}
+              onPress={onClose}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <Feather name="x" size={20} color={colors.text} />
+            </Pressable>
+            <Text style={styles.createTitle} accessibilityRole="header">
+              New study group
+            </Text>
+          </View>
+
+          <Text style={styles.createCaption}>
             It gets a six-character code. Anyone you share it with can join.
           </Text>
 
           <TextInput
-            style={[styles.input, styles.sheetInput]}
+            style={[styles.input, styles.createInput]}
             value={name}
             onChangeText={setName}
             onSubmitEditing={submit}
@@ -133,10 +153,10 @@ const CreateGroupSheet = ({ visible, onClose, onCreated }: CreateGroupSheetProps
               </>
             )}
           </Pressable>
-        </View>
-      </KeyboardAvoidingView>
+        </ScrollView>
+      </LinearGradient>
     </Modal>
   );
 };
 
-export default CreateGroupSheet;
+export default CreateGroupPage;

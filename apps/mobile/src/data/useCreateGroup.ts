@@ -12,7 +12,7 @@ export interface CreateGroupState {
 }
 
 /**
- * Makes a study group, for the Study tab's create sheet.
+ * Makes a study group, for the Study tab's create-group page.
  *
  * The Groups view's own list creates through useGroups, which also slots the
  * new group into "Your groups"; this is the same request without a list to

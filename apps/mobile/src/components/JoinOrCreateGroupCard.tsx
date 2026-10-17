@@ -7,7 +7,7 @@ import { useTheme, useGroupsStyles, haptics, GROUPS_HEADER_ICON_SIZE } from "@th
 import { useFocusSession, useJoinGroupByCode } from "@data";
 
 import JoinCodeInput from "./JoinCodeInput";
-import CreateGroupSheet from "./CreateGroupSheet";
+import CreateGroupPage from "./CreateGroupPage";
 
 const openGroup = (id: string) => router.push({ pathname: "/group/[id]", params: { id } });
 
@@ -109,7 +109,7 @@ const JoinOrCreateGroupCard = ({ onJoinedSession }: JoinOrCreateGroupCardProps) 
         <Text style={styles.secondaryButtonText}>Create a study group</Text>
       </Pressable>
 
-      <CreateGroupSheet
+      <CreateGroupPage
         visible={creating}
         onClose={() => setCreating(false)}
         onCreated={(group) => {

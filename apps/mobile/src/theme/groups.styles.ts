@@ -11,6 +11,8 @@ const AVATAR_SIZE = 32;
 
 /** 44pt minimum hit target, as in study.styles.ts. */
 const TOUCH_MIN = 44;
+/** The create page's close button - the size of the app's back buttons. */
+const CLOSE_SIZE = 40;
 
 /**
  * One box of the six a join code is typed into. Tall rather than square, so
@@ -174,43 +176,37 @@ export const createGroupsStyles = (colors: ColorScheme) => {
       color: colors.textMuted,
     },
 
-    // --- The create sheet ---
-    sheetBackdrop: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: colors.scrim,
-    },
-    sheet: {
-      position: "absolute",
-      left: 0,
-      right: 0,
-      bottom: 0,
+    // --- The create-group page ---
+    createPage: { flex: 1 },
+    createContent: {
       gap: 14,
-      paddingTop: 10,
       paddingHorizontal: 20,
-      borderTopLeftRadius: 26,
-      borderTopRightRadius: 26,
+    },
+    createHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      marginBottom: 6,
+    },
+    // The analytics and settings back button's shape, with a cross: this page
+    // is closed, not stepped back from.
+    createClose: {
+      width: CLOSE_SIZE,
+      height: CLOSE_SIZE,
+      borderRadius: CLOSE_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
     },
-    sheetHandle: {
-      alignSelf: "center",
-      width: 40,
-      height: 5,
-      borderRadius: 3,
-      backgroundColor: colors.border,
-      marginBottom: 4,
-    },
-    sheetTitle: {
+    createTitle: {
+      flex: 1,
       fontFamily: "PlusJakartaSans_700Bold",
-      fontSize: 22,
+      fontSize: 28,
       color: colors.text,
     },
-    sheetCaption: {
+    createCaption: {
       fontFamily: "PlusJakartaSans_400Regular",
       fontSize: 14,
       lineHeight: 20,
@@ -218,7 +214,7 @@ export const createGroupsStyles = (colors: ColorScheme) => {
     },
     // A single-line input that is not in a row with a button, so it does not
     // take flex: 1 from the shared input style's row layout.
-    sheetInput: {
+    createInput: {
       flex: 0,
     },
     codeText: {
