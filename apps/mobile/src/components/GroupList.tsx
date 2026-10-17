@@ -10,25 +10,22 @@ import GroupRow from "@components/GroupRow";
 import JoinOrCreateGroupCard from "@components/JoinOrCreateGroupCard";
 
 interface GroupListProps {
-  /**
-   * A session is running. Then this is only your groups, to look at: joining
-   * and making groups is for before you study - the Study tab's setup - never
-   * the middle of a session, where it would only be a distraction.
-   */
-  sessionRunning?: boolean;
   /** A session's code was typed into the join card and its session joined. */
   onJoinedSession?: () => void;
 }
 
 /**
- * The Study tab's Groups view: your groups, then - before a session - a way in
- * by code, a way to make one, and a search for public groups to look through.
+ * The Study tab's Groups view: your groups, then a way in by code, a way to
+ * make one, and a search for public groups to look through.
+ *
+ * Only ever drawn before a session: the Study tab drops its Groups view while
+ * one runs, since joining and making groups is set-up, not studying.
  *
  * A component rather than a screen, for RoutineList's reason: it renders in
  * the Study tab's own scroller, under the view switch, and mounts only while
  * that switch is on Groups.
  */
-const GroupList = ({ sessionRunning = false, onJoinedSession }: GroupListProps) => {
+const GroupList = ({ onJoinedSession }: GroupListProps) => {
   const { colors } = useTheme();
   const styles = useGroupsStyles();
   const {
@@ -85,9 +82,7 @@ const GroupList = ({ sessionRunning = false, onJoinedSession }: GroupListProps) 
         isLoading ? <ActivityIndicator color={colors.textMuted} /> : null
       ) : myGroups.length === 0 ? (
         <Text style={styles.emptyText}>
-          {sessionRunning
-            ? "You are not in any groups yet."
-            : "You are not in any groups yet. Join one with a code, or start your own."}
+          You are not in any groups yet. Join one with a code, or start your own.
         </Text>
       ) : (
         myGroups.map((group) => (
@@ -95,77 +90,66 @@ const GroupList = ({ sessionRunning = false, onJoinedSession }: GroupListProps) 
         ))
       )}
 
-      {sessionRunning ? (
-        <View style={styles.lockedNote}>
-          <Feather name="lock" size={16} color={colors.primary} />
-          <Text style={styles.lockedNoteText}>
-            Joining and making groups opens up again when this session ends.
-          </Text>
+      <JoinOrCreateGroupCard onJoinedSession={onJoinedSession} />
+
+      {/* Public groups, to browse. A private one is found here too, but
+          only its code - from someone in it - lets you in. */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Find a group</Text>
+        <View style={styles.addRow}>
+          <TextInput
+            style={styles.input}
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={() => search(query)}
+            placeholder="Search by name"
+            placeholderTextColor={colors.textMuted}
+            returnKeyType="search"
+            autoCapitalize="none"
+            maxLength={MAX_GROUP_NAME_LENGTH}
+            accessibilityLabel="Search groups"
+          />
+          <Pressable
+            style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
+            onPress={() => search(query)}
+            accessibilityRole="button"
+            accessibilityLabel="Search"
+          >
+            {isSearching ? (
+              <ActivityIndicator color={colors.surface} />
+            ) : (
+              <Feather name="search" size={18} color={colors.surface} />
+            )}
+          </Pressable>
         </View>
-      ) : (
-        <>
-          <JoinOrCreateGroupCard onJoinedSession={onJoinedSession} />
+        {results && results.length === 0 ? (
+          <Text style={styles.emptyText}>No groups match that.</Text>
+        ) : null}
+      </View>
 
-          {/* Public groups, to browse. A private one is found here too, but
-              only its code - from someone in it - lets you in. */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Find a group</Text>
-            <View style={styles.addRow}>
-              <TextInput
-                style={styles.input}
-                value={query}
-                onChangeText={setQuery}
-                onSubmitEditing={() => search(query)}
-                placeholder="Search by name"
-                placeholderTextColor={colors.textMuted}
-                returnKeyType="search"
-                autoCapitalize="none"
-                maxLength={MAX_GROUP_NAME_LENGTH}
-                accessibilityLabel="Search groups"
-              />
-              <Pressable
-                style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
-                onPress={() => search(query)}
-                accessibilityRole="button"
-                accessibilityLabel="Search"
-              >
-                {isSearching ? (
-                  <ActivityIndicator color={colors.surface} />
-                ) : (
-                  <Feather name="search" size={18} color={colors.surface} />
-                )}
-              </Pressable>
-            </View>
-            {results && results.length === 0 ? (
-              <Text style={styles.emptyText}>No groups match that.</Text>
-            ) : null}
-          </View>
+      {results?.map((group) => (
+        <GroupRow key={group.id} group={group} onPress={() => open(group.id)} />
+      ))}
 
-          {results?.map((group) => (
-            <GroupRow key={group.id} group={group} onPress={() => open(group.id)} />
-          ))}
-
-          {results && hasMore ? (
-            <Pressable
-              style={({ pressed }) => [
-                styles.secondaryButton,
-                isSearching && styles.disabled,
-                pressed && styles.pressed,
-              ]}
-              onPress={loadMore}
-              disabled={isSearching}
-              accessibilityRole="button"
-              accessibilityLabel="Load more groups"
-            >
-              {isSearching ? (
-                <ActivityIndicator color={colors.textMuted} />
-              ) : (
-                <Text style={styles.secondaryButtonText}>Load more</Text>
-              )}
-            </Pressable>
-          ) : null}
-        </>
-      )}
+      {results && hasMore ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.secondaryButton,
+            isSearching && styles.disabled,
+            pressed && styles.pressed,
+          ]}
+          onPress={loadMore}
+          disabled={isSearching}
+          accessibilityRole="button"
+          accessibilityLabel="Load more groups"
+        >
+          {isSearching ? (
+            <ActivityIndicator color={colors.textMuted} />
+          ) : (
+            <Text style={styles.secondaryButtonText}>Load more</Text>
+          )}
+        </Pressable>
+      ) : null}
     </>
   );
 };

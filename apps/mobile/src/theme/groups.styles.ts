@@ -173,24 +173,6 @@ export const createGroupsStyles = (colors: ColorScheme) => {
       fontSize: 12,
       color: colors.textMuted,
     },
-    // While a session runs: why joining and making groups is not here.
-    lockedNote: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      padding: 14,
-      borderRadius: 14,
-      backgroundColor: colors.primaryTint,
-      borderWidth: 1,
-      borderColor: colors.primaryEdge,
-    },
-    lockedNoteText: {
-      flex: 1,
-      fontFamily: "PlusJakartaSans_400Regular",
-      fontSize: 13,
-      lineHeight: 18,
-      color: colors.text,
-    },
 
     // --- The create sheet ---
     sheetBackdrop: {

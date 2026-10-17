@@ -64,8 +64,12 @@ const VIEWS: { key: StudyView; label: string }[] = [
  * THREE VIEWS, ONE SESSION. A switch at the top flips between Sessions,
  * Routines and Groups, and the session itself lives above the tabs in
  * FocusSessionProvider - so a running session keeps its timer, samples and
- * away-tracking while the user checks a routine, a group or another tab. Only
- * the rendered content swaps.
+ * away-tracking while the user checks a routine or another tab. Only the
+ * rendered content swaps.
+ *
+ * Groups is set-up - joining a group, making one - so it leaves the switch
+ * while a session runs: there is nothing in it to do mid-session but get
+ * distracted.
  */
 
 
@@ -198,6 +202,14 @@ const Study = () => {
   const running = phase === "running";
 
   /**
+   * The views the switch offers, and the one on screen. Groups drops out while
+   * a session runs (see above), and a Groups view still open as a session
+   * starts falls back to the session itself.
+   */
+  const views = running ? VIEWS.filter(({ key }) => key !== "groups") : VIEWS;
+  const shownView: StudyView = running && view === "groups" ? "sessions" : view;
+
+  /**
    * A break, from the button beside End. The last one asks first: after it
    * there are no more, and time away from the app counts against the focus
    * estimate again - worth knowing before spending it.
@@ -266,7 +278,7 @@ const Study = () => {
     router.push({ pathname: "/new-post", params: { sessionId: finished } });
   }, [phase, sessionId, reset]);
 
-  const showingSessions = view === "sessions";
+  const showingSessions = shownView === "sessions";
 
   return (
     <LinearGradient colors={colors.gradients.background} style={styles.container}>
@@ -285,8 +297,8 @@ const Study = () => {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.viewSwitch} accessibilityRole="tablist">
-            {VIEWS.map(({ key, label }) => {
-              const selected = key === view;
+            {views.map(({ key, label }) => {
+              const selected = key === shownView;
               const live = key === "sessions" && running && !selected;
               return (
                 <Pressable
@@ -311,14 +323,9 @@ const Study = () => {
             })}
           </View>
 
-          {view === "routines" ? <RoutineList /> : null}
-          {/* While a session runs the Groups view only shows your groups:
-              joining and making them is for before you start. */}
-          {view === "groups" ? (
-            <GroupList
-              sessionRunning={phase === "running"}
-              onJoinedSession={() => setView("sessions")}
-            />
+          {shownView === "routines" ? <RoutineList /> : null}
+          {shownView === "groups" ? (
+            <GroupList onJoinedSession={() => setView("sessions")} />
           ) : null}
 
           {showingSessions && error ? (
