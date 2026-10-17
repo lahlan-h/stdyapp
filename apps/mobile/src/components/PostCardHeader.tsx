@@ -50,8 +50,11 @@ const PostCardHeader = ({ displayName, avatarUrl, createdAt, sharedTo }: PostCar
               name={sharedTo.followers ? "users" : "lock"}
               size={12}
               color={colors.textMuted}
+              style={homeStyles.postCardAudienceIcon}
             />
-            <Text style={homeStyles.soft} numberOfLines={1}>
+            {/* Wraps, never truncates: this line is where you check exactly
+                who a post went to, so every group has to be readable. */}
+            <Text style={[homeStyles.soft, homeStyles.postCardAudienceText]}>
               {audienceLabel(sharedTo)}
             </Text>
           </View>
