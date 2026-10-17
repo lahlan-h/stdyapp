@@ -8,6 +8,7 @@ import {
   Animated,
   Easing,
   Keyboard,
+  RefreshControl,
   type TextInput,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -22,6 +23,7 @@ import {
   useTabBarClearance,
   useTabBarInset,
   useReducedMotion,
+  haptics,
   HOME_PANEL_HEIGHT,
   GROUP_PANEL_HEIGHT,
   HOME_SEARCH_ICON_SIZE,
@@ -75,6 +77,9 @@ const NO_IDS: ReadonlySet<string> = new Set();
 const REFRESHING_OPACITY = 0.45;
 const DIM_MS = 120;
 const REVEAL_MS = 180;
+
+/** The shortest a pull-to-refresh spinner shows, however fast the feed comes back. */
+const MIN_PULL_SPINNER_MS = 600;
 
 type TabNavigation = BottomTabNavigationProp<Record<string, object | undefined>>;
 
@@ -156,6 +161,35 @@ const Index = () => {
    */
   const [reportingId, setReportingId] = useState<string | null>(null);
   const reporting = posts.find((post) => post.id === reportingId) ?? null;
+
+  /**
+   * A pull from the top re-reads the feed, with the spinner showing until it
+   * lands and a tap in the hand as the pull lets go.
+   *
+   * Only a PULL shows the spinner. A changed filter refreshes too, but that
+   * one dims the posts instead (see feedOpacity): the user is looking at a
+   * chip, not at the top of the list, and a spinner up there would be noise.
+   * isRefreshing turns on in the same tick refresh() is called, so clearing
+   * `pulled` once it turns off again cannot race the start.
+   *
+   * The spinner stays up for at least MIN_PULL_SPINNER_MS: a fast network
+   * answers in tens of milliseconds, and a spinner that flashes for one frame
+   * reads as a glitch rather than as "that was fresh".
+   */
+  const [pulled, setPulled] = useState(false);
+  const pulledAt = useRef(0);
+  const pullToRefresh = useCallback(() => {
+    haptics.tap();
+    pulledAt.current = Date.now();
+    setPulled(true);
+    refresh();
+  }, [refresh]);
+  useEffect(() => {
+    if (isRefreshing || !pulled) return;
+    const left = MIN_PULL_SPINNER_MS - (Date.now() - pulledAt.current);
+    const timer = setTimeout(() => setPulled(false), Math.max(0, left));
+    return () => clearTimeout(timer);
+  }, [isRefreshing, pulled]);
 
   // Re-reads only when something actually wrote, rather than on every focus:
   // refreshing on each tab switch would discard every page past the first to
@@ -374,12 +408,12 @@ const Index = () => {
   const feedOpacity = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     Animated.timing(feedOpacity, {
-      toValue: isRefreshing && !isLoading ? REFRESHING_OPACITY : 1,
+      toValue: isRefreshing && !isLoading && !pulled ? REFRESHING_OPACITY : 1,
       duration: reducedMotion ? 0 : isRefreshing ? DIM_MS : REVEAL_MS,
       easing: Easing.out(Easing.ease),
       useNativeDriver: true,
     }).start();
-  }, [isRefreshing, isLoading, reducedMotion, feedOpacity]);
+  }, [isRefreshing, isLoading, pulled, reducedMotion, feedOpacity]);
 
   // A new filter or audience starts at the top of its results, not wherever
   // the old ones happened to be scrolled to.
@@ -505,11 +539,18 @@ const Index = () => {
               }
               ListEmptyComponent={emptyFeed}
               showsVerticalScrollIndicator={false}
-              onRefresh={refresh}
-              refreshing={false}
-              // Without this Android draws the pull-to-refresh spinner under
-              // the panel, where nobody can see it.
-              progressViewOffset={panelBottom}
+              refreshControl={
+                <RefreshControl
+                  refreshing={pulled}
+                  onRefresh={pullToRefresh}
+                  // Without this the spinner is drawn under the panel, where
+                  // nobody can see it.
+                  progressViewOffset={panelBottom}
+                  tintColor={colors.textMuted}
+                  colors={[colors.primary]}
+                  progressBackgroundColor={colors.surface}
+                />
+              }
               onEndReached={canLoadMore ? loadMore : undefined}
               onEndReachedThreshold={0.5}
             />
