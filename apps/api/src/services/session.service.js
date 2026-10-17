@@ -4,6 +4,16 @@ import * as sessionRepo from "../repositories/session.repository.js";
 import { findMembership, findGroupById } from "../repositories/studyGroup.repository.js";
 import * as focusService from "./focus.service.js";
 import { toSessionHistoryRow } from "./sessionHistory.js";
+import { generateJoinCode } from "./joinCode.js";
+import { isPrismaError } from "../utils/prismaError.js";
+import {
+  activeMinutes,
+  activeMs,
+  openPauseSeconds,
+  pausedSecondsAt,
+  toPauseState,
+  MAX_PAUSES,
+} from "./sessionPause.js";
 // joinSession adds the caller to a PUBLIC group on the way in, and joinGroup
 // carries the rules for that - the duplicate check, the owner's notification,
 // the member-cache bump. A service import for the reason the gamification
@@ -187,10 +197,11 @@ const announceRoom = async (roomId) => {
  * Gamification is deliberately NOT in here; see endSession.
  */
 const closeSession = async (session, endedAt) => {
-  const minutesStudied = Math.max(
-    0,
-    Math.round((endedAt - session.startedAt) / 60000)
-  );
+  // Studied time, breaks left out - see sessionPause.js. A break still running
+  // at the end closes here, credited up to its cap, so an ended session never
+  // carries an open one.
+  const pausedSeconds = pausedSecondsAt(session, endedAt);
+  const minutesStudied = activeMinutes({ ...session, endedAt });
 
   const penaltyPoints = session.interruptions
     .filter((i) => i.penaltyApplied)
@@ -201,7 +212,13 @@ const closeSession = async (session, endedAt) => {
     minutesStudied * FOCUS_POINTS_PER_MINUTE - penaltyPoints
   );
 
-  const updated = await sessionRepo.updateSession(session.id, { endedAt, focusPoints });
+  const updated = await sessionRepo.closeSessionRow(
+    session.id,
+    { endedAt, focusPoints, pausedAt: null, pausedSeconds },
+    session.pausedAt
+      ? { pausedAt: session.pausedAt, creditedSeconds: openPauseSeconds(session.pausedAt, endedAt) }
+      : null,
+  );
 
   /**
    * The focus ESTIMATE: a separate, calibrated 0-100 score derived from this
@@ -240,13 +257,21 @@ const closeSession = async (session, endedAt) => {
   return { updated, focus, minutesStudied };
 };
 
-/** The newest moment an open session showed it was still being used. */
+/**
+ * The newest moment an open session showed it was still being used.
+ *
+ * Starting a break counts: nothing is sampled during one, so without it a
+ * session would look silent from the moment its owner stepped away for a
+ * minute. A break that never ends - the app killed mid-break - is closed at
+ * the moment it began, so the time after earns nothing.
+ */
 const lastSignOfLife = (session) =>
   new Date(
     Math.max(
       session.startedAt.getTime(),
       session.focusSamples[0]?.timestamp.getTime() ?? 0,
       session.interruptions[0]?.startedAt.getTime() ?? 0,
+      session.pausedAt?.getTime() ?? 0,
     ),
   );
 
@@ -346,9 +371,13 @@ export const sweepAbandonedSessions = async ({ now = new Date(), userIds } = {})
     const silentFor = now.getTime() - last.getTime();
     if (silentFor < SWEEP_SILENCE_MS) continue;
 
+    // A plan runs late by its breaks: the clock stopped for them.
     const due = session.plannedMinutes
       ? now.getTime() >=
-        session.startedAt.getTime() + session.plannedMinutes * 60_000 + SWEEP_PAST_PLAN_MS
+        session.startedAt.getTime() +
+          session.plannedMinutes * 60_000 +
+          (session.pausedSeconds ?? 0) * 1000 +
+          SWEEP_PAST_PLAN_MS
       : silentFor >= SWEEP_OPEN_ENDED_SILENCE_MS;
     if (!due) continue;
 
@@ -387,17 +416,24 @@ const openSession = async ({ userId, groupId, plannedMinutes = null, hostSession
   // invite codes only make sense for group sessions — solo sessions get none.
   // Participants get their own too, so a room can be joined through anyone in
   // it - joinSession resolves every code to the room's host.
-  const inviteCode = groupId
-    ? Math.random().toString(36).slice(2, 8).toUpperCase()
-    : null;
-
-  const session = await sessionRepo.createSession({
-    userId,
-    groupId,
-    inviteCode,
-    plannedMinutes,
-    hostSessionId,
-  });
+  //
+  // From the same generator as group codes (see joinCode.js): six characters
+  // without I, O, 0 or 1, since it is typed into the same six boxes. The column
+  // is unique, so a collision is retried with a fresh code rather than
+  // surfacing as a 500.
+  const create = (inviteCode) =>
+    sessionRepo.createSession({ userId, groupId, inviteCode, plannedMinutes, hostSessionId });
+  let session;
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      session = await create(groupId ? generateJoinCode() : null);
+      break;
+    } catch (err) {
+      const codeTaken =
+        isPrismaError(err, "P2002") && String(err.meta?.target ?? "").includes("inviteCode");
+      if (!codeTaken || attempt >= 5) throw err;
+    }
+  }
 
   // Only the OWNER scope. A brand new session has no cached single-session
   // payload to orphan — nobody can have read an id that did not exist — but it
@@ -533,11 +569,10 @@ export const joinSession = async ({ userId, inviteCode }) => {
     }
   }
 
+  // What is left of the host's plan - by THEIR studied time, so a host who
+  // took a break does not leave the room finishing early.
   const plannedMinutes = host.plannedMinutes
-    ? Math.max(
-        1,
-        Math.ceil(host.plannedMinutes - (Date.now() - host.startedAt) / 60000),
-      )
+    ? Math.max(1, Math.ceil(host.plannedMinutes - activeMs(host, new Date()) / 60000))
     : null;
 
   const session = await openSession({
@@ -699,6 +734,68 @@ export const deleteSession = async (sessionId, userId) => {
   );
 
   return result;
+};
+
+const sessionConflict = (message) => {
+  const err = new Error(message);
+  err.status = 409;
+  return err;
+};
+
+/**
+ * Starts a break - see sessionPause.js for what one is and why it is limited.
+ *
+ * Idempotent while one is running: a retry after a lost response answers with
+ * the break already in progress rather than refusing, and never spends a
+ * second one. Refused (409) once the session has ended or has no breaks left.
+ *
+ * The write is CONDITIONAL - no break open, breaks remaining, not ended - so two
+ * taps racing each other cannot both start one or take a fourth.
+ *
+ * @param {string} sessionId
+ * @param {string} userId
+ */
+export const pauseSession = async (sessionId, userId) => {
+  const session = await getOwnedSessionOrThrow(sessionId, userId);
+  if (session.endedAt) throw sessionConflict("This session has already ended");
+  if (session.pausedAt) return toPauseState(session);
+  if (session.pauseCount >= MAX_PAUSES) {
+    throw sessionConflict(`No breaks left - a session gets ${MAX_PAUSES}`);
+  }
+
+  const started = await sessionRepo.startPause(sessionId, new Date(), MAX_PAUSES);
+  const now = await sessionRepo.findSessionById(sessionId);
+  if (!started) {
+    // Lost a race: another request started a break, or used the last one,
+    // or ended the session, between the read above and this write.
+    if (now?.pausedAt) return toPauseState(now);
+    throw sessionConflict(`No breaks left - a session gets ${MAX_PAUSES}`);
+  }
+
+  await invalidateSession({ sessionIds: [sessionId], ownerIds: [userId] });
+  return toPauseState(now);
+};
+
+/**
+ * Ends a break, crediting how long it ran up to the five-minute cap.
+ *
+ * Idempotent: with no break running it simply answers with the state, so a
+ * retry - or the client's own resume at the cap racing the user's tap - is
+ * never an error. Conditional on the break it read still being the open one,
+ * so one break is never credited twice.
+ *
+ * @param {string} sessionId
+ * @param {string} userId
+ */
+export const resumeSession = async (sessionId, userId) => {
+  const session = await getOwnedSessionOrThrow(sessionId, userId);
+  if (session.endedAt || !session.pausedAt) return toPauseState(session);
+
+  const credited = openPauseSeconds(session.pausedAt, new Date());
+  await sessionRepo.finishPause(sessionId, session.pausedAt, credited);
+
+  await invalidateSession({ sessionIds: [sessionId], ownerIds: [userId] });
+  return toPauseState(await sessionRepo.findSessionById(sessionId));
 };
 
 export const logInterruption = async (sessionId, userId, { durationSec, type = null }) => {

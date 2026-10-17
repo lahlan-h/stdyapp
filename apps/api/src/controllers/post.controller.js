@@ -25,7 +25,8 @@ export const createPhotoUploads = async (req, res, next) => {
  */
 export const create = async (req, res, next) => {
   try {
-    const { sessionId, routineId, title, caption, photoIds } = req.validated.body;
+    const { sessionId, routineId, title, caption, photoIds, shareToFollowers, groupIds } =
+      req.validated.body;
 
     const post = await postService.createPost({
       userId: req.user.id,
@@ -34,6 +35,8 @@ export const create = async (req, res, next) => {
       title,
       caption,
       photoIds,
+      shareToFollowers,
+      groupIds,
     });
     res.status(201).json(post);
   } catch (err) {

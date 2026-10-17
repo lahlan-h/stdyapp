@@ -8,6 +8,7 @@ import {
   Pressable,
   ScrollView,
   StatusBar,
+  Switch,
   ActivityIndicator,
   Alert,
   BackHandler,
@@ -23,6 +24,7 @@ import {
   useTheme,
   useNewPostStyles,
   useKeyboardLift,
+  haptics,
   EXIT_ICON_SIZE,
   NEW_POST_ROW_ICON_SIZE,
 } from "@theme";
@@ -31,7 +33,9 @@ import {
   useSessionDetail,
   useSessionRating,
   useDiscardSession,
+  useGroups,
   preparePhoto,
+  defaultPostTitle,
   MAX_PHOTO_BYTES,
   MAX_POST_PHOTOS,
   MAX_CAPTION_LENGTH,
@@ -46,6 +50,7 @@ import {
 } from "@components/LinkPicker";
 import { NONE, formatSeconds } from "@components/sessionFormat";
 import RatingSheet from "@components/RatingSheet";
+import FocusTrace from "@components/FocusTrace";
 import { confirmDiscardSession } from "@components/confirmDiscardSession";
 
 /** What the API's magic-byte sniff will accept. GIF is deliberately not in it. */
@@ -116,13 +121,65 @@ const LinkRow = ({
   );
 };
 
+/** One audience a post can go to, with its switch. */
+const ShareRow = ({
+  icon,
+  label,
+  hint,
+  value,
+  onChange,
+  divider = false,
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  hint: string;
+  value: boolean;
+  onChange: (on: boolean) => void;
+  divider?: boolean;
+}) => {
+  const { colors } = useTheme();
+  const newPostStyles = useNewPostStyles();
+
+  return (
+    <View style={[newPostStyles.row, divider && newPostStyles.rowDivider]}>
+      <View style={newPostStyles.rowIconBox}>
+        <Feather
+          name={icon}
+          size={NEW_POST_ROW_ICON_SIZE}
+          color={value ? colors.primary : colors.textMuted}
+        />
+      </View>
+      <View style={newPostStyles.rowText}>
+        <Text style={newPostStyles.rowLabel} numberOfLines={1}>
+          {label}
+        </Text>
+        <Text style={newPostStyles.rowValue} numberOfLines={1}>
+          {hint}
+        </Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ true: colors.primary, false: colors.border }}
+        accessibilityLabel={`Share to ${label}`}
+      />
+    </View>
+  );
+};
+
 /**
  * Compose a post.
  *
  * Presented as a modal from the Study tab when a session finishes - there is
- * no other way in, since a post is about a session. A title is required, plus
- * a photo OR a caption - either, or both. A title alone is not a post, and the
- * API refuses one with a 400 (see createPost in post.service.js).
+ * no other way in, since a post is about a session. Nothing else is required:
+ * the session is the post's content, a title left empty is named for when the
+ * session started (see defaultPostTitle), and photos and a caption are extras.
+ * A post with no session behind it would still need one of those two - the
+ * API's rule, mirrored in canSubmit.
+ *
+ * Laid out the way the session is remembered: its numbers and the focus chart
+ * up top, then how focused it felt - five circles, changeable until Post -
+ * then photos, words and links.
  *
  * POST OR DISCARD. For a session that just ended there are exactly two ways
  * out, as on Hevy's save screen: publish it, or discard it, which deletes the
@@ -150,6 +207,12 @@ const NewPost = () => {
    */
   const { rating, rate, error: ratingError } = useSessionRating(finishedId);
   const [ratingOpen, setRatingOpen] = useState(Boolean(finishedId));
+  // A rating given before - reopening a draft, say - until one is given here.
+  const shownRating = rating ?? finished?.selfRating ?? null;
+  const rateWithFeel = (value: number) => {
+    haptics.tick();
+    rate(value);
+  };
 
   const { discard, isDiscarding, error: discardError } = useDiscardSession();
 
@@ -161,12 +224,13 @@ const NewPost = () => {
   const footer = useRef<View>(null);
   const { lift: keyboardLift, isLifted } = useKeyboardLift(footer, 0);
 
-  /** The X: deletes a just-finished session, after asking; otherwise just closes. */
+  /** Discard: deletes a just-finished session, after asking; otherwise just closes. */
   const leave = () => {
     if (!finishedId) {
       router.back();
       return;
     }
+    haptics.warning();
     confirmDiscardSession(async () => {
       if (await discard(finishedId)) router.back();
     });
@@ -198,9 +262,39 @@ const NewPost = () => {
   const [routine, setRoutine] = useState<LinkChoice | null>(null);
   const [picker, setPicker] = useState<"session" | "routine" | null>(null);
 
-  // Mirrors the API's rule: a title, plus photos or a caption.
-  const hasBody = photos.length > 0 || caption.trim().length > 0;
-  const canSubmit = title.trim().length > 0 && hasBody && !isSubmitting && !preparing;
+  /**
+   * Who the post is for. Followers by default - where every post went before
+   * there was a choice - and the session's own group too, when it was studied
+   * in one: a group session's post plainly belongs on that group's feed. Any
+   * other group is the author's to add; a session need not have been studied
+   * in a group to be shared to it.
+   */
+  const { myGroups } = useGroups();
+  const [shareToFollowers, setShareToFollowers] = useState(true);
+  const [groupIds, setGroupIds] = useState<string[]>([]);
+  const preselected = useRef(false);
+  useEffect(() => {
+    if (preselected.current || !finished || !myGroups) return;
+    preselected.current = true;
+    const studiedIn = finished.groupId;
+    if (studiedIn && myGroups.some((group) => group.id === studiedIn)) setGroupIds([studiedIn]);
+  }, [finished, myGroups]);
+  const toggleGroup = (id: string, on: boolean) => {
+    haptics.tick();
+    setGroupIds((current) => (on ? [...current, id] : current.filter((g) => g !== id)));
+  };
+  const hasAudience = shareToFollowers || groupIds.length > 0;
+
+  /**
+   * What an empty title becomes: named for when the session started, or now
+   * until the session has loaded - the same part of the day either way for
+   * anything but a session that ran across a boundary.
+   */
+  const fallbackTitle = defaultPostTitle(finished?.startedAt ?? new Date());
+
+  // Mirrors the API's rule: a session is enough; without one, photos or words.
+  const hasBody = Boolean(session) || photos.length > 0 || caption.trim().length > 0;
+  const canSubmit = hasBody && hasAudience && !isSubmitting && !preparing;
   const room = MAX_POST_PHOTOS - photos.length;
 
   const pickPhotos = async () => {
@@ -276,14 +370,21 @@ const NewPost = () => {
     if (!canSubmit) return;
 
     const created = await createPost({
-      title,
+      title: title.trim() || fallbackTitle,
       caption,
       photos,
       sessionId: session?.id,
       routineId: routine?.id,
+      shareToFollowers,
+      groupIds,
     });
     // A null result means the hook has set `error`, which is already on screen.
-    if (created) router.back();
+    if (created) {
+      haptics.success();
+      router.back();
+    } else {
+      haptics.failure();
+    }
   };
 
   return (
@@ -300,19 +401,27 @@ const NewPost = () => {
         style={newPostStyles.safeArea}
         edges={["top", "left", "right"]}
       >
-        <Pressable
-          // insets.top by hand, as on the post detail screen: SafeAreaView's
-          // top padding does not move an absolutely positioned child, so a bare
-          // top: 8 put this button under the status bar.
-          style={[newPostStyles.exit, { top: insets.top + 8 }]}
-          onPress={leave}
-          disabled={isDiscarding}
-          accessibilityRole="button"
-          accessibilityLabel={finishedId ? "Discard session" : "Discard post"}
-          accessibilityState={{ disabled: isDiscarding, busy: isDiscarding }}
-        >
-          <Feather name="x" size={EXIT_ICON_SIZE} color={colors.danger} />
-        </Pressable>
+        <View style={newPostStyles.header}>
+          <Pressable
+            style={({ pressed }) => [newPostStyles.exit, pressed && { opacity: 0.7 }]}
+            onPress={leave}
+            disabled={isDiscarding}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={finishedId ? "Discard session" : "Discard post"}
+            accessibilityState={{ disabled: isDiscarding, busy: isDiscarding }}
+          >
+            {isDiscarding ? (
+              <ActivityIndicator color={colors.danger} />
+            ) : (
+              <Feather name="trash-2" size={EXIT_ICON_SIZE} color={colors.danger} />
+            )}
+            <Text style={newPostStyles.exitLabel}>Discard</Text>
+          </Pressable>
+          <Text style={newPostStyles.headerTitle}>
+            {finishedId ? "Post your session" : "New post"}
+          </Text>
+        </View>
 
         <ScrollView
           contentContainerStyle={[
@@ -332,11 +441,13 @@ const NewPost = () => {
               rather than adding a line - the keyboard otherwise had no way to
               go away and sat over the Post button.
             */}
+            {/* The placeholder IS the title an empty field posts as - so
+                leaving it says exactly what will be posted. */}
             <TextInput
               style={newPostStyles.titleInput}
               value={title}
               onChangeText={setTitle}
-              placeholder="New post"
+              placeholder={fallbackTitle}
               placeholderTextColor={colors.textMuted}
               multiline
               submitBehavior="blurAndSubmit"
@@ -350,18 +461,72 @@ const NewPost = () => {
           </View>
 
           {/* What the post is about, up top - the way Hevy opens its save
-              screen with the workout's numbers. */}
+              screen with the workout's numbers - and how focused it was
+              across its length, the chart from the session itself. */}
           {finishedId ? (
-            <View style={newPostStyles.sessionStats}>
-              <Text style={newPostStyles.sessionStatLabel}>Duration</Text>
-              <Text style={newPostStyles.sessionStatValue}>
-                {finished ? formatSeconds(finished.totalSec) : NONE}
-              </Text>
-            </View>
+            <>
+              <View style={newPostStyles.sessionStats}>
+                <View style={newPostStyles.sessionStat}>
+                  <Text style={newPostStyles.sessionStatLabel}>Duration</Text>
+                  <Text style={newPostStyles.sessionStatValue}>
+                    {finished ? formatSeconds(finished.totalSec) : NONE}
+                  </Text>
+                </View>
+                <View style={newPostStyles.sessionStat}>
+                  <Text style={newPostStyles.sessionStatLabel}>Focus</Text>
+                  <Text style={newPostStyles.sessionStatValue}>
+                    {finished?.focusScore ?? NONE}
+                  </Text>
+                </View>
+                {finished && finished.breakCount > 0 ? (
+                  <View style={newPostStyles.sessionStat}>
+                    <Text style={newPostStyles.sessionStatLabel}>Breaks</Text>
+                    <Text style={newPostStyles.sessionStatValue}>{finished.breakCount}</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {finished?.trace ? <FocusTrace timeline={finished.trace} /> : null}
+
+              <View style={newPostStyles.section}>
+                <Text style={newPostStyles.sectionTitle}>How focused did you feel?</Text>
+                <View style={newPostStyles.ratingRow} accessibilityRole="radiogroup">
+                  {[1, 2, 3, 4, 5].map((n) => {
+                    const selected = shownRating === n;
+                    return (
+                      <Pressable
+                        key={n}
+                        style={[
+                          newPostStyles.ratingButton,
+                          selected && newPostStyles.ratingButtonSelected,
+                        ]}
+                        onPress={() => rateWithFeel(n)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={`${n} out of 5`}
+                      >
+                        <Text
+                          style={[
+                            newPostStyles.ratingText,
+                            selected && newPostStyles.ratingTextSelected,
+                          ]}
+                        >
+                          {n}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View style={newPostStyles.ratingScale} importantForAccessibility="no">
+                  <Text style={newPostStyles.sectionHint}>Distracted</Text>
+                  <Text style={newPostStyles.sectionHint}>Locked in</Text>
+                </View>
+              </View>
+            </>
           ) : null}
 
           <View style={newPostStyles.section}>
-            <Text style={newPostStyles.sectionTitle}>Photos</Text>
+            <Text style={newPostStyles.sectionTitle}>Photos · optional</Text>
 
             {photos.length === 0 ? (
               <Pressable
@@ -463,6 +628,48 @@ const NewPost = () => {
             already at the top. Swapping it for another would leave the one
             just studied posted nowhere.
           */}
+          <View style={newPostStyles.section}>
+            <Text style={newPostStyles.sectionTitle}>Share to</Text>
+            <LinearGradient
+              style={newPostStyles.sectionCard}
+              colors={colors.gradients.surface}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+            >
+              <ShareRow
+                icon="users"
+                label="Followers"
+                hint="Your profile, and your followers' feeds"
+                value={shareToFollowers}
+                onChange={(on) => {
+                  haptics.tick();
+                  setShareToFollowers(on);
+                }}
+              />
+              {(myGroups ?? []).map((group) => (
+                <ShareRow
+                  key={group.id}
+                  icon="book-open"
+                  label={group.name}
+                  hint="Its members, on the group's feed"
+                  value={groupIds.includes(group.id)}
+                  onChange={(on) => toggleGroup(group.id, on)}
+                  divider
+                />
+              ))}
+            </LinearGradient>
+            {myGroups && myGroups.length === 0 ? (
+              <Text style={newPostStyles.sectionHint}>
+                Join a study group to share your sessions there too.
+              </Text>
+            ) : null}
+            {!hasAudience ? (
+              <Text style={[newPostStyles.sectionHint, newPostStyles.sectionHintDanger]}>
+                Choose at least one - followers, a group, or both.
+              </Text>
+            ) : null}
+          </View>
+
           <View style={newPostStyles.section}>
             <Text style={newPostStyles.sectionTitle}>Links</Text>
 
@@ -574,8 +781,8 @@ const NewPost = () => {
 
         <RatingSheet
           visible={ratingOpen}
-          value={rating}
-          onRate={rate}
+          value={shownRating}
+          onRate={rateWithFeel}
           onClose={() => setRatingOpen(false)}
         />
       </SafeAreaView>

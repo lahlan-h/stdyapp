@@ -85,7 +85,25 @@ curl localhost:4000/api/health
 
 ```bash
 npm test -w @stdyapp/shared
+npm test -w @stdyapp/api           # unit tests; the integration suites skip themselves
+npm test -w @stdyapp/mobile        # the app's pure logic, type-checked then run under node
 ```
+
+The API's integration tests run against a real Postgres. The runner starts a
+throwaway local database in Docker, pushes the current schema into it and
+drops it again next run, so Supabase is never touched:
+
+```bash
+npm run test:integration -w @stdyapp/api
+```
+
+### Running the app on a phone
+
+Expo Go on a phone reaches your machine over the network, so `localhost` will
+not do: set `EXPO_PUBLIC_API_URL` in `.env` to your machine's address on the
+network the phone is on (for example `http://192.168.1.20:4000`), restart Metro
+with `--clear` so the new address is built in, and open the `exp://` URL it
+prints in Expo Go.
 
 ## Contributing
 

@@ -39,6 +39,20 @@ export const createHomeStyles = (colors: ColorScheme) => {
       padding: 12,
       alignItems: "center",
     },
+    // flex: 1, so the column is exactly the space beside the avatar and a long
+    // list of groups wraps inside the card rather than running off its edge.
+    postCardHeaderText: { flex: 1 },
+    // Top-aligned rather than centred: when the groups wrap onto a second
+    // line, the icon stays beside the first one.
+    postCardAudience: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 5,
+      marginTop: 2,
+    },
+    // Nudges the 12pt icon onto the centre of the label's first 13pt line.
+    postCardAudienceIcon: { marginTop: 3 },
+    postCardAudienceText: { flex: 1 },
     postCardAvatar: {
       borderColor: colors.border,
       borderWidth: 1,

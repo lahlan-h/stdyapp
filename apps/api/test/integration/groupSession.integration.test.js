@@ -352,21 +352,96 @@ describe("group sessions against a real database", { skip }, () => {
       isPrivate: false,
     });
 
-    // Going private hands the group a code; without one nobody could join.
+    // Every group has a code from the start, public ones included - it is how
+    // anyone joins - and going private or public leaves it where it was.
+    assert.match(flip.joinCode, /^[A-HJ-NP-Z2-9]{6}$/);
     const privateNow = await groupService.updateGroup(flip.id, hostId, { isPrivate: true });
-    assert.match(privateNow.joinCode, /^[A-Z0-9]{4,16}$/);
+    assert.equal(privateNow.joinCode, flip.joinCode);
 
     const reset = await groupService.regenerateJoinCode(flip.id, hostId);
     assert.notEqual(reset.joinCode, privateNow.joinCode);
     await rejectsWith(groupService.regenerateJoinCode(flip.id, memberId), 403);
 
-    // The new code works; the old one no longer does.
+    // The new code works - typed in lower case - and the old one no longer does.
     await rejectsWith(groupService.joinGroup(flip.id, memberId, privateNow.joinCode), 403);
-    await groupService.joinGroup(flip.id, memberId, reset.joinCode);
+    await groupService.joinGroup(flip.id, memberId, reset.joinCode.toLowerCase());
 
     const publicAgain = await groupService.updateGroup(flip.id, hostId, { isPrivate: false });
-    assert.equal(publicAgain.joinCode, null);
-    await rejectsWith(groupService.regenerateJoinCode(flip.id, hostId), 409);
+    assert.equal(publicAgain.joinCode, reset.joinCode);
+    // A public group's code can be replaced too, now that it has one.
+    const publicReset = await groupService.regenerateJoinCode(flip.id, hostId);
+    assert.notEqual(publicReset.joinCode, reset.joinCode);
+  });
+
+  it("joins any group by its code alone, and shows the code only to members", async () => {
+    const joinerId = await makeUser("coder");
+    try {
+      const hidden = await groupService.createGroup({
+        ownerId: hostId,
+        name: `Coded ${randomUUID().slice(0, 6)}`,
+        isPrivate: true,
+      });
+
+      // An outsider sees the group but not its code - the code is the key.
+      const before = await groupService.getGroup(hidden.id, joinerId);
+      assert.equal(before.isMember, false);
+      assert.equal("joinCode" in before, false);
+
+      // Wrong codes say so without giving anything away.
+      await assert.rejects(groupService.joinGroupByCode(joinerId, "ZZZZZZ"), (err) => {
+        assert.equal(err.status, 404);
+        assert.equal(err.data, undefined, "an unknown code points nowhere");
+        return true;
+      });
+
+      // A live group SESSION's code, typed into the same boxes, is pointed at.
+      const live = await sessionService.startSession({ userId: hostId, groupId: hidden.id });
+      assert.match(live.inviteCode, /^[A-HJ-NP-Z2-9]{6}$/, "session codes skip I, O, 0 and 1 too");
+      await assert.rejects(
+        groupService.joinGroupByCode(joinerId, live.inviteCode.toLowerCase()),
+        (err) => {
+          assert.equal(err.status, 404);
+          assert.equal(err.data?.sessionCode, live.inviteCode);
+          assert.equal(err.data?.groupName, hidden.name);
+          return true;
+        },
+      );
+      await sessionService.endSession(live.id, hostId);
+      // Once it has ended, it is just an unknown code.
+      await assert.rejects(groupService.joinGroupByCode(joinerId, live.inviteCode), (err) => {
+        assert.equal(err.data, undefined);
+        return true;
+      });
+
+      // Typed the way people type a code read out to them.
+      const spaced = `${hidden.joinCode.slice(0, 3)}-${hidden.joinCode.slice(3).toLowerCase()}`;
+      const joined = await groupService.joinGroupByCode(joinerId, spaced);
+      assert.equal(joined.id, hidden.id);
+      assert.equal(joined.isMember, true);
+      assert.equal(joined.joinCode, hidden.joinCode, "a member is shown the code to share");
+
+      // A second time is a short trip to the group, not a second membership.
+      await assert.rejects(groupService.joinGroupByCode(joinerId, hidden.joinCode), (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.data?.groupId, hidden.id);
+        return true;
+      });
+      const members = await groupService.listMembers(hidden.id);
+      assert.equal(members.filter((m) => m.userId === joinerId).length, 1);
+
+      // Every member can see the code - not only the owner, as it used to be.
+      const asMember = await groupService.getGroup(hidden.id, joinerId);
+      assert.equal(asMember.joinCode, hidden.joinCode);
+      const searched = await groupService.searchGroups(
+        { q: hidden.name, page: 1, limit: 5 },
+        memberId,
+      );
+      const asStranger = searched.items.find((g) => g.id === hidden.id);
+      assert.ok(asStranger, "a private group is still found by search");
+      assert.equal("joinCode" in asStranger, false, "but its code is not in the result");
+    } finally {
+      await destroyUsers([joinerId]);
+    }
   });
 
   it("allows one running session per person, for starting as well as joining", async () => {
@@ -411,5 +486,60 @@ describe("group sessions against a real database", { skip }, () => {
     assert.ok(grouped.every((s) => s.group?.name === group.name));
     // A solo session carries no group rather than a broken one.
     assert.ok(history.filter((s) => !s.groupId).every((s) => s.group === null));
+  });
+
+  it("shows which members are studying in ANY session, to members only", async () => {
+    // Its own stranger: `outsiderId` joined this public group earlier, by
+    // joining one of its sessions.
+    const strangerId = await makeUser("stranger");
+
+    // Earlier tests leave sessions open; start from nobody studying.
+    await prisma.session.updateMany({
+      where: { userId: { in: [hostId, memberId, outsiderId] }, endedAt: null },
+      data: { endedAt: new Date() },
+    });
+    assert.deepEqual(await groupService.listStudyingMembers(group.id, hostId), []);
+
+    // A SOLO session - no group at all - still counts: the strip is about
+    // the group's people, not its rooms.
+    const solo = await sessionService.startSession({ userId: memberId });
+    // A stranger studying is nobody this group sees.
+    const strangerSession = await sessionService.startSession({ userId: strangerId });
+
+    const asHost = await groupService.listStudyingMembers(group.id, hostId);
+    assert.deepEqual(
+      asHost.map((row) => row.userId),
+      [memberId],
+      "only the member studying, and nobody from outside the group",
+    );
+    assert.equal(asHost[0].studyingHere, false, "a solo session is not studying here");
+    assert.equal(asHost[0].isMine, false);
+
+    // The viewer's own session leads the strip, flagged as theirs.
+    const hosted = await sessionService.startSession({ userId: hostId, groupId: group.id });
+    const asMember = await groupService.listStudyingMembers(group.id, memberId);
+    assert.equal(asMember[0].userId, memberId);
+    assert.equal(asMember[0].isMine, true);
+    assert.equal(asMember.find((row) => row.userId === hostId)?.studyingHere, true);
+
+    await rejectsWith(groupService.listStudyingMembers(group.id, strangerId), 403);
+
+    // A block hides someone here as everywhere else, in either direction.
+    await prisma.block.create({ data: { blockerId: memberId, blockedId: hostId } });
+    try {
+      const blockedView = await groupService.listStudyingMembers(group.id, hostId);
+      assert.equal(blockedView.some((row) => row.userId === memberId), false);
+    } finally {
+      await prisma.block.deleteMany({ where: { blockerId: memberId } });
+    }
+
+    // Ending a session takes them off it.
+    await sessionService.endSession(solo.id, memberId);
+    const after = await groupService.listStudyingMembers(group.id, hostId);
+    assert.equal(after.some((row) => row.userId === memberId), false);
+
+    await sessionService.endSession(hosted.id, hostId);
+    await sessionService.endSession(strangerSession.id, strangerId);
+    await destroyUsers([strangerId]);
   });
 });

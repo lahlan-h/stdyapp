@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { timeZoneSchema } from "./analytics.validation.js";
+
 /**
  * Request schemas for the focus-estimate endpoints.
  *
@@ -123,8 +125,11 @@ export const listSamplesQuerySchema = z.strictObject({
 /** What a board ranks by. Mirrors METRICS in services/focusLeaderboard.js. */
 export const LEADERBOARD_METRICS = ["weightedMinutes", "focusScore", "tasksCompleted"];
 
-/** Who a board is about: the people the caller follows plus the caller, or everyone. */
-export const LEADERBOARD_SCOPES = ["following", "global"];
+/**
+ * Who a board is about: the people the caller follows plus the caller,
+ * everyone, or the members of one study group the caller belongs to.
+ */
+export const LEADERBOARD_SCOPES = ["following", "global", "group"];
 
 /**
  * GET /api/focus/leaderboard.
@@ -136,27 +141,52 @@ export const LEADERBOARD_SCOPES = ["following", "global"];
  * exactly one spelling of it, and the default "following" scope bounds what it
  * reads to one person's follow list.
  *
+ * The literal "week" is the CALENDAR week so far: from Monday midnight in `tz`
+ * (UTC if omitted), the same week the app's weekly card and weekly goal count.
+ * A number is a rolling window, so days=7 on a Monday still reaches back into
+ * last week - which is why a screen that says "this week" asks for "week".
+ * `tz` only means something to "week", and is refused anywhere else, as a
+ * stray groupId is.
+ *
  * `scope` defaults to "following" because comparing yourself with your friends
- * is the social loop; a global board of strangers is the opt-in.
+ * is the social loop; a global board of strangers is the opt-in. "group" is a
+ * study group's own board, opened from that group's feed, and names the group
+ * with `groupId`.
  */
-export const leaderboardQuerySchema = z.strictObject({
-  scope: z
-    .enum(LEADERBOARD_SCOPES, {
-      message: `scope must be one of ${LEADERBOARD_SCOPES.join(", ")}`,
-    })
-    .default("following"),
-  metric: z
-    .enum(LEADERBOARD_METRICS, {
-      message: `metric must be one of ${LEADERBOARD_METRICS.join(", ")}`,
-    })
-    .default("weightedMinutes"),
-  days: z
-    .union([z.literal("all"), z.coerce.number().int().min(1).max(120)], {
-      message: `days must be a whole number from 1 to 120, or "all"`,
-    })
-    .default(7),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-});
+export const leaderboardQuerySchema = z
+  .strictObject({
+    scope: z
+      .enum(LEADERBOARD_SCOPES, {
+        message: `scope must be one of ${LEADERBOARD_SCOPES.join(", ")}`,
+      })
+      .default("following"),
+    groupId: z.uuid("groupId must be a UUID").optional(),
+    metric: z
+      .enum(LEADERBOARD_METRICS, {
+        message: `metric must be one of ${LEADERBOARD_METRICS.join(", ")}`,
+      })
+      .default("weightedMinutes"),
+    days: z
+      .union([z.literal("all"), z.literal("week"), z.coerce.number().int().min(1).max(120)], {
+        message: `days must be a whole number from 1 to 120, "week" or "all"`,
+      })
+      .default(7),
+    tz: timeZoneSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  // Both directions are a 400, as on the feed's audience: a group board with
+  // no group has nobody to rank, and a stray groupId on any other scope would
+  // be silently ignored - a client bug that should say so.
+  .refine((query) => (query.scope === "group") === Boolean(query.groupId), {
+    message: "groupId is required with scope=group, and only then",
+    path: ["groupId"],
+  })
+  // A rolling window starts N days before now wherever the caller is, so a tz
+  // there would change nothing - a client that sends one expects it to.
+  .refine((query) => query.tz === undefined || query.days === "week", {
+    message: "tz only applies to days=week",
+    path: ["tz"],
+  });
 
 /** Length of one checklist item. Long enough for a real task, short enough
  *  that the row stays readable in a list. */

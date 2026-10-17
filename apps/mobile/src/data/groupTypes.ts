@@ -17,6 +17,24 @@ export const MAX_GROUP_DESCRIPTION_LENGTH = 500;
 /** Mirrors MAX_JOIN_CODE_LENGTH in studyGroup.validation.js. */
 export const MAX_JOIN_CODE_LENGTH = 16;
 
+/**
+ * Every code the API generates is this long - JOIN_CODE_LENGTH in
+ * apps/api/src/services/joinCode.js - so the Study tab draws exactly this
+ * many boxes, and a full row is a whole code.
+ */
+export const JOIN_CODE_LENGTH = 6;
+
+/**
+ * What a box row takes from the keyboard or a paste: letters and digits only,
+ * upper-cased, at most a code's length. The dash or space someone pastes in
+ * "K3P-Q7X" simply falls away, which is also what the API does with it.
+ */
+export const cleanJoinCodeInput = (input: string): string =>
+  input
+    .replace(/[^a-z0-9]/gi, "")
+    .toUpperCase()
+    .slice(0, JOIN_CODE_LENGTH);
+
 export type GroupRole = "MEMBER" | "ADMIN";
 
 /** A group as every group route answers it, with the viewer's standing in it. */
@@ -26,8 +44,11 @@ export interface StudyGroup {
   name: string;
   description: string | null;
   isPrivate: boolean;
-  /** Only ever present for the owner - the API strips it for everyone else. */
-  joinCode?: string | null;
+  /**
+   * The six characters that let anyone into the group. Present for members,
+   * who can share it; the API strips it for everyone else.
+   */
+  joinCode?: string;
   memberCount: number;
   isMember: boolean;
   isOwner: boolean;

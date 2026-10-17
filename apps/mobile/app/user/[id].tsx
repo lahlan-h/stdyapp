@@ -43,7 +43,9 @@ const UserProfile = () => {
   const follow = useFollow(id, summary, reloadCounts);
   const styles = useStyles("profile");
 
-  const topBar = <BackBar />;
+  // The bar ProfileView draws takes the bare button; the error screen, which
+  // has no bar of its own, takes it wrapped in one.
+  const back = <BackButton />;
 
   if (isLoading && !profile) return <ProfileLoading />;
 
@@ -52,7 +54,7 @@ const UserProfile = () => {
       <ProfileMessage
         message={error ?? "Could not load this profile."}
         onRetry={reload}
-        topBar={topBar}
+        topBar={<View style={styles.topBar}>{back}</View>}
       />
     );
   }
@@ -74,28 +76,26 @@ const UserProfile = () => {
           <MessageButton user={toUserSummary(profile)} />
         </View>
       }
-      topBar={topBar}
+      topBarStart={back}
       bottomPadding={BOTTOM_ROOM + insets.bottom}
     />
   );
 };
 
 /** The chevron analytics and edit-profile use, so every pushed screen goes back the same way. */
-const BackBar = () => {
+const BackButton = () => {
   const { colors } = useTheme();
   const styles = useStyles("profile");
 
   return (
-    <View style={styles.topBar}>
-      <Pressable
-        style={({ pressed }) => [styles.back, pressed && { opacity: 0.6 }]}
-        onPress={() => router.back()}
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-      >
-        <Feather name="chevron-left" size={PROFILE_BACK_ICON_SIZE} color={colors.text} />
-      </Pressable>
-    </View>
+    <Pressable
+      style={({ pressed }) => [styles.back, pressed && { opacity: 0.6 }]}
+      onPress={() => router.back()}
+      accessibilityRole="button"
+      accessibilityLabel="Back"
+    >
+      <Feather name="chevron-left" size={PROFILE_BACK_ICON_SIZE} color={colors.text} />
+    </Pressable>
   );
 };
 

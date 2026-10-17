@@ -33,10 +33,12 @@ interface ProfileViewProps {
   showTotals?: boolean;
   followers?: number;
   following?: number;
-  /** The buttons under the header: edit and sign out for you, follow for anyone else. */
+  /** The buttons under the header: your own four, or follow and message for anyone else. */
   actions: ReactNode;
-  /** Drawn above the header - the back control, on a pushed profile. */
-  topBar?: ReactNode;
+  /** The top bar's leading control - the back button, on a pushed profile. */
+  topBarStart?: ReactNode;
+  /** The top bar's last control, after the study pill - the gear, on your own. */
+  topBarEnd?: ReactNode;
   /** The tab bar's clearance on the Profile tab, the home indicator's on a pushed screen. */
   bottomPadding: number;
 }
@@ -66,7 +68,8 @@ const ProfileView = ({
   followers,
   following,
   actions,
-  topBar,
+  topBarStart,
+  topBarEnd,
   bottomPadding,
 }: ProfileViewProps) => {
   const { colors } = useTheme();
@@ -105,21 +108,19 @@ const ProfileView = ({
           // scroll views and break the inner one's virtualisation.
           ListHeaderComponent={
             <View style={styles.postList}>
-              {topBar}
-              {/*
-                The bubble is absolutely positioned against THIS wrapper, which
-                is what keeps the avatar centred on the screen: a sibling in a
-                row would push it off-centre by half the bubble's width.
-                Rendered after the header so it draws on top of it.
-              */}
-              <View style={styles.headerArea}>
-                <ProfileHeader profile={profile} />
+              {/* The study pill rides in the bar, at its far end, ahead of
+                  the gear on your own profile. */}
+              <View style={styles.topBar}>
+                {topBarStart}
+                <View style={styles.topBarSpacer} />
                 <ProfileStudyBubble
                   streak={streak}
                   totals={totals}
                   showTotals={showTotals}
                 />
+                {topBarEnd}
               </View>
+              <ProfileHeader profile={profile} />
               {actions}
               <ProfileStats
                 posts={posts.length}

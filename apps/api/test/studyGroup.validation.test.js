@@ -1,7 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { searchGroupsQuerySchema } from "../src/validation/studyGroup.validation.js";
+import {
+  searchGroupsQuerySchema,
+  joinByCodeSchema,
+  updateGroupSchema,
+} from "../src/validation/studyGroup.validation.js";
 
 /**
  * GET /api/groups answers in two shapes, switched on whether ?page is present:
@@ -31,5 +35,52 @@ describe("searchGroupsQuerySchema", () => {
         `${JSON.stringify(query)} should be rejected`,
       );
     }
+  });
+});
+
+/**
+ * A code alone joins a group, so what counts as one matters: forgiving of how
+ * people type, strict about what reaches the lookup.
+ */
+describe("joinByCodeSchema", () => {
+  it("reads a typed code as the code it means", () => {
+    assert.equal(joinByCodeSchema.parse({ code: "k3p-q7x" }).code, "K3PQ7X");
+    assert.equal(joinByCodeSchema.parse({ code: " K3P Q7X " }).code, "K3PQ7X");
+  });
+
+  it("still takes an older code from before every group had one", () => {
+    // The old generator's base36, which the new alphabet leaves 0 and 1 out of.
+    assert.equal(joinByCodeSchema.parse({ code: "A1B0C9" }).code, "A1B0C9");
+  });
+
+  it("refuses junk, a missing code and extra keys", () => {
+    for (const body of [
+      {},
+      { code: "" },
+      { code: "abc" },
+      { code: "K3P!7X" },
+      { code: "X".repeat(17) },
+      { code: "K3PQ7X", groupId: "anything" },
+    ]) {
+      assert.equal(
+        joinByCodeSchema.safeParse(body).success,
+        false,
+        `${JSON.stringify(body)} should be rejected`,
+      );
+    }
+  });
+});
+
+describe("updateGroupSchema", () => {
+  it("no longer lets an owner choose a join code", () => {
+    assert.equal(updateGroupSchema.safeParse({ joinCode: "MYCODE" }).success, false);
+  });
+
+  it("still updates the name, description and privacy", () => {
+    assert.equal(
+      updateGroupSchema.safeParse({ name: "Night Owls", isPrivate: true, description: null })
+        .success,
+      true,
+    );
   });
 });

@@ -67,6 +67,7 @@ const PostCard = ({ post, onToggleLike, onReport }: PostCardProps) => {
           displayName={post.author.displayName}
           avatarUrl={post.author.avatarUrl}
           createdAt={post.createdAt}
+          sharedTo={post.sharedTo}
         />
         <PostCardBody title={post.title} caption={post.caption} />
         <StudiedWith

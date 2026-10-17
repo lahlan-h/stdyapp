@@ -20,6 +20,7 @@ import {
   useKeyboardLift,
   CHAT_BACK_ICON_SIZE,
   SEND_ICON_SIZE,
+  haptics,
 } from "@theme";
 import { useChat, MAX_MESSAGE_LENGTH, type ChatMessage, type UserSummary } from "@data";
 
@@ -239,6 +240,7 @@ const ChatView = ({ user, onBack, onOpenProfile }: ChatViewProps) => {
     // Cleared at once and the keyboard left up: a chat is a back-and-forth,
     // and the next message is usually seconds away.
     setDraft("");
+    haptics.tap();
     send(text);
   };
 

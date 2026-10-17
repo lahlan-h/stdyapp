@@ -1,14 +1,18 @@
 import type { ColorScheme } from "./colors";
 import { StyleSheet } from "react-native";
 
-/** Diameter of the profile avatar. Larger than the feed's, which is AVATAR_SIZE in home.styles. */
-const AVATAR_SIZE = 96;
+/**
+ * Diameter of the profile avatar. Larger than the feed's, which is AVATAR_SIZE
+ * in home.styles, and a little under the old centred 96: it shares its row with
+ * the name now, and the name needs the width on a small phone.
+ */
+const AVATAR_SIZE = 84;
 
 /** Leading icon on an action button. */
 export const PROFILE_ACTION_ICON_SIZE = 16;
 
-/** Icon in the study card's two figures. */
-export const PROFILE_STUDY_ICON_SIZE = 18;
+/** Icon beside each figure in the study pill. */
+export const PROFILE_STUDY_ICON_SIZE = 16;
 
 /**
  * The back control on someone else's profile - the same 40px circle and 18px
@@ -42,10 +46,16 @@ export const createProfileStyles = (colors: ColorScheme) => {
     },
 
     // --- Header ---
+    // The avatar to the left with the name beside it, the way a contact card
+    // reads, and the bio under both at full width.
     header: {
+      gap: 12,
+      paddingTop: 4,
+    },
+    headerRow: {
+      flexDirection: "row",
       alignItems: "center",
-      gap: 10,
-      paddingTop: 12,
+      gap: 16,
     },
     avatar: {
       width: AVATAR_SIZE,
@@ -54,15 +64,15 @@ export const createProfileStyles = (colors: ColorScheme) => {
       borderWidth: 1,
       borderColor: colors.border,
     },
+    // flex: 1 so a long name wraps inside the row rather than running off it.
     identity: {
-      alignItems: "center",
+      flex: 1,
       gap: 2,
     },
     displayName: {
       fontFamily: "PlusJakartaSans_700Bold",
       fontSize: 24,
       color: colors.text,
-      textAlign: "center",
     },
     username: {
       fontFamily: "PlusJakartaSans_400Regular",
@@ -74,30 +84,30 @@ export const createProfileStyles = (colors: ColorScheme) => {
       fontSize: 15,
       lineHeight: 21,
       color: colors.text,
-      textAlign: "center",
-      paddingHorizontal: 8,
-      paddingTop: 4,
+      paddingHorizontal: 2,
     },
 
     // --- Actions ---
-    // Stacked rather than side by side, and centred under the name.
+    // Two to a row: your own four make a 2x2 grid, someone else's Follow and
+    // Message one row. Wrapping rather than fixed rows, so either count lays
+    // itself out.
     actions: {
-      alignItems: "center",
-      gap: 8,
-      paddingTop: 4,
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
     },
-    // A shared minimum width is what makes the stack read as one control
-    // rather than two pills of different lengths: "Edit profile" and "Sign out"
-    // are six characters apart, so intrinsic sizing would stagger their edges.
+    // Half the row less the gap, so two always share one: equal cells are what
+    // make the grid read as one control rather than pills of different lengths.
     actionButton: {
+      flexBasis: "45%",
+      flexGrow: 1,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
       gap: 7,
-      minWidth: 190,
-      paddingVertical: 11,
-      paddingHorizontal: 18,
-      borderRadius: 999,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderRadius: 16,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
@@ -122,17 +132,30 @@ export const createProfileStyles = (colors: ColorScheme) => {
     actionLabelOnPrimary: {
       color: colors.bg,
     },
+    // Full width, so in the wrapping grid it takes a row of its own under the
+    // button it is about rather than squeezing in as a third cell.
     actionError: {
+      width: "100%",
       fontFamily: "PlusJakartaSans_400Regular",
       fontSize: 13,
       color: colors.danger,
       textAlign: "center",
     },
 
-    // --- Top bar: back on someone else's profile, settings on your own ---
+    // --- Top bar: back on someone else's profile; the study pill, and the
+    // gear on your own, at the far end ---
+    // zIndex lifts it - and the pill's dropped-down panel - above the header
+    // and the buttons below, which are later siblings and would otherwise
+    // paint on top of the panel.
     topBar: {
       flexDirection: "row",
       alignItems: "center",
+      gap: 10,
+      zIndex: 10,
+    },
+    // Pushes everything after it to the bar's far end.
+    topBarSpacer: {
+      flex: 1,
     },
     // Your own profile has nothing to go back to, so its one control sits at
     // the far end.
@@ -191,78 +214,69 @@ export const createProfileStyles = (colors: ColorScheme) => {
       backgroundColor: colors.border,
     },
 
-    // --- Study bubble ---
-    // Absolutely placed so the avatar stays CENTRED on the screen rather than
-    // being pushed off-centre by a sibling in a row. The header is its
-    // positioning parent.
-    studyBubble: {
-      position: "absolute",
-      left: 0,
-      top: 10,
+    // --- Study pill: the figures, in the top bar ---
+    // The anchor the dropped-down panel is positioned against.
+    studyPillAnchor: {
+      position: "relative",
+    },
+    // The gear's height, so the bar's two controls sit on one line.
+    studyPill: {
+      flexDirection: "row",
       alignItems: "center",
-      gap: 14,
-      paddingVertical: 15,
-      paddingHorizontal: 13,
-      borderRadius: 999,
+      gap: 12,
+      height: BACK_SIZE,
+      paddingHorizontal: 14,
+      borderRadius: BACK_SIZE / 2,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
     },
-    studyBubbleFigure: {
+    // Edged in primary while its panel is down, so it reads as the control the
+    // panel belongs to.
+    studyPillOpen: {
+      borderColor: colors.primary,
+    },
+    studyPillFigure: {
+      flexDirection: "row",
       alignItems: "center",
-      gap: 3,
+      gap: 5,
     },
-    studyBubbleValue: {
+    studyPillValue: {
       fontFamily: "PlusJakartaSans_700Bold",
-      fontSize: 15,
+      fontSize: 14,
       color: colors.text,
+      fontVariant: ["tabular-nums"],
     },
-
-    // The expanded panel, drawn OVER the header rather than displacing it - it
-    // shares the bubble's anchor so it grows out of where the user tapped.
-    // zIndex is what lifts it above the cards below; its wrapper carries one
-    // too, or those later siblings would paint on top of it.
-    // ⚠ The vertical metrics here MUST match studyBubble exactly - same top,
-    // same paddingVertical, same gap, and rows that reuse studyBubbleFigure.
-    // That is what keeps the icons and values from moving when it opens: only
-    // the labels side grows, so the figures stay under the finger that tapped
-    // them. paddingRight is the one dimension that differs, because that is
-    // the side the labels appear on.
+    // The labels, dropped under the pill from its right edge. Drawn OVER the
+    // header rather than pushing it down; the top bar's zIndex is what lifts
+    // it above the header and the buttons that follow.
     studyPanel: {
       position: "absolute",
-      left: 0,
-      top: 10,
-      gap: 14,
-      paddingVertical: 15,
-      paddingLeft: 13,
-      paddingRight: 18,
-      borderRadius: 26,
+      top: BACK_SIZE + 6,
+      right: 0,
+      minWidth: 190,
+      gap: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      borderRadius: 18,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
-      zIndex: 10,
       shadowColor: colors.shadow,
       shadowOpacity: 0.18,
       shadowRadius: 14,
       shadowOffset: { width: 0, height: 6 },
       elevation: 8,
     },
-    // The figure keeps its stacked icon-over-value shape; the label sits beside
-    // the pair rather than the three running in a line, which would drop every
-    // value onto a different baseline than the collapsed bubble puts it on.
     studyPanelRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
+      gap: 8,
     },
     studyPanelLabel: {
       fontFamily: "PlusJakartaSans_400Regular",
       fontSize: 13,
       color: colors.textMuted,
-    },
-    // Lifts the header (and so the panel inside it) above the cards that follow.
-    headerArea: {
-      zIndex: 1,
     },
 
     // --- Posts ---

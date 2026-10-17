@@ -47,6 +47,10 @@ const formatterFor = (timeZone) => {
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
+      // Minutes and seconds only for offsetMs below - localParts ignores them.
+      // Minutes matter: India is +5:30 and Nepal +5:45.
+      minute: "2-digit",
+      second: "2-digit",
       // h23, not hour12: false. hour12: false renders midnight as "24" in some
       // engines, which would put 12am sessions in a 25th bucket.
       hourCycle: "h23",
@@ -75,6 +79,15 @@ export const canonicalTimeZone = (timeZone) => {
   }
 };
 
+/** The zone's wall clock at an instant, as formatToParts' strings by type. */
+const wallClock = (date, timeZone) => {
+  const parts = {};
+  for (const { type, value } of formatterFor(timeZone).formatToParts(date)) {
+    parts[type] = value;
+  }
+  return parts;
+};
+
 /**
  * Where an instant falls on the given zone's wall clock.
  *
@@ -83,10 +96,7 @@ export const canonicalTimeZone = (timeZone) => {
  * @returns {{ dateKey: string, hour: number }}
  */
 export const localParts = (date, timeZone) => {
-  const parts = {};
-  for (const { type, value } of formatterFor(timeZone).formatToParts(date)) {
-    parts[type] = value;
-  }
+  const parts = wallClock(date, timeZone);
 
   return {
     dateKey: `${parts.year}-${parts.month}-${parts.day}`,
@@ -139,3 +149,44 @@ export const weekStartKey = (dateKey) => {
  */
 export const dateKeysEndingAt = (lastKey, count) =>
   Array.from({ length: count }, (_, index) => shiftDateKey(lastKey, index - (count - 1)));
+
+/**
+ * How far a zone's wall clock is ahead of UTC at an instant, in milliseconds -
+ * negative west of Greenwich.
+ *
+ * Whole seconds on both sides, because the wall clock has no milliseconds.
+ */
+const offsetMs = (date, timeZone) => {
+  const { year, month, day, hour, minute, second } = wallClock(date, timeZone);
+  const wall = Date.UTC(year, month - 1, day, hour, minute, second);
+  return wall - Math.floor(date.getTime() / 1000) * 1000;
+};
+
+/**
+ * The instant a day begins in a zone: the reverse of localParts, from a label
+ * back to an instant. What a window needs when it has to start at the user's
+ * midnight, like the leaderboard's calendar week, rather than N days ago.
+ *
+ * The offset is needed to turn a wall-clock time into an instant, but the
+ * offset depends on the instant. So it is read at UTC midnight on the label,
+ * then again at the guess that gives, and of the two candidates the earlier
+ * one that really falls on the day is its start. Two reads are enough because
+ * a zone changes its offset at most once in a day.
+ *
+ * "The first instant of the day" rather than "00:00", because in a few zones
+ * daylight saving starts AT midnight (Chile, for one), and that day's clock
+ * goes from 23:59 straight to 01:00.
+ *
+ * @param {string} dateKey
+ * @param {string} timeZone - already canonical
+ * @returns {Date}
+ */
+export const startOfLocalDay = (dateKey, timeZone) => {
+  const midnight = keyToUtcDate(dateKey).getTime();
+  const first = midnight - offsetMs(new Date(midnight), timeZone);
+  const second = midnight - offsetMs(new Date(first), timeZone);
+  const onTheDay = [first, second].filter(
+    (instant) => localParts(new Date(instant), timeZone).dateKey === dateKey,
+  );
+  return new Date(Math.min(...onTheDay));
+};

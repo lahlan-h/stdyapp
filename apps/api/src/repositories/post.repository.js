@@ -10,8 +10,12 @@ import { prisma } from "@stdyapp/core";
  * deleteUnattachedPhotos takes the same "postId IS NULL" condition from the
  * other side, so exactly one of them wins for each row.
  *
+ * Its group shares are written in the same transaction, so a post never
+ * exists for a moment without the audience it was made for.
+ *
  * @param {{ userId: string, sessionId: string | null, routineId: string | null,
- *           title: string, caption: string | null, photoIds: string[] }} input -
+ *           title: string, caption: string | null, photoIds: string[],
+ *           shareToFollowers: boolean, groupIds: string[] }} input -
  *           photoIds in display order
  * @returns {Promise<object | null>} the post, or null when a photo could not
  *   be claimed
@@ -23,11 +27,21 @@ export const createPostWithPhotos = ({
   title,
   caption,
   photoIds,
+  shareToFollowers = true,
+  groupIds = [],
 }) =>
   prisma
     .$transaction(async (tx) => {
       const post = await tx.post.create({
-        data: { userId, sessionId, routineId, title, caption },
+        data: {
+          userId,
+          sessionId,
+          routineId,
+          title,
+          caption,
+          shareToFollowers,
+          groupShares: { create: groupIds.map((groupId) => ({ groupId })) },
+        },
       });
 
       for (const [position, id] of photoIds.entries()) {
@@ -176,6 +190,8 @@ const postInclude = (viewerId) => ({
     select: {
       startedAt: true,
       endedAt: true,
+      // A post's time is studied time, breaks left out - see sessionPause.js.
+      pausedSeconds: true,
       focusPoints: true,
       tasksTotal: true,
       tasksCompleted: true,
@@ -215,6 +231,10 @@ const postInclude = (viewerId) => ({
   // `id` alone, never `likes: true`, which would put every liker's id on every
   // row of a public feed.
   likes: { where: { userId: viewerId }, select: { id: true } },
+  // Where it was shared. Read for every row but kept by the service only for
+  // the post's AUTHOR (see toViewerPost): who else it went to is theirs to
+  // know, not every reader's.
+  groupShares: { select: { group: { select: { id: true, name: true } } } },
   // The same discipline, for the same question in a different register: "have I
   // reported this". Filtered to the VIEWER, capped at one row by
   // @@unique([reporterId, targetPostId]), and a select of the columns the answer
@@ -240,15 +260,32 @@ const postInclude = (viewerId) => ({
   _count: { select: { likes: true, comments: true } },
 });
 
+/**
+ * The posts a viewer may see, as a `where`: their own, everything shared to
+ * followers, and anything shared to a group they are in. The one definition of
+ * "can see" every list here takes, so no read can disagree with another about
+ * whether a group-only post is visible.
+ *
+ * @param {string} viewerId
+ */
+export const visibleTo = (viewerId) => ({
+  OR: [
+    { userId: viewerId },
+    { shareToFollowers: true },
+    { groupShares: { some: { group: { memberships: { some: { userId: viewerId } } } } } },
+  ],
+});
+
 // Newest first, matching findSessionsByUser — a feed reads backwards in time.
 // Served straight out of the @@index([userId, createdAt]) on posts.
 //
 // viewerId is NOT userId: this is the profile feed, so the rows belong to
 // userId while isLiked/isReported are questions about whoever is looking. They
-// are the same id only when reading your own profile.
+// are the same id only when reading your own profile - and only the viewer's
+// own profile shows every post; anyone else's shows what visibleTo allows.
 export const findPostsByUser = (userId, viewerId) => {
   return prisma.post.findMany({
-    where: { userId },
+    where: userId === viewerId ? { userId } : { AND: [{ userId }, visibleTo(viewerId)] },
     include: postInclude(viewerId),
     orderBy: { createdAt: "desc" },
   });
@@ -319,15 +356,17 @@ const FEED_ORDER = {
  * @returns {Promise<[object[], number]>} the page, and the total row count
  */
 /**
- * @param {{ authorIds?: string[] }} query - authorIds narrows the feed to those
- *   authors; absent means everyone. An EMPTY list matches nothing, which is the
- *   right answer for an audience with no one in it.
+ * @param {{ audience: object }} query - which posts this feed is of, as a
+ *   `where` the service builds (see feedWhere in post.service.js). Combined
+ *   with the date window by AND, so neither can widen the other.
  */
-export const findAllPosts = ({ skip, take, sort = "recent", from, to, authorIds }, viewerId) => {
+export const findAllPosts = ({ skip, take, sort = "recent", from, to, audience = {} }, viewerId) => {
   const where = {
-    // Undefined bounds are skipped by Prisma, so an absent end is no bound at all.
-    ...(from || to ? { createdAt: { gte: from, lt: to } } : {}),
-    ...(authorIds ? { userId: { in: authorIds } } : {}),
+    AND: [
+      // Undefined bounds are skipped by Prisma, so an absent end is no bound at all.
+      from || to ? { createdAt: { gte: from, lt: to } } : {},
+      audience,
+    ],
   };
 
   return prisma.$transaction([

@@ -38,10 +38,10 @@ const MAX_TIME_ZONE_LENGTH = 64;
  * accept "Mars/Olympus_Mons". The transform means the service and the cache key
  * only ever see the canonical form.
  *
- * Defaults to UTC so a client that omits it still gets an answer, and one that
- * matches streaks and goals. The mobile app always sends it.
+ * Exported for the leaderboard, whose calendar week starts at the caller's
+ * Monday midnight. Each schema adds its own default, or none.
  */
-const timeZoneSchema = z
+export const timeZoneSchema = z
   .string()
   .max(MAX_TIME_ZONE_LENGTH, "tz is too long")
   .transform((value, ctx) => {
@@ -54,8 +54,7 @@ const timeZoneSchema = z
       return z.NEVER;
     }
     return canonical;
-  })
-  .default("UTC");
+  });
 
 /**
  * GET /api/analytics/me.
@@ -71,5 +70,7 @@ export const analyticsQuerySchema = z.strictObject({
       message: `range must be one of ${Object.keys(ANALYTICS_RANGES).join(", ")}`,
     })
     .default("7d"),
-  tz: timeZoneSchema,
+  // Defaults to UTC so a client that omits it still gets an answer, and one
+  // that matches streaks and goals. The mobile app always sends it.
+  tz: timeZoneSchema.default("UTC"),
 });

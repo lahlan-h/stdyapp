@@ -7,6 +7,7 @@
  * the whole page in post.repository.js and passed in.
  */
 import { toStudiedWith } from "./studiedWith.js";
+import { activeMinutes } from "./sessionPause.js";
 
 /**
  * The badges a post can show, in display order. Keys, not sentences: the app
@@ -25,11 +26,11 @@ export const HIGHLIGHTS = ["PERSONAL_BEST", "HIT_PLAN", "PHONE_FREE"];
  */
 export const PHONE_FREE_MIN_MINUTES = 10;
 
-/** Whole minutes from start to end, or null while the session is running. */
-const durationMinutes = ({ startedAt, endedAt }) =>
-  endedAt
-    ? Math.max(0, Math.round((new Date(endedAt) - new Date(startedAt)) / 60000))
-    : null;
+/**
+ * Whole minutes studied, breaks left out, or null while the session is
+ * running. activeMinutes is the one definition every duration shares.
+ */
+const durationMinutes = (session) => (session.endedAt ? activeMinutes(session) : null);
 
 /**
  * Which of HIGHLIGHTS this session earned. Only a FINISHED session earns any:

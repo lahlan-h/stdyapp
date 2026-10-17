@@ -15,6 +15,7 @@ export type {
   FeedSession,
   FeedRoutine,
   PostHighlight,
+  PostAudience,
 } from "./types";
 export {
   useIsSignedIn,
@@ -33,6 +34,7 @@ export { useLogin, type LoginState } from "./useLogin";
 export {
   buildFocusTimeline,
   interruptionsToSpells,
+  traceAxisLabels,
   FOCUS_SAMPLE_INTERVAL_SEC,
   type FocusTimeline,
   type FocusSpell,
@@ -115,6 +117,7 @@ export {
   type SessionTask,
   type SessionGroup,
 } from "./useFocusSession";
+export { MAX_BREAKS, MAX_BREAK_SEC, studiedSeconds, studiedMinutes } from "./sessionTime";
 export {
   requestStudySession,
   consumeStudyRequest,
@@ -199,13 +202,31 @@ export {
   type ProfileState,
 } from "./useProfile";
 export { useRoutines, type RoutinesState } from "./useRoutines";
-export { useGroups, type GroupsState, type NewGroup } from "./useGroups";
+export {
+  useGroups,
+  createGroupRequest,
+  type GroupsState,
+  type NewGroup,
+} from "./useGroups";
+export { useCreateGroup, type CreateGroupState } from "./useCreateGroup";
+export {
+  useJoinGroupByCode,
+  type JoinGroupByCodeState,
+  type JoinByCodeResult,
+} from "./useJoinGroupByCode";
 export { useGroup, type GroupState, type GroupEdit } from "./useGroup";
+export {
+  useStudyingNow,
+  type StudyingMember,
+  type StudyingNowState,
+} from "./useStudyingNow";
 export { useRoom, type RoomState, type RoomParticipant } from "./useRoom";
 export {
   MAX_GROUP_NAME_LENGTH,
   MAX_GROUP_DESCRIPTION_LENGTH,
   MAX_JOIN_CODE_LENGTH,
+  JOIN_CODE_LENGTH,
+  cleanJoinCodeInput,
   type StudyGroup,
   type GroupMember,
   type GroupRole,
@@ -236,6 +257,7 @@ export {
 } from "./useAnalytics";
 export { toWeekComparison, type WeekComparison } from "./weekComparison";
 export { useSessionRating, type SessionRatingState } from "./useSessionRating";
+export { defaultPostTitle } from "./defaultPostTitle";
 export { useDiscardSession, type DiscardSessionState } from "./useDiscardSession";
 export {
   useLeaderboard,

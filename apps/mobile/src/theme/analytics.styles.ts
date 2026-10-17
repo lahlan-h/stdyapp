@@ -36,6 +36,15 @@ const BAR_RADIUS = 4;
  */
 const MIN_VISIBLE_BAR = 3;
 
+/** Plot height of the weekly card - the tallest bar fills it. */
+const WEEK_CHART_HEIGHT = 170;
+
+/** Width of one bar; each day draws two, last week's and this week's. */
+const WEEK_BAR_WIDTH = 10;
+
+/** The arrow in the "vs last week" pill. */
+const WEEK_PILL_ICON_SIZE = 14;
+
 /**
  * Analytics: a scrolling column of cards under a range switch. Card, header
  * and segment values follow settings and edit-profile, so the screen reads as
@@ -301,6 +310,122 @@ export const createAnalyticsStyles = (colors: ColorScheme) => {
       lineHeight: 18,
       color: colors.danger,
     },
+
+    // ---- This week against last: the card at the top ---------------------
+    // Moved here from the Study tab, which is about the session in front of
+    // you; this is about you over weeks. Larger radius and padding than the
+    // stat tiles below: it is the page's headline, as the design draws it.
+    weekCard: {
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 20,
+      gap: 14,
+    },
+    weekTitle: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 18,
+      color: colors.text,
+    },
+    weekHeadline: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      justifyContent: "space-between",
+      gap: 12,
+    },
+    weekCaption: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 12,
+      color: colors.textMuted,
+    },
+    weekTotalRow: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: 6,
+    },
+    weekTotal: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 34,
+      color: colors.text,
+    },
+    weekUnit: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 18,
+      color: colors.textMuted,
+    },
+    // Colours come from the screen: green when up, red when down.
+    weekPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: 7,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      borderWidth: 1,
+      marginBottom: 6,
+    },
+    weekPillText: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 13,
+    },
+    weekError: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.danger,
+    },
+    weekChart: {
+      height: WEEK_CHART_HEIGHT,
+      flexDirection: "row",
+      alignItems: "flex-end",
+    },
+    // One column per day, each holding its pair of bars side by side.
+    weekDay: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "flex-end",
+      justifyContent: "center",
+      gap: 3,
+    },
+    weekBar: {
+      width: WEEK_BAR_WIDTH,
+      borderRadius: 4,
+      backgroundColor: colors.primary,
+    },
+    // Last week is the same blue, stepped back - one hue for one measure, so
+    // the pair reads as then-and-now rather than two different things.
+    weekBarLast: {
+      opacity: 0.4,
+    },
+    weekAxis: {
+      flexDirection: "row",
+    },
+    weekAxisLabel: {
+      flex: 1,
+      textAlign: "center",
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 11,
+      color: colors.textMuted,
+    },
+    weekLegend: {
+      flexDirection: "row",
+      gap: 18,
+    },
+    weekLegendItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    weekLegendSwatch: {
+      width: 16,
+      height: 16,
+      borderRadius: 4,
+      backgroundColor: colors.primary,
+    },
+    weekLegendLabel: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.textMuted,
+    },
   });
   return styles;
 };
@@ -312,4 +437,6 @@ export {
   DAILY_CHART_HEIGHT,
   HOURLY_CHART_HEIGHT,
   MIN_VISIBLE_BAR,
+  WEEK_CHART_HEIGHT,
+  WEEK_PILL_ICON_SIZE,
 };

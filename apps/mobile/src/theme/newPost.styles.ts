@@ -1,11 +1,11 @@
 import type { ColorScheme } from "./colors";
 import { StyleSheet } from "react-native";
 
-/** Diameter of the discard button pinned to the top right. */
-const EXIT_SIZE = 40;
+/** The glyph in the Discard button. */
+const EXIT_ICON_SIZE = 16;
 
-/** The glyph inside it. */
-const EXIT_ICON_SIZE = 18;
+/** One of the five focus-rating circles - a full thumb's width. */
+const RATING_SIZE = 50;
 
 /** Leading icon on a link row, and the box reserved for it. */
 const ROW_ICON_SIZE = 20;
@@ -28,35 +28,53 @@ export const createNewPostStyles = (colors: ColorScheme) => {
     },
 
     /**
-     * Pinned outside the scroller, so leaving is always one tap away.
+     * The bar above the form: Discard on the left, the screen's name across
+     * from it. Outside the scroller, so leaving is always one tap away - the
+     * screen is long enough to scroll, and a discard control that scrolls off
+     * the top strands anyone who changes their mind halfway down.
      *
-     * The screen is long enough to scroll, and a discard control that scrolls
-     * off the top strands anyone who changes their mind halfway down.
+     * A labelled pill, not the round X it was: that sat tucked into the top
+     * corner, small enough to miss and close enough to the edge to mis-tap.
      */
-    exit: {
-      position: "absolute",
-      right: 16,
-      width: EXIT_SIZE,
-      height: EXIT_SIZE,
-      borderRadius: EXIT_SIZE / 2,
+    header: {
+      flexDirection: "row",
       alignItems: "center",
-      justifyContent: "center",
+      justifyContent: "space-between",
+      gap: 12,
+      paddingHorizontal: 16,
+      paddingTop: 6,
+      paddingBottom: 10,
+    },
+    headerTitle: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 16,
+      color: colors.textMuted,
+    },
+    exit: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      minHeight: 40,
+      paddingHorizontal: 14,
+      borderRadius: 20,
       backgroundColor: colors.dangerTint,
       borderWidth: 1,
       borderColor: colors.dangerEdge,
-      zIndex: 2,
+    },
+    exitLabel: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 14,
+      color: colors.danger,
     },
 
     // The post's text, edited in place as the screen's headline rather than
-    // sitting in a labelled box below it. Cleared to the right so a long one
-    // never runs under the discard button.
+    // sitting in a labelled box below it.
     titleInput: {
       fontFamily: "PlusJakartaSans_700Bold",
-      fontSize: 32,
+      fontSize: 28,
       color: colors.text,
-      paddingTop: 8,
+      paddingTop: 4,
       paddingBottom: 8,
-      paddingRight: EXIT_SIZE + 12,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
@@ -99,9 +117,14 @@ export const createNewPostStyles = (colors: ColorScheme) => {
     },
 
     // --- The finished session's numbers, under the title ---
+    // Duration and focus side by side, as Hevy lays out a workout's numbers.
     sessionStats: {
-      gap: 2,
+      flexDirection: "row",
+      gap: 28,
       paddingHorizontal: 6,
+    },
+    sessionStat: {
+      gap: 2,
     },
     sessionStatLabel: {
       fontFamily: "PlusJakartaSans_400Regular",
@@ -120,6 +143,47 @@ export const createNewPostStyles = (colors: ColorScheme) => {
     // --- Section ---
     section: {
       gap: 8,
+    },
+    sectionHint: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.textMuted,
+      paddingHorizontal: 4,
+    },
+    sectionHintDanger: { color: colors.danger },
+
+    // --- Focus rating: five circles, changeable until Post ---
+    ratingRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingHorizontal: 4,
+    },
+    ratingButton: {
+      width: RATING_SIZE,
+      height: RATING_SIZE,
+      borderRadius: RATING_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.backgrounds.input,
+    },
+    ratingButtonSelected: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    ratingText: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 17,
+      color: colors.text,
+    },
+    // The page's ground rather than a fixed white, for actionLabelOnPrimary's
+    // reason in profile.styles: dark mode's primary is a pale blue.
+    ratingTextSelected: { color: colors.bg },
+    ratingScale: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingHorizontal: 4,
     },
     sectionTitle: {
       fontFamily: "PlusJakartaSans_600SemiBold",

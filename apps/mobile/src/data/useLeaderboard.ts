@@ -2,17 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, request } from "./api";
 import { withAuth } from "./auth";
+import { deviceTimeZone } from "./deviceTimeZone";
+import {
+  leaderboardQuery,
+  type LeaderboardMetric,
+  type LeaderboardRange,
+  type LeaderboardScope,
+} from "./leaderboardQuery";
 
-/** What a board ranks by - mirrors LEADERBOARD_METRICS in focus.validation.js. */
-export type LeaderboardMetric = "weightedMinutes" | "focusScore" | "tasksCompleted";
-
-/** Who is on it - mirrors LEADERBOARD_SCOPES. */
-export type LeaderboardScope = "following" | "global";
-
-/** This week, or all time. Sent as `days=7` / `days=all`. */
-export type LeaderboardRange = "week" | "all";
-
-const RANGE_DAYS: Record<LeaderboardRange, string> = { week: "7", all: "all" };
+export type { LeaderboardMetric, LeaderboardRange, LeaderboardScope };
 
 /** One ranked person, as GET /api/focus/leaderboard answers it. */
 export interface LeaderboardEntry {
@@ -38,13 +36,18 @@ export interface LeaderboardMe extends Omit<LeaderboardEntry, "rank"> {
 
 export interface Leaderboard {
   scope: LeaderboardScope;
+  /** The group a "group" board ranks; null on the other boards. */
+  groupId: string | null;
   metric: LeaderboardMetric;
-  days: number | "all";
+  /** "week" is the calendar week so far, from Monday midnight in the device's zone. */
+  days: number | "week" | "all";
   since: string | null;
   /** Only set on the focus board, which needs this many scored sessions. */
   minScoredSessions: number | null;
-  /** How many people the caller follows; null on a global board. */
+  /** How many people the caller follows; null on a global or group board. */
   followingCount: number | null;
+  /** How many members a group board compares, the caller included; null elsewhere. */
+  memberCount: number | null;
   entries: LeaderboardEntry[];
   me: LeaderboardMe;
 }
@@ -57,7 +60,8 @@ export interface LeaderboardState {
 }
 
 /**
- * A ranked board of the signed-in user and the people they follow.
+ * A ranked board of the signed-in user and the people they follow - or, given
+ * a group id, of that study group's members.
  *
  * Refetches when the metric or range changes, keeping the previous board on
  * screen while the next loads - the same in-place swap useAnalytics does, so a
@@ -66,7 +70,8 @@ export interface LeaderboardState {
 export const useLeaderboard = (
   metric: LeaderboardMetric,
   range: LeaderboardRange,
-  scope: LeaderboardScope = "following",
+  /** Set for a group's own board. Without it the board is the following one. */
+  groupId?: string,
 ): LeaderboardState => {
   const [board, setBoard] = useState<Leaderboard | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
@@ -79,7 +84,7 @@ export const useLeaderboard = (
     const requestId = ++latest.current;
     setIsLoading(true);
 
-    const query = `scope=${scope}&metric=${metric}&days=${RANGE_DAYS[range]}`;
+    const query = leaderboardQuery({ metric, range, groupId, timeZone: deviceTimeZone() });
 
     try {
       const { data } = await withAuth((token) =>
@@ -94,7 +99,7 @@ export const useLeaderboard = (
     } finally {
       if (requestId === latest.current) setIsLoading(false);
     }
-  }, [metric, range, scope]);
+  }, [metric, range, groupId]);
 
   useEffect(() => {
     load();
@@ -107,6 +112,9 @@ const describe = (err: unknown): string => {
   if (!(err instanceof ApiError)) return "Could not load the leaderboard.";
 
   switch (err.status) {
+    case 403:
+      // A group board, after leaving the group - or being removed from it.
+      return "Only members can see this group's leaderboard.";
     case 429:
       return err.retryAfter
         ? `Too many refreshes. Try again in ${err.retryAfter}s.`

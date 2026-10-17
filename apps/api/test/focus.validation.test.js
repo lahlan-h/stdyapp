@@ -228,11 +228,14 @@ describe("leaderboardQuerySchema", () => {
     });
   });
 
-  it("accepts every metric and both scopes", () => {
+  it("accepts every metric and every scope", () => {
+    const groupId = "6f1c1c1e-6f6e-4f8a-9d55-0c2b8e7f3a21";
     for (const metric of LEADERBOARD_METRICS) {
       for (const scope of LEADERBOARD_SCOPES) {
+        // A group board names its group; the others must not.
+        const query = scope === "group" ? { metric, scope, groupId } : { metric, scope };
         assert.equal(
-          leaderboardQuerySchema.safeParse({ metric, scope }).success,
+          leaderboardQuerySchema.safeParse(query).success,
           true,
           `${metric}/${scope} should be accepted`,
         );
@@ -245,6 +248,27 @@ describe("leaderboardQuerySchema", () => {
     assert.equal(leaderboardQuerySchema.safeParse({ scope: "friends" }).success, false);
   });
 
+  it("requires a groupId with the group scope, and refuses one anywhere else", () => {
+    const groupId = "6f1c1c1e-6f6e-4f8a-9d55-0c2b8e7f3a21";
+    assert.equal(leaderboardQuerySchema.safeParse({ scope: "group" }).success, false);
+    assert.equal(leaderboardQuerySchema.safeParse({ groupId }).success, false);
+    assert.equal(
+      leaderboardQuerySchema.safeParse({ scope: "global", groupId }).success,
+      false,
+    );
+    assert.equal(
+      leaderboardQuerySchema.parse({ scope: "group", groupId }).groupId,
+      groupId,
+    );
+  });
+
+  it("refuses a groupId that is not a UUID", () => {
+    assert.equal(
+      leaderboardQuerySchema.safeParse({ scope: "group", groupId: "night-owls" }).success,
+      false,
+    );
+  });
+
   it("coerces a query-string day count", () => {
     assert.equal(leaderboardQuerySchema.parse({ days: "30" }).days, 30);
   });
@@ -253,8 +277,41 @@ describe("leaderboardQuerySchema", () => {
     assert.equal(leaderboardQuerySchema.parse({ days: "all" }).days, "all");
   });
 
-  it("rejects day counts outside the window and words other than all", () => {
-    for (const days of ["0", "121", "-7", "forever", "7.5"]) {
+  it('accepts "week" for the calendar week, with or without a timezone', () => {
+    assert.equal(leaderboardQuerySchema.parse({ days: "week" }).days, "week");
+    assert.equal(
+      leaderboardQuerySchema.parse({ days: "week", tz: "Australia/Sydney" }).tz,
+      "Australia/Sydney",
+    );
+  });
+
+  it("canonicalises the timezone, as analytics does", () => {
+    assert.equal(
+      leaderboardQuerySchema.parse({ days: "week", tz: "australia/sydney" }).tz,
+      "Australia/Sydney",
+    );
+  });
+
+  it("refuses a timezone that is not one", () => {
+    assert.equal(
+      leaderboardQuerySchema.safeParse({ days: "week", tz: "Mars/Olympus_Mons" }).success,
+      false,
+    );
+  });
+
+  it("refuses a timezone on a rolling or all-time board, where it would change nothing", () => {
+    for (const days of ["7", "all"]) {
+      assert.equal(
+        leaderboardQuerySchema.safeParse({ days, tz: "Australia/Sydney" }).success,
+        false,
+        `tz with days=${days} should have been rejected`,
+      );
+    }
+    assert.equal(leaderboardQuerySchema.safeParse({ tz: "UTC" }).success, false);
+  });
+
+  it("rejects day counts outside the window and words other than all and week", () => {
+    for (const days of ["0", "121", "-7", "forever", "7.5", "month"]) {
       assert.equal(
         leaderboardQuerySchema.safeParse({ days }).success,
         false,

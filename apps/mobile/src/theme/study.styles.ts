@@ -40,20 +40,15 @@ export const TRACE_GRID_LINES = [25, 50, 75] as const;
 /** Air under the last control, on top of the tab bar clearance. */
 export const STUDY_FOOTER_ROOM = 32;
 
-/** Plot height of the weekly analytics card - the tallest bar fills it. */
-export const WEEK_CHART_HEIGHT = 170;
-
-/** Width of one bar; each day draws two, last week's and this week's. */
-const WEEK_BAR_WIDTH = 10;
-
-/** The arrow in the "vs last week" pill. */
-export const WEEK_PILL_ICON_SIZE = 14;
-
-/** The chart and lock glyphs either side of "See Advanced Analytics". */
-export const ADVANCED_ANALYTICS_ICON_SIZE = 24;
-
 /** The chevron on a Begin card row that starts something. */
 export const BEGIN_CHEVRON_SIZE = 18;
+
+/**
+ * The big Start button that is slid along its track to lock in - large
+ * enough to hold with a thumb, and to read as the screen's one big action.
+ */
+export const LOCK_IN_THUMB_SIZE = 64;
+const LOCK_IN_TRACK_PADDING = 6;
 
 export const createStudyStyles = (colors: ColorScheme) => {
   const styles = StyleSheet.create({
@@ -440,6 +435,18 @@ export const createStudyStyles = (colors: ColorScheme) => {
       backgroundColor: colors.primary,
       opacity: 0.28,
     },
+    /**
+     * An interval on one of the session's breaks: a quiet grey block, so it
+     * reads as time set aside rather than time won or lost.
+     */
+    traceBreakBar: {
+      flex: 1,
+      minWidth: 2,
+      height: "100%",
+      borderRadius: 2,
+      backgroundColor: colors.textMuted,
+      opacity: 0.22,
+    },
     /** A one-line "where the time went" strip under the plot. */
     traceRibbon: {
       flexDirection: "row",
@@ -587,6 +594,11 @@ export const createStudyStyles = (colors: ColorScheme) => {
     },
     actionSecondaryText: { fontSize: 16, fontWeight: "600", color: colors.text },
 
+    // Break and End side by side under the dial: the two things a running
+    // session is controlled by, equal halves of one row.
+    controlRow: { flexDirection: "row", gap: 10, alignSelf: "stretch" },
+    controlButton: { flex: 1, alignSelf: "auto" },
+
     linkButton: { alignItems: "center", paddingVertical: 12 },
     linkText: { fontSize: 14, fontWeight: "600", color: colors.textMuted },
 
@@ -709,140 +721,6 @@ export const createStudyStyles = (colors: ColorScheme) => {
       backgroundColor: colors.success,
     },
 
-    // ---- weekly analytics card ------------------------------------------
-    // Larger radius and padding than the setup cards: it is the screen's
-    // headline, as the design draws it, not one more row of settings.
-    weekCard: {
-      borderRadius: 24,
-      borderWidth: 1,
-      borderColor: colors.border,
-      padding: 20,
-      gap: 14,
-    },
-    weekTitle: {
-      fontFamily: "PlusJakartaSans_600SemiBold",
-      fontSize: 18,
-      color: colors.text,
-    },
-    weekHeadline: {
-      flexDirection: "row",
-      alignItems: "flex-end",
-      justifyContent: "space-between",
-      gap: 12,
-    },
-    weekCaption: {
-      fontFamily: "PlusJakartaSans_400Regular",
-      fontSize: 12,
-      color: colors.textMuted,
-    },
-    weekTotalRow: {
-      flexDirection: "row",
-      alignItems: "baseline",
-      gap: 6,
-    },
-    weekTotal: {
-      fontFamily: "PlusJakartaSans_700Bold",
-      fontSize: 34,
-      color: colors.text,
-    },
-    weekUnit: {
-      fontFamily: "PlusJakartaSans_400Regular",
-      fontSize: 18,
-      color: colors.textMuted,
-    },
-    // Colours come from the screen: green when up, red when down.
-    weekPill: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      paddingVertical: 7,
-      paddingHorizontal: 12,
-      borderRadius: 999,
-      borderWidth: 1,
-      marginBottom: 6,
-    },
-    weekPillText: {
-      fontFamily: "PlusJakartaSans_600SemiBold",
-      fontSize: 13,
-    },
-    weekError: {
-      fontFamily: "PlusJakartaSans_400Regular",
-      fontSize: 13,
-      color: colors.danger,
-    },
-    weekChart: {
-      height: WEEK_CHART_HEIGHT,
-      flexDirection: "row",
-      alignItems: "flex-end",
-    },
-    // One column per day, each holding its pair of bars side by side.
-    weekDay: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "flex-end",
-      justifyContent: "center",
-      gap: 3,
-    },
-    weekBar: {
-      width: WEEK_BAR_WIDTH,
-      borderRadius: 4,
-      backgroundColor: colors.primary,
-    },
-    // Last week is the same blue, stepped back - one hue for one measure, so
-    // the pair reads as then-and-now rather than two different things.
-    weekBarLast: {
-      opacity: 0.4,
-    },
-    weekAxis: {
-      flexDirection: "row",
-    },
-    weekAxisLabel: {
-      flex: 1,
-      textAlign: "center",
-      fontFamily: "PlusJakartaSans_400Regular",
-      fontSize: 11,
-      color: colors.textMuted,
-    },
-    weekLegend: {
-      flexDirection: "row",
-      gap: 18,
-    },
-    weekLegendItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    weekLegendSwatch: {
-      width: 16,
-      height: 16,
-      borderRadius: 4,
-      backgroundColor: colors.primary,
-    },
-    weekLegendLabel: {
-      fontFamily: "PlusJakartaSans_400Regular",
-      fontSize: 13,
-      color: colors.textMuted,
-    },
-
-    // ---- "See Advanced Analytics" ---------------------------------------
-    // The weekly card's shape, so the two read as a pair.
-    advancedRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 14,
-      borderRadius: 24,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingVertical: 20,
-      paddingHorizontal: 20,
-    },
-    advancedLabel: {
-      flex: 1,
-      fontFamily: "PlusJakartaSans_600SemiBold",
-      fontSize: 17,
-      color: colors.text,
-    },
-
     // ---- Begin card -----------------------------------------------------
     beginCard: {
       borderRadius: 24,
@@ -856,53 +734,227 @@ export const createStudyStyles = (colors: ColorScheme) => {
       fontSize: 18,
       color: colors.text,
     },
-    // A transparent edge on every row, so the lit one's border does not make
-    // it a pixel taller than the rest.
-    beginOption: {
+    beginHeader: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
-      minHeight: TOUCH_MIN,
-      paddingVertical: 14,
-      paddingHorizontal: 16,
-      borderRadius: 14,
+      justifyContent: "space-between",
+      gap: 10,
+    },
+    // The streak, as the reason to begin.
+    streakPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingVertical: 5,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+      backgroundColor: colors.bg,
       borderWidth: 1,
-      borderColor: "transparent",
+      borderColor: colors.border,
+      flexShrink: 1,
     },
-    // The mode that works today, lit the way the design lights it.
-    beginOptionPrimary: {
-      backgroundColor: colors.primaryTint,
-      borderColor: colors.primaryEdge,
-    },
-    beginOptionDisabled: {
-      opacity: 0.55,
-    },
-    beginOptionText: {
-      flex: 1,
-      gap: 2,
-    },
-    beginOptionTitle: {
+    streakPillText: {
       fontFamily: "PlusJakartaSans_600SemiBold",
-      fontSize: 16,
+      fontSize: 12,
       color: colors.text,
     },
-    beginOptionCaption: {
+    beginLabel: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 12,
+      letterSpacing: 0.6,
+      textTransform: "uppercase",
+      color: colors.textMuted,
+    },
+    beginCaption: {
       fontFamily: "PlusJakartaSans_400Regular",
       fontSize: 13,
       color: colors.textMuted,
     },
-    beginBadge: {
-      paddingVertical: 3,
-      paddingHorizontal: 8,
-      borderRadius: 999,
+
+    // --- How long: chips, Custom opening the wheels ---
+    // One row of equal chips: five lengths read as one choice, not a list.
+    lengthChips: { flexDirection: "row", gap: 6 },
+    lengthChip: {
+      flex: 1,
+      minHeight: 40,
+      paddingHorizontal: 4,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.border,
+      backgroundColor: colors.bg,
     },
-    beginBadgeText: {
+    lengthChipSelected: {
+      backgroundColor: colors.primaryTint,
+      borderColor: colors.primary,
+    },
+    lengthChipText: {
       fontFamily: "PlusJakartaSans_600SemiBold",
-      fontSize: 10,
-      letterSpacing: 0.8,
+      fontSize: 14,
+      color: colors.text,
+    },
+    lengthChipTextSelected: { color: colors.primary },
+
+    // --- Studying with ---
+    withRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: TOUCH_MIN,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.bg,
+    },
+    withText: { flex: 1, gap: 2 },
+    withValue: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 16,
+      color: colors.text,
+    },
+
+    // --- The lock-in track: the big Start button, slid across ---
+    lockInWrap: { gap: 8, marginTop: 4 },
+    lockInTrack: {
+      height: LOCK_IN_THUMB_SIZE + LOCK_IN_TRACK_PADDING * 2,
+      borderRadius: (LOCK_IN_THUMB_SIZE + LOCK_IN_TRACK_PADDING * 2) / 2,
+      justifyContent: "center",
+      padding: LOCK_IN_TRACK_PADDING,
+      backgroundColor: colors.primaryTint,
+      borderWidth: 1,
+      borderColor: colors.primaryEdge,
+    },
+    // Centred in the space right of the thumb, so the words never sit under it.
+    lockInLabelRow: {
+      position: "absolute",
+      left: LOCK_IN_THUMB_SIZE + LOCK_IN_TRACK_PADDING,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 4,
+    },
+    lockInLabel: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 16,
+      color: colors.primary,
+      letterSpacing: 0.2,
+    },
+    lockInThumbWrap: {
+      width: LOCK_IN_THUMB_SIZE,
+      height: LOCK_IN_THUMB_SIZE,
+    },
+    // The thumb's glow, swelling behind it - drawn outside its box, unclipped.
+    lockInHalo: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: LOCK_IN_THUMB_SIZE,
+      height: LOCK_IN_THUMB_SIZE,
+      borderRadius: LOCK_IN_THUMB_SIZE / 2,
+      backgroundColor: colors.primary,
+    },
+    lockInThumb: {
+      width: LOCK_IN_THUMB_SIZE,
+      height: LOCK_IN_THUMB_SIZE,
+      borderRadius: LOCK_IN_THUMB_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
+      shadowColor: colors.primary,
+      shadowOpacity: 0.5,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 6,
+    },
+    // Optically centred: a play triangle's weight sits left of its box.
+    lockInThumbIcon: { marginLeft: 3 },
+    lockInHint: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 12,
       color: colors.textMuted,
+      textAlign: "center",
+    },
+    lockInBusy: {
+      height: LOCK_IN_THUMB_SIZE + LOCK_IN_TRACK_PADDING * 2,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+    },
+
+    // --- The 3, 2, 1 ---
+    // The scrim's dark in both themes, for the scrim's reason: it is there to
+    // push everything behind it away.
+    countdown: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 18,
+      paddingHorizontal: 32,
+      backgroundColor: colors.lightbox.bg,
+    },
+    countdownNumber: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 140,
+      lineHeight: 160,
+      color: colors.lightbox.text,
+      fontVariant: ["tabular-nums"],
+    },
+    countdownGo: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 56,
+      lineHeight: 160,
+      color: colors.lightbox.text,
+    },
+    countdownLine: {
+      minHeight: 22,
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 16,
+      color: colors.lightbox.text,
+      opacity: 0.7,
+      textAlign: "center",
+    },
+    countdownCancel: {
+      position: "absolute",
+      bottom: 80,
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+      borderRadius: 999,
+      backgroundColor: colors.lightbox.control,
+    },
+    countdownCancelText: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 15,
+      color: colors.lightbox.text,
+    },
+
+    // --- Picking who you study with ---
+    // Stretched for full-width rows - so the handle, which centres itself
+    // under the rating sheet's alignItems, is centred by hand here.
+    pickSheet: { alignItems: "stretch", maxHeight: "70%" },
+    pickHandle: { alignSelf: "center" },
+    pickList: { alignSelf: "stretch" },
+    pickListContent: { gap: 8, paddingVertical: 10 },
+    pickRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: TOUCH_MIN,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.bg,
+    },
+    pickRowSelected: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryTint,
     },
   });
 

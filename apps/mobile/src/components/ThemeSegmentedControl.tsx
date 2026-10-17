@@ -2,7 +2,7 @@ import { View, Text, Pressable } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 import type { ComponentProps } from "react";
 
-import { useTheme, useStyles, type ThemePreference } from "@theme";
+import { useTheme, useStyles, haptics, type ThemePreference } from "@theme";
 
 interface SegmentConfig {
   preference: ThemePreference;
@@ -37,7 +37,10 @@ const ThemeSegmentedControl = () => {
         return (
           <Pressable
             key={preference}
-            onPress={() => setThemePreference(preference)}
+            onPress={() => {
+              if (!isSelected) haptics.tick();
+              setThemePreference(preference);
+            }}
             accessibilityRole="radio"
             accessibilityState={{ checked: isSelected }}
             accessibilityLabel={`${label} theme`}

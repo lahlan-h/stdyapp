@@ -7,6 +7,10 @@
  * decide only WHICH rows to load.
  */
 
+import { localParts, startOfLocalDay, weekStartKey } from "../utils/timeZone.js";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
  * What a board can rank by. The values double as the `metric` query param and
  * mirror LEADERBOARD_METRICS in focus.validation.js.
@@ -38,20 +42,48 @@ export const minSessionsFor = (metric) =>
   metric === METRICS.FOCUS_SCORE ? MIN_SCORED_SESSIONS : 1;
 
 /**
- * Who a "following" board is about: everyone the caller follows, plus the
- * caller, minus anyone on either side of a block.
+ * Where a board's window starts, or null for all time.
+ *
+ * A number is a rolling window: that many days before now, the same instant
+ * wherever the caller is. "week" is the calendar week so far, from Monday
+ * midnight in the caller's zone - the week the app's weekly card and weekly
+ * goal count, so a board that says "this week" covers the same days they do.
+ *
+ * The same days, not always the same sessions: a board counts a session by
+ * when it ENDED, as every board does, where the weekly card files it under the
+ * day it started. A session run across Sunday midnight is last week's there
+ * and this week's here.
+ *
+ * @param {number|"week"|"all"} days
+ * @param {string} timeZone - canonical; only read for "week"
+ * @param {Date} now
+ * @returns {Date|null}
+ */
+export const windowStart = (days, timeZone, now) => {
+  if (days === "all") return null;
+  if (days === "week") {
+    return startOfLocalDay(weekStartKey(localParts(now, timeZone).dateKey), timeZone);
+  }
+  return new Date(now.getTime() - days * DAY_MS);
+};
+
+/**
+ * Who a bounded board is about: everyone the caller follows (a "following"
+ * board) or every member of a group (a "group" board), plus the caller, minus
+ * anyone on either side of a block.
  *
  * The caller is included so their own row ranks among the people they compare
  * themselves with - a board of only other people would never say "you're 3rd".
+ * A group roll already contains the caller; the Set keeps them once.
  *
  * @param {string} userId
- * @param {string[]} followingIds
+ * @param {string[]} peopleIds - who the caller follows, or the group's members
  * @param {string[]} blockedIds
  * @returns {string[]}
  */
-export const audienceIds = (userId, followingIds, blockedIds) => {
+export const audienceIds = (userId, peopleIds, blockedIds) => {
   const blocked = new Set(blockedIds);
-  const ids = new Set([userId, ...followingIds]);
+  const ids = new Set([userId, ...peopleIds]);
   return [...ids].filter((id) => id === userId || !blocked.has(id));
 };
 

@@ -2,7 +2,7 @@ import { View, Text, Pressable, ScrollView, LayoutAnimation, Platform } from "re
 import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import Feather from "@expo/vector-icons/Feather";
 
-import { useTheme, useStyles, useReducedMotion, FILTER_FIELD_ICON_SIZE } from "@theme";
+import { useTheme, useStyles, useReducedMotion, haptics, FILTER_FIELD_ICON_SIZE } from "@theme";
 import {
   defaultFeedFilters,
   isDefaultFilters,
@@ -186,7 +186,10 @@ const FeedFilterPanel = ({ filters, onChange, matchCount }: FeedFilterPanelProps
             return (
               <Pressable
                 key={mode}
-                onPress={() => setMode(mode)}
+                onPress={() => {
+                  if (!selected) haptics.tick();
+                  setMode(mode);
+                }}
                 accessibilityRole="radio"
                 accessibilityState={{ checked: selected }}
                 accessibilityLabel={label}
@@ -247,7 +250,10 @@ const FeedFilterPanel = ({ filters, onChange, matchCount }: FeedFilterPanelProps
                   return (
                     <Pressable
                       key={sort}
-                      onPress={() => onChange({ ...filters, sort })}
+                      onPress={() => {
+                        if (!selected) haptics.tick();
+                        onChange({ ...filters, sort });
+                      }}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: selected }}
                       accessibilityLabel={`${row.label}: ${label}`}

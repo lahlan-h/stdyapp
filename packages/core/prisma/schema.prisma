@@ -267,6 +267,19 @@ model Session {
   startedAt     DateTime  @default(now())
   endedAt       DateTime?
 
+  /// Breaks: a pause for a bathroom trip or a call, when the clock stops and
+  /// the time counts as neither study nor distraction. Three per session, each
+  /// credited for at most five minutes - see apps/api/src/services/sessionPause.js,
+  /// which every duration in the app goes through.
+  ///
+  /// pausedAt is set while a break is running and cleared when it ends.
+  /// pauseCount is how many breaks have been STARTED, so a running one counts.
+  /// pausedSeconds is the credited time of every FINISHED break - a running
+  /// one's share is worked out from pausedAt when it is needed.
+  pausedAt      DateTime?
+  pauseCount    Int       @default(0)
+  pausedSeconds Int       @default(0)
+
   /// How long the user MEANT to study, set when the session starts. Nullable: a
   /// session opened without a plan is still valid, and every session created
   /// before this column existed has none. When present it drives the focus
@@ -336,6 +349,12 @@ enum InterruptionType {
   DEVICE_MOTION
   /// The user logged a break themselves.
   MANUAL
+  /// One of a session's three breaks, recorded when it ends - written by the
+  /// server alone, never accepted from a client, so it cannot be used to file
+  /// time away as a break. Kept so a finished session's chart can show where
+  /// its breaks fell; NOT time away, so it is left out of every away total.
+  /// The session's own pausedSeconds is the authoritative sum.
+  BREAK
 }
 
 model SessionInterruption {
@@ -366,15 +385,41 @@ model StudyGroup {
 
   // private groups still show up in search — joining just requires joinCode
   isPrivate   Boolean  @default(false)
-  joinCode    String?
+
+  /// Six characters that let anyone holding them into the group, public or
+  /// private - typed on the Study tab, or shared by any member. Unique, because
+  /// a code alone names the group; generated, never chosen - see
+  /// apps/api/src/services/joinCode.js.
+  joinCode    String   @unique
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   memberships GroupMembership[]
   sessions    Session[]
+  postShares  PostGroupShare[]
 
   @@map("study_groups")
+}
+
+/// A post shared to a study group: it shows on that group's feed, for its
+/// members. Any session can be shared to any of its author's groups - it need
+/// not have been studied in one.
+///
+/// Cascades from both sides: a deleted post or group takes its shares with it.
+/// Leaving a group, or being removed from it, deletes the leaver's shares to it
+/// in studyGroup.service.js - posts go with the person.
+model PostGroupShare {
+  postId    String
+  post      Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  groupId   String
+  group     StudyGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+
+  @@id([postId, groupId])
+  // The group feed's read: every post shared to one group.
+  @@index([groupId])
+  @@map("post_group_shares")
 }
 
 enum GroupRole {
@@ -487,6 +532,15 @@ model Post {
   // photoUrl column - see add_post_photos.
   photos    PostPhoto[]
   createdAt DateTime     @default(now())
+
+  /// Who a post is for, chosen when it is made - its followers, any of the
+  /// author's study groups, or both; never neither (post.service.js refuses
+  /// that). Followers means the author's followers' Following feeds and their
+  /// profile, which is where every post went before this existed - hence the
+  /// default. A group-only post is seen by that group's members and its author
+  /// alone. See PostGroupShare for the groups.
+  shareToFollowers Boolean @default(true)
+  groupShares      PostGroupShare[]
 
   likes     Like[]
   comments  Comment[]

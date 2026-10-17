@@ -2,7 +2,7 @@ import { View, Text, Pressable } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { router } from "expo-router";
 
-import { useTheme, useStyles } from "@theme";
+import { useTheme, useStyles, haptics } from "@theme";
 
 /** Matches the outline weight the heart has always used. */
 const ICON_SIZE = 22;
@@ -71,7 +71,10 @@ const PostCardFooter = ({
         state, which is the thing the colour is conveying to everyone else.
       */}
       <Pressable
-        onPress={onToggleLike}
+        onPress={() => {
+          haptics.tap();
+          onToggleLike();
+        }}
         accessibilityRole="button"
         accessibilityLabel="Like"
         accessibilityState={{ selected: isLiked }}

@@ -38,7 +38,8 @@ export const findSessionsByUser = (userId) => {
     orderBy: { startedAt: "desc" },
     include: {
       group: { select: { id: true, name: true } },
-      interruptions: { select: { durationSec: true } },
+      // type, so a break is not summed as time away - see isTimeAway.
+      interruptions: { select: { durationSec: true, type: true } },
       focusRating: { select: { selfRating: true } },
     },
   });
@@ -78,6 +79,9 @@ const activitySelect = {
   startedAt: true,
   endedAt: true,
   plannedMinutes: true,
+  // A break is a sign of life, and a plan runs late by its breaks.
+  pausedAt: true,
+  pausedSeconds: true,
   focusSamples: latestForegroundSample,
   interruptions: {
     select: { startedAt: true },
@@ -206,6 +210,111 @@ export const findLiveSessionsByGroup = (groupId, since) => {
   });
 };
 
+/**
+ * Every open session belonging to these people - ANY session, in any group or
+ * none. The group feed's "who's studying" strip, which asks about a group's
+ * members rather than its rooms; see services/studyingNow.js.
+ *
+ * "Open" is findLiveSessionsByGroup's definition exactly - endedAt NULL and
+ * started after `since` - so the strip and the group page's "Studying now"
+ * never disagree about whether someone is still at it.
+ *
+ * @param {string[]} userIds
+ * @param {Date} since
+ */
+export const findLiveSessionsByUsers = (userIds, since) => {
+  if (userIds.length === 0) return Promise.resolve([]);
+  return prisma.session.findMany({
+    where: { userId: { in: userIds }, endedAt: null, startedAt: { gte: since } },
+    select: {
+      id: true,
+      userId: true,
+      groupId: true,
+      startedAt: true,
+      plannedMinutes: true,
+      // Who is on a break, and how much of their time was one.
+      pausedAt: true,
+      pausedSeconds: true,
+      user: {
+        select: { id: true, username: true, firstName: true, lastName: true, avatarUrl: true },
+      },
+    },
+    orderBy: { startedAt: "asc" },
+  });
+};
+
+/**
+ * Starts a break - but only if the session is still running, has no break
+ * open and has one left. updateMany for the condition: update() can only
+ * match on unique fields, and the condition is the point. Resolves true when
+ * this call started it.
+ *
+ * @param {string} id
+ * @param {Date} at
+ * @param {number} maxPauses
+ */
+export const startPause = async (id, at, maxPauses) => {
+  const { count } = await prisma.session.updateMany({
+    where: { id, endedAt: null, pausedAt: null, pauseCount: { lt: maxPauses } },
+    data: { pausedAt: at, pauseCount: { increment: 1 } },
+  });
+  return count === 1;
+};
+
+/**
+ * The row a finished break leaves, stamped - like every interruption - at the
+ * moment it ended, with the seconds it was credited. Not time away; see BREAK
+ * in the Prisma schema.
+ */
+const breakRow = (sessionId, pausedAt, creditedSeconds) => ({
+  sessionId,
+  startedAt: new Date(pausedAt.getTime() + creditedSeconds * 1000),
+  durationSec: creditedSeconds,
+  penaltyApplied: false,
+  type: "BREAK",
+});
+
+/**
+ * Ends a break, crediting its seconds - only if it is still the break that
+ * began at `pausedAt`, so a racing second resume cannot credit it twice - and
+ * records where it fell, in the same transaction so the two always agree.
+ *
+ * @param {string} id
+ * @param {Date} pausedAt
+ * @param {number} creditedSeconds
+ */
+export const finishPause = (id, pausedAt, creditedSeconds) =>
+  prisma.$transaction(async (tx) => {
+    const { count } = await tx.session.updateMany({
+      where: { id, pausedAt },
+      data: { pausedAt: null, pausedSeconds: { increment: creditedSeconds } },
+    });
+    if (count === 1 && creditedSeconds > 0) {
+      await tx.sessionInterruption.create({ data: breakRow(id, pausedAt, creditedSeconds) });
+    }
+    return count === 1;
+  });
+
+/**
+ * Writes a session's end, closing a break still open at that moment - its
+ * credited share already summed into data.pausedSeconds by the caller - and
+ * recording it as a break, together.
+ *
+ * @param {string} id
+ * @param {object} data - endedAt, focusPoints, pausedAt: null, pausedSeconds
+ * @param {{ pausedAt: Date, creditedSeconds: number } | null} openBreak
+ */
+export const closeSessionRow = (id, data, openBreak) =>
+  prisma.$transaction(async (tx) => {
+    const updated = await tx.session.update({ where: { id }, data });
+    if (openBreak && openBreak.creditedSeconds > 0) {
+      await tx.sessionInterruption.create({
+        data: breakRow(id, openBreak.pausedAt, openBreak.creditedSeconds),
+      });
+    }
+    return updated;
+  });
+
 export const updateSession = (id, data) => {
   return prisma.session.update({ where: { id }, data });
 };
@@ -284,7 +393,8 @@ export const findCompletedSessionsSince = (userId, since) => {
       // person would describe it: the study happened, and it happened today.
       startedAt: { gte: since },
     },
-    select: { startedAt: true, endedAt: true },
+    // pausedSeconds: a goal counts studied time, breaks left out.
+    select: { startedAt: true, endedAt: true, pausedSeconds: true },
   });
 };
 
@@ -329,6 +439,8 @@ export const findCompletedSessionsForAnalytics = (userId, since) => {
     select: {
       startedAt: true,
       endedAt: true,
+      // Breaks come off every duration - see sessionPause.js.
+      pausedSeconds: true,
       focusPoints: true,
       groupId: true,
       // The focus estimate and checklist totals, as finaliseSessionFocus
@@ -338,7 +450,7 @@ export const findCompletedSessionsForAnalytics = (userId, since) => {
       focusWeightedMinutes: true,
       tasksTotal: true,
       tasksCompleted: true,
-      interruptions: { select: { durationSec: true, penaltyApplied: true } },
+      interruptions: { select: { durationSec: true, penaltyApplied: true, type: true } },
     },
     orderBy: { startedAt: "asc" },
   });

@@ -13,6 +13,9 @@
  *  - "away": no sample, and the time falls inside a logged trip out of the app.
  *  - "down": no sample, and the time was phone-down - the phone locked and left
  *    on the desk (see usePhoneDown). Not counted against the user.
+ *  - "break": no sample, and the time was one of the session's breaks - a
+ *    pause the user chose. Neither focus nor distraction, so it is left out of
+ *    the average exactly as the server leaves it out of the score.
  */
 
 /** The cadence useFocusSession samples at. */
@@ -29,7 +32,8 @@ const GAP_TOLERANCE = 1.8;
 export type TraceSegment =
   | { kind: "focus"; value: number }
   | { kind: "away" }
-  | { kind: "down" };
+  | { kind: "down" }
+  | { kind: "break" };
 
 export interface FocusTimeline {
   segments: TraceSegment[];
@@ -41,6 +45,8 @@ export interface FocusTimeline {
   totalSec: number;
   awaySec: number;
   downSec: number;
+  /** Time on breaks - neither study nor away. */
+  breakSec: number;
   /** Trips out of the app, for "2 trips away". */
   awayCount: number;
 }
@@ -63,6 +69,8 @@ interface TimelineInput {
   endedAtMs: number;
   awaySpells?: FocusSpell[];
   downSpells?: FocusSpell[];
+  /** The session's breaks - finished ones, and one still running. */
+  breakSpells?: FocusSpell[];
   /**
    * What a gap matching no spell was. A running session knows every spell it
    * settled, so an unmatched gap there is an absence too short to log, which
@@ -85,6 +93,7 @@ export const buildFocusTimeline = ({
   endedAtMs,
   awaySpells = [],
   downSpells = [],
+  breakSpells = [],
   unmatchedGap = "away",
   intervalSec = FOCUS_SAMPLE_INTERVAL_SEC,
 }: TimelineInput): FocusTimeline => {
@@ -104,7 +113,14 @@ export const buildFocusTimeline = ({
   const fillGap = (fromMs: number, slots: number) => {
     for (let i = 0; i < slots; i += 1) {
       const at = fromMs + (i + 0.5) * intervalMs;
-      if (covers(awaySpells, at, intervalMs)) segments.push({ kind: "away" });
+      // A break first: it is the one the user declared. Matched at the moment
+      // the missing sample was DUE, not the slot's midpoint - the sampler
+      // skips exactly the samples that fall due during a break, and a break
+      // begun a few seconds into a slot would otherwise miss its own gap and
+      // be drawn as time away.
+      const due = fromMs + (i + 1) * intervalMs;
+      if (covers(breakSpells, due, intervalMs / 2)) segments.push({ kind: "break" });
+      else if (covers(awaySpells, at, intervalMs)) segments.push({ kind: "away" });
       else if (covers(downSpells, at, intervalMs)) segments.push({ kind: "down" });
       else segments.push({ kind: unmatchedGap });
     }
@@ -131,7 +147,8 @@ export const buildFocusTimeline = ({
     if (isGap(endedAtMs - last)) fillGap(last, Math.floor((endedAtMs - last) / intervalMs));
   }
 
-  const counted = segments.filter((s) => s.kind !== "down");
+  // Phone-down and breaks are left out of the average, as the score leaves them.
+  const counted = segments.filter((s) => s.kind !== "down" && s.kind !== "break");
   const average =
     counted.length > 0
       ? Math.round(
@@ -152,19 +169,51 @@ export const buildFocusTimeline = ({
       downSpells.length > 0
         ? Math.round(sum(downSpells))
         : segments.filter((s) => s.kind === "down").length * intervalSec,
+    breakSec: Math.round(sum(breakSpells)),
     awayCount: awaySpells.length,
   };
 };
 
 /**
- * A finished session's interruptions as spells.
+ * A finished session's interruptions as spells: its trips away, and - when
+ * `kind` is "break" - its breaks, which the server records in the same table
+ * with the type BREAK.
  *
  * The server stamps an interruption when it is POSTed, which is when the user
- * came back - so its startedAt is the END of the time away.
+ * came back - so its startedAt is the END of the time away. A break is stamped
+ * the same way: at the end of its credited time.
  */
 export const interruptionsToSpells = (
-  interruptions: { startedAt: string | number | Date; durationSec: number }[],
+  interruptions: {
+    startedAt: string | number | Date;
+    durationSec: number;
+    type?: string | null;
+  }[],
+  kind: "away" | "break" = "away",
 ): FocusSpell[] =>
   interruptions
+    .filter((i) => (i.type === "BREAK") === (kind === "break"))
     .map((i) => ({ endMs: new Date(i.startedAt).getTime(), durationSec: i.durationSec }))
     .filter((s) => Number.isFinite(s.endMs) && s.durationSec > 0);
+
+/**
+ * The focus chart's time axis: five marks, at the start, each quarter and the
+ * end, in whatever unit keeps them distinct. The unit is chosen from the WHOLE
+ * session - minutes on a 90-second session round every mark to "0m" and the
+ * axis reads as broken - and a session of a few seconds gets tenths, since
+ * whole seconds would print the same mark twice ("2s 2s").
+ */
+export const traceAxisLabels = (totalSec: number): string[] => {
+  const label = (sec: number) => {
+    if (totalSec < 10) return `${Number(sec.toFixed(1))}s`;
+    if (totalSec < 300) return `${Math.round(sec)}s`;
+
+    const m = Math.round(sec / 60);
+    if (m < 60) return `${m}m`;
+
+    const h = Math.floor(m / 60);
+    const rest = m % 60;
+    return rest === 0 ? `${h}h` : `${h}h ${rest}m`;
+  };
+  return [0, 0.25, 0.5, 0.75, 1].map((f) => label(totalSec * f));
+};

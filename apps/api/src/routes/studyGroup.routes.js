@@ -5,11 +5,13 @@ import {
   search,
   mine,
   liveSessions,
+  studying,
   update,
   remove,
   transferOwnership,
   regenerateJoinCode,
   join,
+  joinByCode,
   leave,
   members,
   kickMember,
@@ -26,6 +28,7 @@ import {
   updateGroupSchema,
   transferOwnershipSchema,
   joinGroupSchema,
+  joinByCodeSchema,
   setMemberRoleSchema,
   searchGroupsQuerySchema,
 } from "../validation/studyGroup.validation.js";
@@ -123,6 +126,10 @@ router.get("/", readLimit, validate({ query: searchGroupsQuerySchema }), search)
 // "mine" as an id and answer 400.
 router.get("/mine", readLimit, mine);
 
+// joinLimit, as for /:id/join: a code alone is a key, so this is the route a
+// guesser would hammer, and the limit is what makes a billion codes unsearchable.
+router.post("/join", joinLimit, validate({ body: joinByCodeSchema }), joinByCode);
+
 router.get(
   "/:id",
   readLimit,
@@ -138,6 +145,16 @@ router.get(
   readLimit,
   validate({ params: groupIdParamSchema }),
   liveSessions,
+);
+
+// UNCACHED, for /:id/sessions's reason - and more so: this one follows every
+// member's sessions, not only the group's, so no group write could invalidate
+// it. The client polls it while the group's feed is on screen.
+router.get(
+  "/:id/studying",
+  readLimit,
+  validate({ params: groupIdParamSchema }),
+  studying,
 );
 
 router.patch(

@@ -1,5 +1,5 @@
-import { useCallback } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useCallback, useRef } from "react";
+import { Pressable, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import Feather from "@expo/vector-icons/Feather";
 
@@ -7,7 +7,6 @@ import {
   useTabBarClearance,
   useTheme,
   useStyles,
-  PROFILE_ACTION_ICON_SIZE,
   PROFILE_SETTINGS_ICON_SIZE,
 } from "@theme";
 import {
@@ -44,8 +43,8 @@ const Profile = () => {
   const { posts, isLoading: postsLoading, setLiked, reload: reloadPosts } =
     useUserPosts();
   const { summary } = useFollowCounts();
-  const { streak } = useStreak();
-  const { totals } = useStudySessions();
+  const { streak, reload: reloadStreak } = useStreak();
+  const { totals, reload: reloadTotals } = useStudySessions();
 
   /**
    * Re-reads on every focus, which the FEED deliberately does not do.
@@ -55,11 +54,22 @@ const Profile = () => {
    * first. And consumeFeedStale is a ONE-BIT flag that clears when read, so a
    * second screen consuming it would leave the feed thinking nothing had
    * changed; it belongs to the feed alone.
+   *
+   * The study figures in the top bar - streak, sessions, time - come along on
+   * every focus after the first, when their hooks have only just loaded them:
+   * a session finished on the Study tab should count here the moment you come
+   * back, not on the next launch.
    */
+  const focusedOnce = useRef(false);
   useFocusEffect(
     useCallback(() => {
       reloadPosts();
-    }, [reloadPosts]),
+      if (focusedOnce.current) {
+        reloadStreak();
+        reloadTotals();
+      }
+      focusedOnce.current = true;
+    }, [reloadPosts, reloadStreak, reloadTotals]),
   );
 
   /**
@@ -69,17 +79,15 @@ const Profile = () => {
    * Shown on the error screen too, because Settings is also where you sign out
    * - a profile that will not load must not trap you in the account.
    */
-  const topBar = (
-    <View style={[styles.topBar, styles.topBarEnd]}>
-      <Pressable
-        style={({ pressed }) => [styles.settingsButton, pressed && { opacity: 0.6 }]}
-        onPress={() => router.push("/settings")}
-        accessibilityRole="button"
-        accessibilityLabel="Settings"
-      >
-        <Feather name="settings" size={PROFILE_SETTINGS_ICON_SIZE} color={colors.text} />
-      </Pressable>
-    </View>
+  const gear = (
+    <Pressable
+      style={({ pressed }) => [styles.settingsButton, pressed && { opacity: 0.6 }]}
+      onPress={() => router.push("/settings")}
+      accessibilityRole="button"
+      accessibilityLabel="Settings"
+    >
+      <Feather name="settings" size={PROFILE_SETTINGS_ICON_SIZE} color={colors.text} />
+    </Pressable>
   );
 
   if (profileLoading) return <ProfileLoading />;
@@ -89,7 +97,7 @@ const Profile = () => {
       <ProfileMessage
         message={loadError ?? "Could not load your profile."}
         onRetry={reloadProfile}
-        topBar={topBar}
+        topBar={<View style={[styles.topBar, styles.topBarEnd]}>{gear}</View>}
       />
     );
   }
@@ -105,24 +113,8 @@ const Profile = () => {
       totals={totals}
       followers={summary?.followers}
       following={summary?.following}
-      actions={
-        <>
-          <ProfileActions />
-          {/* Session history: a push to app/sessions.tsx. */}
-          <View style={styles.actions}>
-            <Pressable
-              onPress={() => router.push("/sessions")}
-              accessibilityRole="button"
-              accessibilityLabel="Session history"
-              style={({ pressed }) => [styles.actionButton, pressed ? { opacity: 0.6 } : undefined]}
-            >
-              <Feather name="clock" size={PROFILE_ACTION_ICON_SIZE} color={colors.text} />
-              <Text style={styles.actionLabel}>Session history</Text>
-            </Pressable>
-          </View>
-        </>
-      }
-      topBar={topBar}
+      actions={<ProfileActions />}
+      topBarEnd={gear}
       bottomPadding={tabBarClearance}
     />
   );

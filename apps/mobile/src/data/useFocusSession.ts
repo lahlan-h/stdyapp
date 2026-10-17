@@ -13,6 +13,7 @@ import {
   type FocusTimeline,
 } from "./focusTrace";
 import { usePhoneDown } from "./usePhoneDown";
+import { MAX_BREAKS, MAX_BREAK_SEC } from "./sessionTime";
 
 /**
  * Drives one focus session: start, stream samples, log time away, end, rate.
@@ -68,6 +69,40 @@ const RUNNING_KEY = "focus.runningSessionId";
  * the user staring at a spinner for minutes.
  */
 const END_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000];
+
+/** One break's five minutes, in the clock's own unit. */
+const MAX_BREAK_MS = MAX_BREAK_SEC * 1000;
+
+/**
+ * Where the session's breaks stand. A ref as well as state, for the reason the
+ * session's other refs give: the clock and the AppState listener read it.
+ */
+interface BreakState {
+  /** When the running break began, on this device's clock; null with none. */
+  startedAtMs: number | null;
+  /** Breaks started this session, the running one included. */
+  used: number;
+  /** Credited seconds of the finished ones. */
+  bankedSec: number;
+}
+
+const NO_BREAKS: BreakState = { startedAtMs: null, used: 0, bankedSec: 0 };
+
+/** What POST /api/sessions/:id/pause and /resume answer - the fields read here. */
+interface PauseState {
+  pauseCount: number;
+  pausedSeconds: number;
+}
+
+/**
+ * Break time by `atMs`: what finished breaks banked, plus the running one's
+ * share - capped at five minutes, as the server caps it.
+ */
+const breakMsAt = (breaks: BreakState, atMs: number) =>
+  breaks.bankedSec * 1000 +
+  (breaks.startedAtMs === null
+    ? 0
+    : Math.min(MAX_BREAK_MS, Math.max(0, atMs - breaks.startedAtMs)));
 
 /** Worth retrying: no response at all, the server failing, or rate limiting. */
 const isRetryable = (err: unknown) =>
@@ -179,6 +214,24 @@ export interface FocusSessionState {
   phoneDownSec: number;
   /** Face-down mode is engaged: the study screen should go dark. */
   isPhoneDown: boolean;
+  /**
+   * A break is running: the clock is stopped, nothing is sampled, and the time
+   * counts as neither study nor time away. See sessionTime.ts for the limits.
+   */
+  isPaused: boolean;
+  /** Seconds left in the running break, counting down; 0 with none running. */
+  breakRemainingSec: number;
+  /** Breaks this session can still take - MAX_BREAKS to begin with. */
+  breaksLeft: number;
+  /**
+   * The last break ran its full five minutes and ended on its own. Cleared by
+   * the next break - so the screen can say why the clock started again.
+   */
+  breakTimedOut: boolean;
+  /** Starts a break. Ignored with none left or one already running. */
+  pause: () => void;
+  /** Ends the running break. */
+  resume: () => void;
   result: FocusResult | null;
   rating: number | null;
   /**
@@ -307,6 +360,45 @@ export const useFocusSessionState = (): FocusSessionState => {
   /** Absences settled this session, so the chart can say what each gap was. */
   const awaySpellsRef = useRef<FocusSpell[]>([]);
   const downSpellsRef = useRef<FocusSpell[]>([]);
+  const breakSpellsRef = useRef<FocusSpell[]>([]);
+
+  const [breaks, setBreaksState] = useState<BreakState>(NO_BREAKS);
+  const breaksRef = useRef<BreakState>(NO_BREAKS);
+  /** Kept in step: state for the screen, the ref for the clock and listeners. */
+  const setBreaks = useCallback((next: BreakState) => {
+    breaksRef.current = next;
+    setBreaksState(next);
+  }, []);
+  const [breakRemainingSec, setBreakRemainingSec] = useState(0);
+  const [breakTimedOut, setBreakTimedOut] = useState(false);
+  /** The app went into the background during a break - see onAppState. */
+  const leftDuringBreakRef = useRef(false);
+  /** A resume the server has not heard yet - retried with the next sample. */
+  const pendingResumeRef = useRef(false);
+  /** resume(), for the clock to call - it is defined after the timers are. */
+  const resumeRef = useRef<(options?: { auto?: boolean; endedAtMs?: number }) => void>(() => {});
+  /** The resume request, for the sampler to retry - defined below it. */
+  const resendResumeRef = useRef<(sessionId: string) => Promise<void>>(async () => {});
+
+  /** Seconds STUDIED by `atMs`: the clock since start, less every break. */
+  const studiedSecAt = (atMs: number) =>
+    startedAtRef.current === null
+      ? 0
+      : Math.max(
+          0,
+          Math.floor((atMs - startedAtRef.current - breakMsAt(breaksRef.current, atMs)) / 1000),
+        );
+
+  /** The breaks as spells for the chart: finished ones, and one still running. */
+  const breakSpellsAt = (atMs: number): FocusSpell[] => {
+    const open = breaksRef.current.startedAtMs;
+    return open === null
+      ? breakSpellsRef.current
+      : [
+          ...breakSpellsRef.current,
+          { endMs: atMs, durationSec: Math.min(MAX_BREAK_SEC, (atMs - open) / 1000) },
+        ];
+  };
   /** Whether the current absence began straight after the phone lay face-down. */
   const leftFromPhoneDownRef = useRef(false);
 
@@ -330,12 +422,14 @@ export const useFocusSessionState = (): FocusSessionState => {
       // Away time counts, as it does in the final score: averaging only the
       // samples would show a full reading to someone who has been gone for
       // half the session.
+      const now = Date.now();
       const timeline = buildFocusTimeline({
         samples: page.data,
         startedAtMs: startedAtRef.current,
-        endedAtMs: Date.now(),
+        endedAtMs: now,
         awaySpells: awaySpellsRef.current,
         downSpells: downSpellsRef.current,
+        breakSpells: breakSpellsAt(now),
       });
       if (timeline.average === null) return;
       setLiveTimeline(timeline);
@@ -349,6 +443,10 @@ export const useFocusSessionState = (): FocusSessionState => {
   const sendSample = useCallback(async () => {
     const sessionId = sessionIdRef.current;
     if (!sessionId) return;
+    // Nothing is sampled on a break: it is not study, so there is nothing to
+    // estimate. A resume the server missed is sent again first.
+    if (breaksRef.current.startedAtMs !== null) return;
+    if (pendingResumeRef.current) void resendResumeRef.current(sessionId);
 
     // AppState is the only presence signal available: a suspended app cannot
     // report anything, so "not active" is as close as this gets in-band. The
@@ -440,8 +538,20 @@ export const useFocusSessionState = (): FocusSessionState => {
     startPhoneDown();
 
     const tick = setInterval(() => {
-      if (startedAtRef.current) {
-        setElapsedSec(Math.floor((Date.now() - startedAtRef.current) / 1000));
+      const now = Date.now();
+      // Studied time: the clock stands still through a break.
+      if (startedAtRef.current) setElapsedSec(studiedSecAt(now));
+
+      const breakStarted = breaksRef.current.startedAtMs;
+      if (breakStarted !== null) {
+        const left = Math.max(0, Math.ceil((breakStarted + MAX_BREAK_MS - now) / 1000));
+        setBreakRemainingSec(left);
+        // Its five minutes are up: back to it, on its own. Only in the
+        // foreground - an app in the background catches up on its return,
+        // where the time past the five minutes is time away (onAppState).
+        if (left === 0 && AppState.currentState === "active") {
+          resumeRef.current({ auto: true, endedAtMs: breakStarted + MAX_BREAK_MS });
+        }
       }
     }, 1000);
 
@@ -450,9 +560,26 @@ export const useFocusSessionState = (): FocusSessionState => {
 
     const onAppState = (next: AppStateStatus) => {
       if (next === "active") {
+        // Back from somewhere during a break. Still inside its five minutes:
+        // nothing to settle, the break goes on. Past them: the break ended at
+        // its five minutes, and what came after was ordinary time away.
+        if (leftDuringBreakRef.current) {
+          leftDuringBreakRef.current = false;
+          const breakStarted = breaksRef.current.startedAtMs;
+          const breakEnds = breakStarted === null ? null : breakStarted + MAX_BREAK_MS;
+          const now = Date.now();
+          if (breakEnds !== null && now >= breakEnds) {
+            resumeRef.current({ auto: true, endedAtMs: breakEnds });
+            void logAway((now - breakEnds) / 1000);
+          }
+          return;
+        }
         const since = awaySinceRef.current;
         awaySinceRef.current = null;
         if (since) void settleAway(since, Date.now(), leftFromPhoneDownRef.current);
+      } else if (breaksRef.current.startedAtMs !== null) {
+        // Leaving during a break is what a break is for - not time away.
+        leftDuringBreakRef.current = true;
       } else if (awaySinceRef.current === null) {
         awaySinceRef.current = Date.now();
         // Read at the moment of leaving: by the time the user is back, "was it
@@ -470,7 +597,16 @@ export const useFocusSessionState = (): FocusSessionState => {
       stopPhoneDown();
       stopTimers.current = () => {};
     };
-  }, [sendSample, settleAway, startMotion, stopMotion, startPhoneDown, stopPhoneDown, wasPhoneDownRecently]);
+  }, [
+    sendSample,
+    settleAway,
+    logAway,
+    startMotion,
+    stopMotion,
+    startPhoneDown,
+    stopPhoneDown,
+    wasPhoneDownRecently,
+  ]);
 
   // Nothing may outlive the provider: an interval still posting samples after
   // sign-out would keep writing to a session nobody can see any more.
@@ -570,10 +706,16 @@ export const useFocusSessionState = (): FocusSessionState => {
       setLiveTimeline(null);
       awaySpellsRef.current = [];
       downSpellsRef.current = [];
+      breakSpellsRef.current = [];
+      setBreaks(NO_BREAKS);
+      setBreakRemainingSec(0);
+      setBreakTimedOut(false);
+      leftDuringBreakRef.current = false;
+      pendingResumeRef.current = false;
       setPhase("running");
       startTimers();
     },
-    [draftTasks, startTimers],
+    [draftTasks, startTimers, setBreaks],
   );
 
   const start = useCallback(() => {
@@ -730,6 +872,11 @@ export const useFocusSessionState = (): FocusSessionState => {
     if (firstTap) endTappedAtRef.current = Date.now();
     const tappedAt = endTappedAtRef.current!;
 
+    // Measured at the tap, before the break below is closed, so a break still
+    // running counts its share up to the tap - as the server will count it.
+    const studiedSec = studiedSecAt(tappedAt);
+    const breakSpells = breakSpellsAt(tappedAt);
+
     void (async () => {
       if (firstTap) {
         // Stopped FIRST: a sample landing after the session has ended is
@@ -741,6 +888,17 @@ export const useFocusSessionState = (): FocusSessionState => {
         const since = awaySinceRef.current;
         awaySinceRef.current = null;
         if (since) await logAway((tappedAt - since) / 1000);
+
+        // Ending during a break ends the break: the server closes it, capped,
+        // as part of ending - this only stops the countdown on screen.
+        const open = breaksRef.current;
+        if (open.startedAtMs !== null) {
+          setBreaks({ ...open, startedAtMs: null, bankedSec: breakMsAt(open, tappedAt) / 1000 });
+          setBreakRemainingSec(0);
+        }
+        // A resume the server never heard would otherwise be closed at the
+        // end instead, crediting more break than was taken.
+        if (pendingResumeRef.current) await resendResumeRef.current(sessionId);
       }
 
       try {
@@ -771,9 +929,7 @@ export const useFocusSessionState = (): FocusSessionState => {
           interruptionCount: summary?.interruptionCount ?? 0,
           tasksTotal: ended.tasksTotal ?? summary?.tasksTotal ?? 0,
           tasksCompleted: ended.tasksCompleted ?? summary?.tasksCompleted ?? 0,
-          totalSec: startedAtRef.current
-            ? Math.round((tappedAt - startedAtRef.current) / 1000)
-            : 0,
+          totalSec: studiedSec,
         });
 
         try {
@@ -790,6 +946,7 @@ export const useFocusSessionState = (): FocusSessionState => {
               endedAtMs: Date.now(),
               awaySpells: awaySpellsRef.current,
               downSpells: downSpellsRef.current,
+              breakSpells,
             }),
           );
         } catch {
@@ -825,7 +982,7 @@ export const useFocusSessionState = (): FocusSessionState => {
         setBusy(false);
       }
     })();
-  }, [busy, logAway, requestEnd]);
+  }, [busy, logAway, requestEnd, setBreaks]);
 
   const rate = useCallback(
     (value: number) => {
@@ -942,11 +1099,117 @@ export const useFocusSessionState = (): FocusSessionState => {
     setLiveTimeline(null);
     awaySpellsRef.current = [];
     downSpellsRef.current = [];
+    breakSpellsRef.current = [];
+    setBreaks(NO_BREAKS);
+    setBreakRemainingSec(0);
+    setBreakTimedOut(false);
+    leftDuringBreakRef.current = false;
+    pendingResumeRef.current = false;
     setTasks([]);
     // Drafts survive a reset on purpose: someone who studies the same list
     // twice should not have to retype it.
     setError(undefined);
-  }, []);
+  }, [setBreaks]);
+
+  // ---- breaks -------------------------------------------------------------
+
+  /**
+   * Starts a break: the clock stops ON THE TAP, not when the server answers,
+   * and nothing is sampled until it ends.
+   *
+   * If the server refuses - offline, or out of breaks already - the break is
+   * undone here too: a clock stopped for time the server counts as study would
+   * make the two disagree about how long the session was.
+   */
+  const pause = useCallback(() => {
+    const sessionId = sessionIdRef.current;
+    const before = breaksRef.current;
+    if (!sessionId || before.startedAtMs !== null || before.used >= MAX_BREAKS) return;
+
+    const startedAtMs = Date.now();
+    setBreaks({ ...before, startedAtMs, used: before.used + 1 });
+    setBreakRemainingSec(MAX_BREAK_SEC);
+    setBreakTimedOut(false);
+    setError(undefined);
+
+    void (async () => {
+      try {
+        const state = await withAuth((token) =>
+          request<PauseState>(`/api/sessions/${sessionId}/pause`, { method: "POST", token }),
+        );
+        // The server's count is the one that limits.
+        if (breaksRef.current.startedAtMs === startedAtMs) {
+          setBreaks({ ...breaksRef.current, used: state.pauseCount });
+        }
+      } catch (err) {
+        if (breaksRef.current.startedAtMs !== startedAtMs) return;
+        setBreakRemainingSec(0);
+        if (err instanceof ApiError && err.status === 409) {
+          // Out of breaks by the server's count - from an earlier run of the
+          // app, say. Say so, and grey the button out.
+          setBreaks({ ...before, used: MAX_BREAKS });
+          setError(err.message);
+        } else {
+          setBreaks(before);
+          setError("Couldn't start a break. Check your connection and try again.");
+        }
+      }
+    })();
+  }, [setBreaks]);
+
+  /**
+   * Tells the server the break is over. Its answer is the authority on how
+   * much break was credited, so the clock takes it; a failure is retried with
+   * the next sample rather than left for the end to close at the cap.
+   */
+  const sendResume = useCallback(
+    async (sessionId: string) => {
+      try {
+        const state = await withAuth((token) =>
+          request<PauseState>(`/api/sessions/${sessionId}/resume`, { method: "POST", token }),
+        );
+        pendingResumeRef.current = false;
+        if (breaksRef.current.startedAtMs === null) {
+          setBreaks({ ...breaksRef.current, used: state.pauseCount, bankedSec: state.pausedSeconds });
+        }
+      } catch {
+        pendingResumeRef.current = true;
+      }
+    },
+    [setBreaks],
+  );
+  resendResumeRef.current = sendResume;
+
+  /**
+   * Ends the running break - from the Resume button, or on its own when its
+   * five minutes run out (`auto`, ended at `endedAtMs`).
+   *
+   * Local first, like pause: the clock starts again on the tap. The motion
+   * window is emptied, so the next sample describes studying rather than the
+   * walk back to the desk.
+   */
+  const resume = useCallback(
+    ({ auto = false, endedAtMs }: { auto?: boolean; endedAtMs?: number } = {}) => {
+      const sessionId = sessionIdRef.current;
+      const current = breaksRef.current;
+      if (!sessionId || current.startedAtMs === null) return;
+
+      const endMs = endedAtMs ?? Date.now();
+      const creditedSec = Math.min(MAX_BREAK_SEC, Math.max(0, (endMs - current.startedAtMs) / 1000));
+      setBreaks({ startedAtMs: null, used: current.used, bankedSec: current.bankedSec + creditedSec });
+      setBreakRemainingSec(0);
+      setBreakTimedOut(auto);
+      breakSpellsRef.current.push({
+        endMs: current.startedAtMs + creditedSec * 1000,
+        durationSec: creditedSec,
+      });
+      readMotionVariance();
+
+      void sendResume(sessionId);
+    },
+    [setBreaks, sendResume, readMotionVariance],
+  );
+  resumeRef.current = resume;
 
   const discard = useCallback(() => {
     const sessionId = sessionIdRef.current;
@@ -1009,6 +1272,12 @@ export const useFocusSessionState = (): FocusSessionState => {
     awaySec,
     phoneDownSec,
     isPhoneDown,
+    isPaused: breaks.startedAtMs !== null,
+    breakRemainingSec,
+    breaksLeft: Math.max(0, MAX_BREAKS - breaks.used),
+    breakTimedOut,
+    pause,
+    resume: () => resume(),
     result,
     rating,
     selectedGroup,

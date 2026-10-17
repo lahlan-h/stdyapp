@@ -63,7 +63,10 @@ const TabsNavigator = () => {
 
   return (
     <>
-      <NativeTabs tintColor={colors.primary} minimizeBehavior="onScrollDown">
+      {/* "never", not iOS 26's shrink-on-scroll: a bar that collapses to one
+          icon mid-feed hides where the other tabs are, and the bar is how this
+          app gets around. It stays put at full size on every tab. */}
+      <NativeTabs tintColor={colors.primary} minimizeBehavior="never">
         {/* iOS 26's slot above the bar - Apple Music's mini player, in the
             bar's own glass. Where it does not exist, the overlay below. */}
         {showSessionBar && SUPPORTS_BOTTOM_ACCESSORY ? (

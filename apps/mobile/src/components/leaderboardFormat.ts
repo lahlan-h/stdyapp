@@ -93,7 +93,9 @@ export const describeStanding = (board: Leaderboard): Standing => {
         : `${formatGap(metric, me.value - below.value)} ahead of ${shortNameOf(below)}`
       : board.followingCount === 0
         ? "Top of the board - follow people to give it a race"
-        : "Top of the board";
+        : board.memberCount === 1
+          ? "Top of the board - share the group's code to give it a race"
+          : "Top of the board";
   } else if (above.value === me.value) {
     gapText = `Tied with ${shortNameOf(above)}`;
   } else {

@@ -5,6 +5,7 @@ import {
   listAllPostsQuerySchema,
   createPhotoUploadsSchema,
   createPostSchema,
+  MAX_SHARE_GROUPS,
 } from "../src/validation/post.validation.js";
 import { MAX_POST_PHOTOS } from "../src/config/upload.js";
 
@@ -120,6 +121,39 @@ describe("createPostSchema.photoIds", () => {
       { title: "Desk", photoUrl: "https://cdn.example.com/x.jpg" },
     ]) {
       assert.equal(createPostSchema.safeParse(body).success, false, JSON.stringify(body));
+    }
+  });
+});
+
+/** Who a post is shared with. "At least one" is the service's rule, not this one's. */
+describe("createPostSchema sharing", () => {
+  const OTHER_GROUP = "1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
+
+  it("lets an older client send neither field", () => {
+    const parsed = createPostSchema.parse({ title: "Notes", caption: "Done" });
+    assert.equal(parsed.shareToFollowers, undefined);
+    assert.equal(parsed.groupIds, undefined);
+  });
+
+  it("takes followers and groups together", () => {
+    const parsed = createPostSchema.parse({
+      title: "Notes",
+      shareToFollowers: false,
+      groupIds: [GROUP_ID, OTHER_GROUP],
+    });
+    assert.equal(parsed.shareToFollowers, false);
+    assert.deepEqual(parsed.groupIds, [GROUP_ID, OTHER_GROUP]);
+  });
+
+  it("refuses a repeated group, a bad id, and too many groups", () => {
+    for (const groupIds of [
+      [GROUP_ID, GROUP_ID],
+      ["night-owls"],
+      Array.from({ length: MAX_SHARE_GROUPS + 1 }, (_, i) =>
+        `${String(i).padStart(8, "0")}-2f3d-4e5a-9b6c-7d8e9f0a1b2c`,
+      ),
+    ]) {
+      assert.equal(createPostSchema.safeParse({ title: "x", groupIds }).success, false);
     }
   });
 });

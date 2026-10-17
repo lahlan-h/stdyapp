@@ -23,6 +23,7 @@ import {
   useKeyboardLift,
   POST_DETAIL_EXIT_ICON_SIZE,
   ACTION_ICON_SIZE,
+  haptics,
 } from "@theme";
 import {
   usePost,
@@ -94,6 +95,7 @@ const PostDetail = () => {
   const submit = async () => {
     if (!(await addComment(draft))) return;
 
+    haptics.tap();
     setDraft("");
     // Only once it is actually posted. Dismissing on tap would pull the
     // keyboard down under a request that can still fail, leaving the user to

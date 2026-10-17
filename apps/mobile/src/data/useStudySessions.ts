@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { request } from "./api";
 import { withAuth } from "./auth";
+import { studiedMinutes } from "./sessionTime";
 
 /**
  * One row of GET /api/sessions.
@@ -15,6 +16,8 @@ interface RawSession {
   startedAt: string;
   /** Null while a session is still running - NOT the same as a duration of zero. */
   endedAt: string | null;
+  /** Credited break seconds, left out of every duration - see sessionTime.ts. */
+  pausedSeconds?: number;
   focusPoints: number;
   /** Null when the session was never scored - not the same as a score of 0. */
   focusScore: number | null;
@@ -50,17 +53,10 @@ export interface StudySessionsState {
 }
 
 /**
- * Floored at zero, matching how the API derives a post's session duration: a
- * clock adjustment can put endedAt before startedAt, and a negative minute
- * count renders as nonsense.
+ * Studied minutes, breaks left out and floored at zero, matching how the API
+ * derives every session duration - see sessionTime.ts.
  */
-const minutesBetween = (startedAt: string, endedAt: string): number =>
-  Math.max(
-    0,
-    Math.round(
-      (new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 60000,
-    ),
-  );
+const minutesOf = (session: RawSession): number => studiedMinutes(session);
 
 /**
  * The caller's own study totals.
@@ -112,7 +108,7 @@ export const useStudySessions = (): StudySessionsState => {
         session.endedAt
           ? {
               completed: acc.completed + 1,
-              minutes: acc.minutes + minutesBetween(session.startedAt, session.endedAt),
+              minutes: acc.minutes + minutesOf(session),
             }
           : acc,
       { completed: 0, minutes: 0 },
@@ -129,7 +125,7 @@ export const useStudySessions = (): StudySessionsState => {
           id: session.id,
           startedAt: session.startedAt,
           endedAt: session.endedAt,
-          minutes: minutesBetween(session.startedAt, session.endedAt),
+          minutes: minutesOf(session),
           focusPoints: session.focusPoints,
           focusScore: session.focusScore,
           groupName: session.group?.name ?? null,

@@ -1,7 +1,7 @@
 import { Text, Pressable, ActivityIndicator } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 
-import { useTheme, useStyles, PROFILE_ACTION_ICON_SIZE } from "@theme";
+import { useTheme, useStyles, haptics, PROFILE_ACTION_ICON_SIZE } from "@theme";
 import type { FollowState } from "@data";
 
 /**
@@ -27,7 +27,10 @@ const FollowButton = ({ isFollowing, isBusy, error, toggle }: FollowState) => {
   return (
     <>
       <Pressable
-        onPress={toggle}
+        onPress={() => {
+          haptics.tap();
+          toggle();
+        }}
         disabled={!isKnown || isBusy}
         accessibilityRole="button"
         accessibilityLabel={isFollowing ? "Unfollow" : "Follow"}

@@ -392,4 +392,118 @@ describe("focus feature against a real database", { skip }, () => {
       await destroyUser(rival);
     }
   });
+
+  it("ranks a group's own board for its members, and only for them", async () => {
+    const member = await makeUser("member");
+    const outsider = await makeUser("outsider");
+    let groupId;
+    try {
+      const run = async (owner, minutes) => {
+        const id = await openSession(owner, { minutes });
+        await focusService.ingestSamples(id, owner, [
+          { motionVariance: 0.05, inApp: true },
+          { motionVariance: 0.05, inApp: true },
+        ]);
+        await sessionService.endSession(id, owner);
+      };
+      await run(member, 45);
+      await run(outsider, 120);
+
+      // The caller owns the group; `member` joins it; `outsider` never does.
+      const group = await prisma.studyGroup.create({
+        data: {
+          ownerId: userId,
+          name: `board-${randomUUID().slice(0, 8)}`,
+          // Every group has a unique code; this run's own, so it never collides.
+          joinCode: randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase(),
+          memberships: { create: [{ userId }, { userId: member }] },
+        },
+        select: { id: true },
+      });
+      groupId = group.id;
+
+      const board = await focusService.getLeaderboard(userId, {
+        scope: "group",
+        groupId,
+        days: 7,
+        limit: 50,
+      });
+      assert.equal(board.scope, "group");
+      assert.equal(board.groupId, groupId);
+      assert.equal(board.memberCount, 2, "the caller and the one other member");
+      assert.equal(board.followingCount, null);
+      assert.ok(board.entries.some((e) => e.userId === member), "members are ranked");
+      assert.ok(
+        !board.entries.some((e) => e.userId === outsider),
+        "someone outside the group must not be on its board, however much they studied",
+      );
+      assert.ok(board.me.rank !== null, "the caller's rank is known on a group board");
+
+      await assert.rejects(
+        focusService.getLeaderboard(outsider, { scope: "group", groupId, days: 7 }),
+        (err) => err.status === 403,
+        "a non-member may not read a group's standings",
+      );
+
+      // A block hides a member here exactly as it does on every other board.
+      await prisma.block.create({ data: { blockerId: userId, blockedId: member } });
+      const blocked = await focusService.getLeaderboard(userId, {
+        scope: "group",
+        groupId,
+        days: 7,
+      });
+      assert.ok(!blocked.entries.some((e) => e.userId === member));
+      assert.equal(blocked.memberCount, 1);
+    } finally {
+      if (groupId) await prisma.studyGroup.delete({ where: { id: groupId } }).catch(() => {});
+      await prisma.groupMembership.deleteMany({ where: { userId: { in: [member, outsider] } } });
+      await destroyUser(member);
+      await destroyUser(outsider);
+    }
+  });
+
+  it("counts a calendar week from Monday midnight in the caller's zone", async () => {
+    const weekly = await makeUser("weekly");
+    try {
+      // Wednesday 14 Oct 2026, noon UTC - injected, so the week under test is
+      // the same whichever day the suite runs on.
+      const now = new Date("2026-10-14T12:00:00Z");
+
+      // Written straight onto the row, as endSession would have, so each
+      // session ends exactly where the test needs it to.
+      const ended = (endedAt, focusWeightedMinutes) =>
+        prisma.session.create({
+          data: {
+            userId: weekly,
+            startedAt: new Date(Date.parse(endedAt) - 30 * 60_000),
+            endedAt: new Date(endedAt),
+            focusWeightedMinutes,
+          },
+        });
+      await ended("2026-10-10T12:00:00Z", 30); // Saturday: last week everywhere
+      await ended("2026-10-11T14:00:00Z", 20); // 1am Monday in Sydney, still Sunday in UTC
+      await ended("2026-10-13T12:00:00Z", 10); // Tuesday everywhere
+
+      const board = (options) => focusService.getLeaderboard(weekly, options, now);
+
+      const rolling = await board({ days: 7 });
+      assert.equal(rolling.me.value, 60, "seven days back reaches into last week");
+
+      const sydney = await board({ days: "week", tz: "Australia/Sydney" });
+      assert.equal(sydney.days, "week");
+      assert.equal(sydney.since.toISOString(), "2026-10-11T13:00:00.000Z");
+      assert.equal(sydney.me.value, 30, "Monday and Tuesday in Sydney, not Saturday");
+      assert.equal(sydney.me.rank, 1);
+      assert.deepEqual(
+        sydney.entries.map((entry) => entry.value),
+        [30],
+        "the board's own row agrees with the caller's",
+      );
+
+      const utc = await board({ days: "week" });
+      assert.equal(utc.me.value, 10, "without a zone the week is UTC's, which starts later");
+    } finally {
+      await destroyUser(weekly);
+    }
+  });
 });

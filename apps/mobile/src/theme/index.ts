@@ -31,10 +31,8 @@ export {
   TASK_ICON_SIZE,
   TOUCH_MIN,
   STUDY_FOOTER_ROOM,
-  WEEK_CHART_HEIGHT,
-  WEEK_PILL_ICON_SIZE,
-  ADVANCED_ANALYTICS_ICON_SIZE,
   BEGIN_CHEVRON_SIZE,
+  LOCK_IN_THUMB_SIZE,
 } from "./study.styles";
 export {
   createSettingsStyles,
@@ -92,6 +90,7 @@ export {
 export {
   createHomeSearchStyles,
   HOME_PANEL_HEIGHT,
+  GROUP_PANEL_HEIGHT,
   PANEL_TITLE_ICON_SIZE,
   HOME_SEARCH_ICON_SIZE,
   SEARCH_ROW_ICON_SIZE,
@@ -105,6 +104,7 @@ export {
   SEND_ICON_SIZE,
 } from "./messages.styles";
 export { useReducedMotion } from "./useReducedMotion";
+export { haptics } from "./haptics";
 export { useKeyboardLift, type KeyboardLift } from "./useKeyboardLift";
 export {
   createAnalyticsStyles,
@@ -113,6 +113,8 @@ export {
   DAILY_CHART_HEIGHT,
   HOURLY_CHART_HEIGHT,
   MIN_VISIBLE_BAR,
+  WEEK_CHART_HEIGHT,
+  WEEK_PILL_ICON_SIZE,
 } from "./analytics.styles";
 export {
   createRoutinesStyles,
