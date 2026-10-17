@@ -190,16 +190,29 @@ const GroupScreen = () => {
     void action();
   };
 
+  /**
+   * Back DOWN to the Study tab, never a push to it.
+   *
+   * This screen sits on the root stack over the tabs, and navigate("/study")
+   * from here pushes a second copy of the whole tab layout on top of it. That
+   * copy mounts a second FocusSessionProvider - a second session engine, which
+   * takes the first one's running session for a crashed leftover and abandons
+   * it - and, being a pushed screen, lets iOS's swipe-back take the slide meant
+   * for the lock-in slider. dismissTo pops this screen and lands on the tabs
+   * already there.
+   */
+  const toStudy = () => router.dismissTo("/study");
+
   const startHere = () => {
     if (!group) return;
     requestStudySession({ kind: "group", groupId: group.id, groupName: group.name });
-    router.navigate("/study");
+    toStudy();
   };
 
   const joinSession = (inviteCode: string) => {
     if (!group) return;
     requestStudySession({ kind: "join", inviteCode, groupName: group.name });
-    router.navigate("/study");
+    toStudy();
   };
 
   const Person = ({ person, meta, children }: {

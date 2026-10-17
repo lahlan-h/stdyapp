@@ -575,7 +575,9 @@ const InviteNudge = () => {
   return (
     <Pressable
       style={({ pressed }) => [styles.invite, pressed && styles.pressed]}
-      onPress={() => router.navigate("/")}
+      // dismissTo, not navigate: this screen is pushed over the tabs, and
+      // navigate would stack a second copy of them - see group/[id].tsx.
+      onPress={() => router.dismissTo("/")}
       accessibilityRole="button"
       accessibilityLabel="Find classmates to follow, from the Feed"
     >
