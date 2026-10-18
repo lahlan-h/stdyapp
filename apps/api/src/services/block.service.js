@@ -5,7 +5,11 @@ import * as blockRepo from "../repositories/block.repository.js";
 import { getUserById } from "./user.service.js";
 // A SERVICE import, not a repository one, which is the deliberate exception to
 // how cross-domain work is done in this codebase. See severFollowEdges below.
-import { unfollowUser, removeFollower } from "./follow.service.js";
+import {
+  unfollowUser,
+  removeFollower,
+  cancelFollowRequestsBetween,
+} from "./follow.service.js";
 // The shared duck-typing helper. toHttpError from the same module is deliberately
 // NOT reused, for the reasons follow.service.js spells out: its P2002 message
 // would read "That value is already in use" for a repeat block, and it maps P2003
@@ -153,6 +157,10 @@ const invalidateBlock = async (blockerId) => {
 const severFollowEdges = async (blockerId, blockedId) => {
   await unfollowUser(blockedId, blockerId);
   await removeFollower(blockedId, blockerId);
+  // And a request still waiting in either direction - left alone, the blocked
+  // person's request would sit in the blocker's notifications with an Accept
+  // button on it, and accepting it would undo the block's whole point.
+  await cancelFollowRequestsBetween(blockerId, blockedId);
 };
 
 /**

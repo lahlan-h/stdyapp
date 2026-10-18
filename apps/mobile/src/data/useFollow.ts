@@ -4,12 +4,25 @@ import { ApiError, request } from "./api";
 import { withAuth } from "./auth";
 import type { FollowSummary } from "./useFollowCounts";
 
+/**
+ * Where the viewer stands with someone:
+ *   none      - not following; the button offers Follow
+ *   requested - asked to follow a private account, waiting on its answer
+ *   following - an approved follower
+ */
+export type FollowStatus = "none" | "requested" | "following";
+
 export interface FollowState {
   /** Undefined until the follow summary has loaded, so the button can wait. */
-  isFollowing?: boolean;
+  status?: FollowStatus;
   isBusy: boolean;
   error?: string;
   toggle: () => void;
+}
+
+/** What POST /api/follows answers - a follow row, or a request still waiting. */
+interface FollowResponse {
+  status: "following" | "requested";
 }
 
 const describe = (err: unknown): string => {
@@ -23,28 +36,33 @@ const describe = (err: unknown): string => {
   return "Could not update your follow. Try again.";
 };
 
+const statusOf = (summary: FollowSummary): FollowStatus =>
+  summary.followedByMe ? "following" : summary.requestedByMe ? "requested" : "none";
+
 /**
- * Follow or unfollow one user.
+ * Follow, unfollow, or - for a private account - ask to follow, and take the
+ * request back.
  *
- * The starting answer is followedByMe from the summary useFollowCounts already
- * read - there is no separate "am I following" route, and a second request for
- * a fact already on screen would be waste.
+ * The starting answer comes from the summary useFollowCounts already read -
+ * there is no separate "am I following" route, and a second request for a fact
+ * already on screen would be waste.
  *
- * OPTIMISTIC, unlike useProfile's save: the button flips the moment it is
- * tapped and flips back if the server refuses. A follow is cheap to undo and
- * frequent to tap, so waiting on a spinner would make the commonest action on
- * the screen feel slow. `onSettled` re-reads the counts afterwards, so the
- * follower number reflects the server rather than a guess.
+ * OPTIMISTIC, unlike useProfile's save: the button changes the moment it is
+ * tapped and changes back if the server refuses. A Follow tap guesses
+ * "following" and is corrected to "requested" by the answer when the account
+ * turns out to be private - the API, not this hook, knows which. `onSettled`
+ * re-reads the summary afterwards, so the counts and canView reflect the server.
  *
- * Both writes are idempotent on the API - following twice is a 200, unfollowing
- * a stranger a 204 - so a double tap racing itself cannot corrupt anything.
+ * Both writes are idempotent on the API - following or asking twice is fine,
+ * and the DELETE both unfollows and cancels a request - so a double tap racing
+ * itself cannot corrupt anything.
  */
 export const useFollow = (
   userId: string,
   summary: FollowSummary | undefined,
   onSettled: () => void,
 ): FollowState => {
-  const [isFollowing, setIsFollowing] = useState<boolean | undefined>(undefined);
+  const [status, setStatus] = useState<FollowStatus | undefined>(undefined);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
@@ -59,39 +77,44 @@ export const useFollow = (
 
   useEffect(() => {
     if (!summary || isBusy || summary === superseded.current) return;
-    setIsFollowing(summary.followedByMe);
+    setStatus(statusOf(summary));
   }, [summary, isBusy]);
 
   const toggle = useCallback(async () => {
-    if (isFollowing === undefined || isBusy) return;
+    if (status === undefined || isBusy) return;
 
-    const next = !isFollowing;
+    const before = status;
+    // From none, a follow; from either other state, the DELETE that unfollows
+    // or cancels the request.
+    const isFollow = before === "none";
     superseded.current = summary;
-    setIsFollowing(next);
+    setStatus(isFollow ? "following" : "none");
     setIsBusy(true);
     setError(undefined);
 
     try {
-      await withAuth((token) =>
-        next
-          ? request<unknown>("/api/follows", {
-              method: "POST",
-              body: { followingId: userId },
-              token,
-            })
-          : request<void>(`/api/follows/user/${userId}`, {
-              method: "DELETE",
-              token,
-            }),
-      );
+      if (isFollow) {
+        const answer = await withAuth((token) =>
+          request<FollowResponse>("/api/follows", {
+            method: "POST",
+            body: { followingId: userId },
+            token,
+          }),
+        );
+        setStatus(answer?.status === "requested" ? "requested" : "following");
+      } else {
+        await withAuth((token) =>
+          request<void>(`/api/follows/user/${userId}`, { method: "DELETE", token }),
+        );
+      }
     } catch (err) {
-      setIsFollowing(!next);
+      setStatus(before);
       setError(describe(err));
     } finally {
       setIsBusy(false);
       onSettled();
     }
-  }, [isFollowing, isBusy, summary, userId, onSettled]);
+  }, [status, isBusy, summary, userId, onSettled]);
 
-  return { isFollowing, isBusy, error, toggle };
+  return { status, isBusy, error, toggle };
 };

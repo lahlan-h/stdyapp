@@ -2,6 +2,7 @@ import * as userService from "../services/user.service.js";
 import * as avatarService from "../services/avatar.service.js";
 import * as authService from "../services/auth.service.js";
 import * as accountService from "../services/account.service.js";
+import * as followService from "../services/follow.service.js";
 
 /**
  * POST /api/users - creates a user.
@@ -62,6 +63,15 @@ export const updateUser = async (req, res) => {
     req.validated.params.id,
     req.validated.body,
   );
+
+  // Going public lets in everyone who was waiting: the account is open to all
+  // of them now, and leaving them pending would only make them ask again.
+  // Here rather than in user.service.js, which follow.service.js already
+  // imports - the other way round would be a cycle.
+  if (req.validated.body.isPrivate === false) {
+    await followService.acceptAllFollowRequests(user.id);
+  }
+
   res.status(200).json({ data: user });
 };
 

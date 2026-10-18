@@ -4,6 +4,7 @@ import * as bookmarkRepo from "../repositories/bookmark.repository.js";
 // post.service.js instead would drag its ownership gate along with it — a gate
 // that is wrong here, since you are supposed to save other people's posts.
 import { findPostById } from "../repositories/post.repository.js";
+import { canViewPost } from "./privacy.service.js";
 // The shared duck-typing helper. toHttpError from the same module is deliberately
 // NOT reused, for the reason like.service.js gives: it returns HttpError, which
 // belongs to the users/auth half of this API, its P2002 message would read "That
@@ -133,6 +134,10 @@ const invalidateBookmark = async (userId) => {
  */
 export const saveBookmark = async ({ userId, postId }) => {
   await assertPostExists(postId);
+  // A post the caller may not see - a private author's, or a group's they are
+  // not in - is "not found", exactly as a missing one is. Without this, writing
+  // to it would be a way to read it: the caller's own list hands the Post back.
+  if (!(await canViewPost(userId, postId))) throw notFound("Post");
 
   const existing = await bookmarkRepo.findBookmarkByUserAndPost(userId, postId);
   // Nothing changed, so nothing to invalidate — the cheap path stays cheap, and

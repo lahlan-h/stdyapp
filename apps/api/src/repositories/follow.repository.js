@@ -1,5 +1,7 @@
 import { prisma } from "@stdyapp/core";
 
+import { authorVisibleTo } from "./post.repository.js";
+
 // The user allowlist shared by findAllPosts, findLikesByPost and listMembers.
 // It is what keeps passwordHash and email out of a public follower list, so it
 // must stay a select rather than becoming `user: true`. Named here because this
@@ -14,6 +16,109 @@ export const createFollow = ({ followerId, followingId }) => {
   return prisma.follow.create({
     data: { followerId, followingId },
     include: { following: FOLLOW_USER_SELECT },
+  });
+};
+
+// --- Follow requests -------------------------------------------------------
+//
+// A follow waiting on a private account. See the FollowRequest model.
+
+const REQUESTER_SELECT = {
+  select: { id: true, username: true, firstName: true, lastName: true, avatarUrl: true },
+};
+
+export const findFollowRequest = (requesterId, targetId) => {
+  return prisma.followRequest.findUnique({
+    where: { requesterId_targetId: { requesterId, targetId } },
+  });
+};
+
+/**
+ * Asks, idempotently: a second ask is the same row, with its createdAt kept so
+ * asking again does not jump the queue.
+ */
+export const upsertFollowRequest = (requesterId, targetId) => {
+  return prisma.followRequest.upsert({
+    where: { requesterId_targetId: { requesterId, targetId } },
+    create: { requesterId, targetId },
+    update: {},
+  });
+};
+
+// deleteMany, for deleteFollow's reason: answering or cancelling twice is not
+// an error.
+export const deleteFollowRequest = (requesterId, targetId) => {
+  return prisma.followRequest.deleteMany({ where: { requesterId, targetId } });
+};
+
+/** Requests waiting for this user's answer, newest first, with who asked. */
+export const findIncomingFollowRequests = (targetId) => {
+  return prisma.followRequest.findMany({
+    where: { targetId },
+    include: { requester: REQUESTER_SELECT },
+    orderBy: { createdAt: "desc" },
+  });
+};
+
+/**
+ * Accepts: the follow is created and the request deleted together, so the two
+ * can never both exist, nor both be missing after an accept.
+ *
+ * Resolves false when there was no request to accept - answered already, or
+ * cancelled a moment ago - in which case nothing was written.
+ *
+ * @returns {Promise<boolean>}
+ */
+export const acceptFollowRequest = (requesterId, targetId) => {
+  return prisma.$transaction(async (tx) => {
+    const { count } = await tx.followRequest.deleteMany({
+      where: { requesterId, targetId },
+    });
+    if (count === 0) return false;
+
+    // skipDuplicates: a follow that somehow already exists is the outcome
+    // asked for, not a conflict.
+    await tx.follow.createMany({
+      data: [{ followerId: requesterId, followingId: targetId }],
+      skipDuplicates: true,
+    });
+    return true;
+  });
+};
+
+/**
+ * Accepts every request waiting on one user at once - an account going public.
+ *
+ * @returns {Promise<string[]>} the requesters, now followers
+ */
+export const acceptAllFollowRequests = (targetId) => {
+  return prisma.$transaction(async (tx) => {
+    const requests = await tx.followRequest.findMany({
+      where: { targetId },
+      select: { requesterId: true },
+    });
+    if (requests.length === 0) return [];
+
+    await tx.follow.createMany({
+      data: requests.map(({ requesterId }) => ({ followerId: requesterId, followingId: targetId })),
+      skipDuplicates: true,
+    });
+    await tx.followRequest.deleteMany({
+      where: { targetId, requesterId: { in: requests.map(({ requesterId }) => requesterId) } },
+    });
+    return requests.map(({ requesterId }) => requesterId);
+  });
+};
+
+/** Requests in EITHER direction between two users - for a new block. */
+export const deleteFollowRequestsBetween = (a, b) => {
+  return prisma.followRequest.deleteMany({
+    where: {
+      OR: [
+        { requesterId: a, targetId: b },
+        { requesterId: b, targetId: a },
+      ],
+    },
   });
 };
 
@@ -101,9 +206,16 @@ export const countFollowing = (userId) => {
  *
  * @returns {Promise<[object[], number]>} the page, and the total row count
  */
-export const findAllFollows = ({ skip, take }) => {
+export const findAllFollows = ({ skip, take, viewerId }) => {
+  // Only edges whose BOTH ends the viewer may see: who a private account
+  // follows, and who follows it, are its to show. See authorVisibleTo.
+  const where = {
+    follower: authorVisibleTo(viewerId),
+    following: authorVisibleTo(viewerId),
+  };
   return prisma.$transaction([
     prisma.follow.findMany({
+      where,
       include: {
         follower: FOLLOW_USER_SELECT,
         following: FOLLOW_USER_SELECT,
@@ -112,7 +224,7 @@ export const findAllFollows = ({ skip, take }) => {
       skip,
       take,
     }),
-    prisma.follow.count(),
+    prisma.follow.count({ where }),
   ]);
 };
 

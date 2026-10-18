@@ -5,6 +5,7 @@ import * as routineRepo from "../repositories/studyRoutine.repository.js";
 import { findPostRefsByRoutine } from "../repositories/post.repository.js";
 import { invalidateDetachedPosts } from "./post.service.js";
 import { findBlockBetween } from "../repositories/block.repository.js";
+import { canViewUser } from "./privacy.service.js";
 import {
   bumpVersions,
   routineContentVersionKey,
@@ -45,16 +46,17 @@ const getOwnedRoutineOrThrow = async (routineId, requesterId) => {
 };
 
 /**
- * Throws a 404 when a block stands between the routine's owner and someone
- * else, in either direction.
+ * Throws a 404 when someone other than the owner may not see the owner's
+ * routines: a block stands between them, in either direction, or the owner is
+ * a private account the viewer is not an approved follower of.
  *
  * 404 rather than 403, as everywhere blocks are enforced: a 403 would confirm
- * the routine exists and that a block is the reason, which is exactly what a
- * block is meant to hide. The owner is never blocked from their own routine.
+ * the routine exists and say why it is hidden. The owner always sees their own.
  */
-const assertNotBlocked = async (ownerId, viewerId) => {
+const assertCanSeeRoutines = async (ownerId, viewerId) => {
   if (ownerId === viewerId) return;
   if (await findBlockBetween(ownerId, viewerId)) throw notFound();
+  if (!(await canViewUser(viewerId, ownerId))) throw notFound();
 };
 
 /**
@@ -154,9 +156,9 @@ export const deleteRoutine = async (routineId, requesterId) => {
 export const cloneRoutine = async (sourceRoutineId, requesterId) => {
   const source = await routineRepo.findRoutineById(sourceRoutineId);
   if (!source) throw notFound();
-  // Not ownership-gated, but block-gated: a block hides a person's routines
-  // from preview, and cloning must not be a way round that.
-  await assertNotBlocked(source.userId, requesterId);
+  // Not ownership-gated, but gated like preview: a block, or a private owner,
+  // hides a person's routines from preview, and cloning must not be a way round.
+  await assertCanSeeRoutines(source.userId, requesterId);
 
   const clone = await routineRepo.createRoutine({
     userId: requesterId,
@@ -291,7 +293,7 @@ export const reorderTodoItems = async (routineId, requesterId, todoIds) => {
 export const previewRoutine = async (routineId, viewerId) => {
   const routine = await routineRepo.findRoutinePreview(routineId);
   if (!routine) throw notFound();
-  await assertNotBlocked(routine.userId, viewerId);
+  await assertCanSeeRoutines(routine.userId, viewerId);
 
   const { userId, user, ...rest } = routine;
   return {

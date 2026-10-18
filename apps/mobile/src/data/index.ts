@@ -109,7 +109,8 @@ export {
 // For turning a profile into the person a chat is with - the same shape a
 // search result has.
 export { toUserSummary } from "./userSummary";
-export { useFollow, type FollowState } from "./useFollow";
+export { useFollow, type FollowState, type FollowStatus } from "./useFollow";
+export { useFollowRequest, type FollowRequestState } from "./useFollowRequest";
 export { useMotionVariance, type MotionSource } from "./useMotionVariance";
 export {
   FocusSessionProvider,

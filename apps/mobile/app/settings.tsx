@@ -26,6 +26,7 @@ import SettingsSection from "@components/SettingsSection";
 import SettingsRow from "@components/SettingsRow";
 import { confirmSignOut } from "@components/confirmSignOut";
 import DeleteAccountDialog from "@components/DeleteAccountDialog";
+import PrivacyRow from "@components/PrivacyRow";
 import ThemeSegmentedControl from "@components/ThemeSegmentedControl";
 
 /**
@@ -139,10 +140,9 @@ const Settings = () => {
 
           {/* Analytics and Routines both live under the Study tab. */}
           {/*
-            Edit profile, Manage subscription, Sign out and Delete account are
-            live. Privacy is still a placeholder: the API stores isPrivate but
-            nothing enforces it yet. Delete account opens a dialog that asks for
-            the password first - nothing is deleted from the row itself.
+            Every row here is live. Private account is a switch the API
+            enforces - see PrivacyRow. Delete account opens a dialog that asks
+            for the password first - nothing is deleted from the row itself.
           */}
           <SettingsSection title="Account">
             <SettingsRow
@@ -160,12 +160,7 @@ const Settings = () => {
               onPress={() => router.push("/plans")}
               right={<Feather name="chevron-right" size={ROW_ICON_SIZE} color={colors.textMuted} />}
             />
-            <SettingsRow
-              isPlaceholder
-              icon="lock"
-              label="Privacy"
-              description="Who can see your sessions"
-            />
+            <PrivacyRow />
             <SettingsRow icon="log-out" label="Sign out" onPress={confirmSignOut} />
             <SettingsRow
               isDestructive

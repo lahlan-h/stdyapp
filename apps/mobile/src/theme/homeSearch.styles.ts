@@ -656,6 +656,46 @@ export const createHomeSearchStyles = (colors: ColorScheme) => {
       alignItems: "center",
       gap: 6,
     },
+    // Accept and Decline under a follow request. Small pills at the control
+    // radius, so they read as the row's own controls rather than a dialog.
+    requestActions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 6,
+    },
+    requestButton: {
+      minWidth: 84,
+      height: 32,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    requestButtonPrimary: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    requestLabel: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 13,
+      color: colors.text,
+    },
+    // The page's ground rather than a fixed white - see actionLabelOnPrimary in
+    // profile.styles.
+    requestLabelOnPrimary: {
+      color: colors.bg,
+    },
+    requestError: {
+      width: "100%",
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 12,
+      color: colors.danger,
+    },
     notificationUnreadDot: {
       width: 7,
       height: 7,

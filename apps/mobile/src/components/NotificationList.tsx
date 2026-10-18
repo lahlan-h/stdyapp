@@ -17,11 +17,12 @@ import {
   NOTIFICATION_ICON_SIZE,
 } from "@theme";
 import { formatRelativeTime } from "@stdyapp/shared";
-import type {
-  AppNotification,
-  NotificationType,
-  NotificationsState,
-  UserSummary,
+import {
+  useFollowRequest,
+  type AppNotification,
+  type NotificationType,
+  type NotificationsState,
+  type UserSummary,
 } from "@data";
 
 /**
@@ -55,6 +56,8 @@ const ICONS: Record<NotificationType, ComponentProps<typeof Feather>["name"]> = 
   POST_COMMENT: "message-circle",
   GROUP_JOIN: "users",
   GROUP_DISBANDED: "users",
+  FOLLOW_REQUEST: "user-plus",
+  FOLLOW_ACCEPTED: "user-check",
   STREAK_MILESTONE: "zap",
   GOAL_REACHED: "target",
   SYSTEM: "info",
@@ -197,6 +200,9 @@ const NotificationList = ({
             {isNew ? <View style={styles.notificationUnreadDot} /> : null}
             <Text style={styles.userHandle}>{formatRelativeTime(item.createdAt)}</Text>
           </View>
+          {item.type === "FOLLOW_REQUEST" && item.actor ? (
+            <RequestActions requester={item.actor} />
+          ) : null}
         </View>
       </View>
 
@@ -234,6 +240,54 @@ const NotificationList = ({
       onRefresh={refresh}
       refreshing={isRefreshing}
     />
+  );
+};
+
+/**
+ * Accept and Decline, under a FOLLOW_REQUEST row - one of the two places a
+ * private account answers a request, beside the requester's own profile.
+ *
+ * Its own component so each row holds its own busy state: answering one request
+ * must not grey out every other row's buttons. On success useFollowRequest takes
+ * the row out of the list, so there is no "accepted" state to draw here.
+ */
+const RequestActions = ({ requester }: { requester: UserSummary }) => {
+  const { colors } = useTheme();
+  const styles = useStyles("homeSearch");
+  const { accept, decline, isBusy, error } = useFollowRequest();
+
+  return (
+    <View style={styles.requestActions}>
+      <Pressable
+        onPress={() => accept(requester.id)}
+        disabled={isBusy}
+        accessibilityRole="button"
+        accessibilityLabel={`Accept ${requester.displayName}'s follow request`}
+        accessibilityState={{ disabled: isBusy, busy: isBusy }}
+        style={({ pressed }) => [
+          styles.requestButton,
+          styles.requestButtonPrimary,
+          (pressed || isBusy) && { opacity: 0.6 },
+        ]}
+      >
+        {isBusy ? (
+          <ActivityIndicator size="small" color={colors.bg} />
+        ) : (
+          <Text style={[styles.requestLabel, styles.requestLabelOnPrimary]}>Accept</Text>
+        )}
+      </Pressable>
+      <Pressable
+        onPress={() => decline(requester.id)}
+        disabled={isBusy}
+        accessibilityRole="button"
+        accessibilityLabel={`Decline ${requester.displayName}'s follow request`}
+        accessibilityState={{ disabled: isBusy }}
+        style={({ pressed }) => [styles.requestButton, (pressed || isBusy) && { opacity: 0.6 }]}
+      >
+        <Text style={styles.requestLabel}>Decline</Text>
+      </Pressable>
+      {error ? <Text style={styles.requestError}>{error}</Text> : null}
+    </View>
   );
 };
 

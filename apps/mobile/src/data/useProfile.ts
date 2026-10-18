@@ -27,6 +27,12 @@ export interface PublicProfile {
   lastName: string | null;
   avatarUrl: string | null;
   bio: string | null;
+  /**
+   * A private account, whose posts and activity only approved followers see.
+   * Optional because not every source of a profile carries it; absent reads as
+   * public, which is what the header shows nothing for.
+   */
+  isPrivate?: boolean;
 }
 
 /**
@@ -50,12 +56,12 @@ export interface Profile extends PublicProfile {
  * email is left out on purpose: it is the login identifier, and changing it
  * with nothing but a live access token is the same risk the API's
  * updateUserSchema gives for leaving password out. avatarUrl is not client
- * input at all - it goes through PUT /api/users/:id/photo. isPrivate is left
- * out until the API enforces it: today it is stored and read by nothing, so a
- * switch for it would promise privacy the app does not give.
+ * input at all - it goes through PUT /api/users/:id/photo. isPrivate is the
+ * Privacy switch in Settings: the API enforces it, and turning it off accepts
+ * every follow request still waiting.
  */
 export type ProfileEdit = Partial<
-  Pick<Profile, "username" | "firstName" | "lastName" | "bio">
+  Pick<Profile, "username" | "firstName" | "lastName" | "bio" | "isPrivate">
 >;
 
 export interface ProfileState {

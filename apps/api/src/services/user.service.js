@@ -264,6 +264,10 @@ const USER_SEARCH_SELECT = {
   firstName: true,
   lastName: true,
   avatarUrl: true,
+  // So a result can carry a lock before it is opened. Unlike isSuspended, this
+  // one is meant to be seen: it is what tells someone their follow will be a
+  // request.
+  isPrivate: true,
 };
 
 /**
@@ -328,6 +332,32 @@ export const getUserById = async (id) => {
   if (!user) throw new HttpError(404, USER_NOT_FOUND);
 
   return user;
+};
+
+/**
+ * What deciding whether `viewerId` may see `targetId`'s activity needs: whether
+ * the account is private, and whether the viewer is an approved follower.
+ *
+ * One indexed read, the follow found through the target's `followers` relation
+ * filtered to the viewer. Here because this module is the one that touches
+ * prisma.user; the RULE that uses it lives in privacy.service.js.
+ *
+ * @param {string} targetId
+ * @param {string} viewerId
+ * @returns {Promise<{ isPrivate: boolean, followedByViewer: boolean } | null>}
+ *   null when no such user exists
+ */
+export const findProfileVisibility = async (targetId, viewerId) => {
+  const user = await prisma.user.findUnique({
+    where: { id: targetId },
+    select: {
+      isPrivate: true,
+      followers: { where: { followerId: viewerId }, select: { id: true }, take: 1 },
+    },
+  });
+  if (!user) return null;
+
+  return { isPrivate: user.isPrivate, followedByViewer: user.followers.length > 0 };
 };
 
 /**

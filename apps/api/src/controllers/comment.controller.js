@@ -117,6 +117,7 @@ export const listAll = async (req, res, next) => {
   try {
     const { items, total, page, limit } = await commentService.listAllComments(
       req.validated.query,
+      req.user.id,
     );
 
     res.status(200).json({

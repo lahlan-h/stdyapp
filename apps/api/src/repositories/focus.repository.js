@@ -331,6 +331,30 @@ export const findBlockedUserIds = async (userId) => {
   return [...ids];
 };
 
+/**
+ * Private accounts this user may NOT see - every private user but themselves
+ * and the ones they are an approved follower of. The global board leaves these
+ * out; see authorVisibleTo in post.repository.js for the same rule as a filter.
+ *
+ * Only the global board asks. A following board already holds approved follows
+ * and nothing else, and a group's board shows its members to each other by
+ * design.
+ *
+ * @param {string} userId
+ * @returns {Promise<string[]>}
+ */
+export const findHiddenPrivateUserIds = async (userId) => {
+  const rows = await prisma.user.findMany({
+    where: {
+      isPrivate: true,
+      id: { not: userId },
+      followers: { none: { followerId: userId } },
+    },
+    select: { id: true },
+  });
+  return rows.map((row) => row.id);
+};
+
 /** @param {string} userId */
 export const findCalibration = (userId) => {
   return prisma.focusCalibration.findUnique({ where: { userId } });

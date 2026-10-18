@@ -3,7 +3,8 @@ import * as followRepo from "../repositories/follow.repository.js";
 // It throws its own 404, which is exactly the existence check every read below
 // needs, so nothing here re-implements one.
 import { getUserById } from "./user.service.js";
-import { notifyActivity } from "./notification.service.js";
+import { notifyActivity, withdrawNotifications } from "./notification.service.js";
+import { canViewUser } from "./privacy.service.js";
 // The REPOSITORY, never block.service.js. That module imports this one — it calls
 // unfollowUser and removeFollower to sever both edges when a block is created —
 // so a service-level import here would close the loop into a cycle. Reaching for
@@ -44,8 +45,11 @@ import { bumpVersions, followUserVersionKey } from "../utils/cache.js";
  *   - Removing a follower does not, on its own, stop them following again a
  *     second later. Blocking is what closes that: followUser below refuses an
  *     edge in either direction when a block exists, and block.service.js severs
- *     both edges when one is created. There is still no mute and no private
- *     account.
+ *     both edges when one is created. There is still no mute.
+ *   - A PRIVATE account is not followed, it is asked: followUser files a
+ *     FollowRequest instead, which only the account itself can turn into a
+ *     follow. Its followers and following lists are then its to show - the
+ *     routes gate them; see middleware/privacy.js.
  *   - Blocking does not yet hide posts, comments or likes from a blocked user.
  *     That filtering is scoped separately; see the TODO in block.service.js.
  *
@@ -103,7 +107,34 @@ const invalidateFollow = async ({ followerId, followingId }) => {
 };
 
 /**
- * Follows a user, idempotently.
+ * What following someone sends to a PRIVATE account: a request.
+ *
+ * Idempotent, like a follow - asking twice is one request. The notification is
+ * only raised for a NEW request; a repeat would otherwise be a second ping for
+ * the same question.
+ *
+ * @returns {Promise<{ status: "requested", created: boolean }>}
+ */
+const requestToFollow = async ({ followerId, followingId }) => {
+  const existing = await followRepo.findFollowRequest(followerId, followingId);
+  if (existing) return { status: "requested", created: false };
+
+  await followRepo.upsertFollowRequest(followerId, followingId);
+  // The summary - requestedByMe on one side, requestsMe on the other - is
+  // cached on both users' follow counters.
+  await invalidateFollow({ followerId, followingId });
+
+  void notifyActivity({
+    recipientId: followingId,
+    actorId: followerId,
+    type: "FOLLOW_REQUEST",
+    describe: (name) => `${name} requested to follow you.`,
+  });
+  return { status: "requested", created: true };
+};
+
+/**
+ * Follows a user, idempotently - or, for a PRIVATE account, asks to.
  *
  * A repeat follow is NOT a 409, for the reason likePost gives at length: this is
  * a button fired optimistically by a client that has already flipped its label
@@ -112,9 +143,11 @@ const invalidateFollow = async ({ followerId, followingId }) => {
  * client to write "if 409, treat as success".
  *
  * The distinction is still preserved where it is free — `created` lets the
- * controller answer 201 or 200 without the caller having to care.
+ * controller answer 201 or 200 without the caller having to care, and `status`
+ * says whether this is a follow or a request waiting on the other person.
  *
- * @returns {Promise<{ follow: object, created: boolean }>}
+ * @returns {Promise<{ status: "following", follow: object, created: boolean }
+ *   | { status: "requested", created: boolean }>}
  */
 export const followUser = async ({ followerId, followingId }) => {
   // Before the existence check, so following yourself is a 400 rather than a
@@ -127,7 +160,7 @@ export const followUser = async ({ followerId, followingId }) => {
   // Postgres and comes back as a P2003 foreign-key violation, which nothing in
   // the error middleware translates — the client would get a 500 for what is
   // plainly a bad request.
-  await getUserById(followingId);
+  const target = await getUserById(followingId);
 
   /**
    * A block in EITHER direction refuses the edge. Without this half, blocking is
@@ -163,8 +196,12 @@ export const followUser = async ({ followerId, followingId }) => {
   }
 
   const existing = await followRepo.findFollow(followerId, followingId);
-  // Nothing changed, so nothing to invalidate — the cheap path stays cheap.
-  if (existing) return { follow: existing, created: false };
+  // Nothing changed, so nothing to invalidate — the cheap path stays cheap. An
+  // approved follower of an account that has since gone private stays one.
+  if (existing) return { status: "following", follow: existing, created: false };
+
+  // After the block check, so a blocked user cannot leave a request either.
+  if (target.isPrivate) return requestToFollow({ followerId, followingId });
 
   try {
     const follow = await followRepo.createFollow({ followerId, followingId });
@@ -178,7 +215,7 @@ export const followUser = async ({ followerId, followingId }) => {
       type: "FOLLOW",
       describe: (name) => `${name} started following you.`,
     });
-    return { follow, created: true };
+    return { status: "following", follow, created: true };
   } catch (err) {
     // Two taps landing between the read above and this insert. The unique
     // constraint is what makes that race safe: re-read, and report it as the
@@ -191,7 +228,7 @@ export const followUser = async ({ followerId, followingId }) => {
       // missing one serves a stale button for the whole TTL.
       if (follow) {
         await invalidateFollow(follow);
-        return { follow, created: false };
+        return { status: "following", follow, created: false };
       }
     }
     // The target was deleted inside that same window. The check above was honest
@@ -214,13 +251,130 @@ export const followUser = async ({ followerId, followingId }) => {
  */
 export const unfollowUser = async (followingId, followerId) => {
   const result = await followRepo.deleteFollow(followerId, followingId);
+  // The same tap cancels a request still waiting on a private account - the
+  // button that said Requested is the one that sent this.
+  const cancelled = await cancelFollowRequest(followerId, followingId);
 
   // Only when a row actually went. deleteMany reports count 0 for the "unfollow
   // someone you never followed" case, which changed nothing and must not spend a
   // bump — this route is a toggle clients fire freely.
-  if (result.count > 0) await invalidateFollow({ followerId, followingId });
+  if (result.count > 0 || cancelled) await invalidateFollow({ followerId, followingId });
 
   return result;
+};
+
+/**
+ * Deletes a pending request and takes back the notification it raised.
+ *
+ * @returns {Promise<boolean>} whether there was one
+ */
+const cancelFollowRequest = async (requesterId, targetId) => {
+  const { count } = await followRepo.deleteFollowRequest(requesterId, targetId);
+  if (count === 0) return false;
+
+  await withdrawNotifications({
+    userId: targetId,
+    actorId: requesterId,
+    type: "FOLLOW_REQUEST",
+  });
+  return true;
+};
+
+const requestNotFound = () => notFound("Follow request");
+
+/**
+ * Accepts a request to follow the CALLER.
+ *
+ * targetId is always the caller's own id from the access token, which is the
+ * whole authorisation: only the account asked can say yes. The requester is
+ * told, and the request's notification on this side is taken back.
+ *
+ * @param {string} requesterId - who asked
+ * @param {string} targetId - the caller
+ * @returns {Promise<void>}
+ * @throws 404 when there is no such request
+ */
+export const acceptFollowRequest = async (requesterId, targetId) => {
+  const accepted = await followRepo.acceptFollowRequest(requesterId, targetId);
+  if (!accepted) throw requestNotFound();
+
+  await invalidateFollow({ followerId: requesterId, followingId: targetId });
+  await withdrawNotifications({
+    userId: targetId,
+    actorId: requesterId,
+    type: "FOLLOW_REQUEST",
+  });
+  void notifyActivity({
+    recipientId: requesterId,
+    actorId: targetId,
+    type: "FOLLOW_ACCEPTED",
+    describe: (name) => `${name} accepted your follow request.`,
+  });
+};
+
+/**
+ * Declines a request to follow the CALLER. The requester is NOT told - their
+ * button simply goes back to Follow - which is the kinder answer, and the one
+ * every social app gives.
+ *
+ * @throws 404 when there is no such request
+ */
+export const declineFollowRequest = async (requesterId, targetId) => {
+  const declined = await cancelFollowRequest(requesterId, targetId);
+  if (!declined) throw requestNotFound();
+
+  await invalidateFollow({ followerId: requesterId, followingId: targetId });
+};
+
+/** Requests waiting on the caller, newest first. */
+export const listIncomingFollowRequests = async (userId) => {
+  const requests = await followRepo.findIncomingFollowRequests(userId);
+  return requests.map(({ id, createdAt, requester }) => ({ id, createdAt, requester }));
+};
+
+/**
+ * Accepts every pending request at once - what turning Privacy off does, since
+ * the account is open to everyone from then on and leaving people waiting would
+ * only mean they have to ask again.
+ *
+ * Each requester is told, as for a single accept.
+ *
+ * @param {string} userId - the account going public
+ * @returns {Promise<number>} how many were accepted
+ */
+export const acceptAllFollowRequests = async (userId) => {
+  const requesterIds = await followRepo.acceptAllFollowRequests(userId);
+  if (requesterIds.length === 0) return 0;
+
+  await bumpVersions([
+    followUserVersionKey(userId),
+    ...requesterIds.map((id) => followUserVersionKey(id)),
+  ]);
+
+  await Promise.all(
+    requesterIds.map((requesterId) =>
+      withdrawNotifications({ userId, actorId: requesterId, type: "FOLLOW_REQUEST" }),
+    ),
+  );
+  for (const requesterId of requesterIds) {
+    void notifyActivity({
+      recipientId: requesterId,
+      actorId: userId,
+      type: "FOLLOW_ACCEPTED",
+      describe: (name) => `${name} accepted your follow request.`,
+    });
+  }
+
+  return requesterIds.length;
+};
+
+/**
+ * Every pending request between two people, in either direction - what a new
+ * block clears, alongside the follows block.service.js already severs.
+ */
+export const cancelFollowRequestsBetween = async (a, b) => {
+  const [ab, ba] = await Promise.all([cancelFollowRequest(a, b), cancelFollowRequest(b, a)]);
+  if (ab || ba) await invalidateFollow({ followerId: a, followingId: b });
 };
 
 /**
@@ -260,12 +414,16 @@ export const removeFollower = async (followerId, followingId) => {
 export const getFollowSummary = async (targetUserId, viewerId) => {
   await getUserById(targetUserId);
 
-  const [followers, following, mine, theirs] = await Promise.all([
-    followRepo.countFollowers(targetUserId),
-    followRepo.countFollowing(targetUserId),
-    followRepo.findFollow(viewerId, targetUserId),
-    followRepo.findFollow(targetUserId, viewerId),
-  ]);
+  const [followers, following, mine, theirs, myRequest, theirRequest, canView] =
+    await Promise.all([
+      followRepo.countFollowers(targetUserId),
+      followRepo.countFollowing(targetUserId),
+      followRepo.findFollow(viewerId, targetUserId),
+      followRepo.findFollow(targetUserId, viewerId),
+      followRepo.findFollowRequest(viewerId, targetUserId),
+      followRepo.findFollowRequest(targetUserId, viewerId),
+      canViewUser(viewerId, targetUserId),
+    ]);
 
   return {
     userId: targetUserId,
@@ -273,6 +431,14 @@ export const getFollowSummary = async (targetUserId, viewerId) => {
     following,
     followedByMe: Boolean(mine),
     followsMe: Boolean(theirs),
+    // The viewer has asked to follow this private account and is waiting.
+    requestedByMe: Boolean(myRequest),
+    // This person has asked to follow the VIEWER - their profile offers the
+    // viewer Accept and Decline.
+    requestsMe: Boolean(theirRequest),
+    // Whether the viewer may see this account's posts and activity, decided
+    // here so no client works out the privacy rule for itself.
+    canView,
   };
 };
 
@@ -330,10 +496,12 @@ export const listMyFollowing = async (userId) => {
  *
  * Returns the { items, total, page, limit } shape listUsers returns.
  */
-export const listAllFollows = async ({ page, limit }) => {
+export const listAllFollows = async ({ page, limit }, viewerId) => {
   const [items, total] = await followRepo.findAllFollows({
     skip: (page - 1) * limit,
     take: limit,
+    // Private accounts the viewer may not see are left out - see the repository.
+    viewerId,
   });
 
   return { items, total, page, limit };

@@ -404,6 +404,7 @@ const toViewerPost = (viewerId, personalBests = new Set()) => ({
     ...post,
     session: toViewerSession(post.session, post.userId, {
       isPersonalBest: personalBests.has(post.sessionId),
+      viewerId,
     }),
     isLiked: likes.length > 0,
     isReported,
@@ -474,11 +475,21 @@ const toViewerPost = (viewerId, personalBests = new Set()) => ({
  *   group     - what was SHARED to the group, by anyone in it. Membership is
  *               the gate - a group's feed is for its members - and 403 rather
  *               than 404, because the group's existence is not a secret.
- *   everyone  - every followers-shared post, and your own. Never a group-only
- *               post, which is what keeps this audience from leaking them.
+ *   everyone  - every followers-shared post from an author you may see, and
+ *               your own. Never a group-only post, which is what keeps this
+ *               audience from leaking them.
  */
 const feedWhere = async ({ audience, groupId }, viewerId) => {
-  const mineOrForFollowers = { OR: [{ userId: viewerId }, { shareToFollowers: true }] };
+  // Shared to followers counts only from an author the viewer may see, which is
+  // what keeps a private account's posts off a stranger's feed. A group's feed
+  // below has no such clause: inside a group, its members see what was shared
+  // to it, private author or not.
+  const mineOrForFollowers = {
+    OR: [
+      { userId: viewerId },
+      { shareToFollowers: true, user: postRepo.authorVisibleTo(viewerId) },
+    ],
+  };
   if (audience === "following") {
     return {
       AND: [

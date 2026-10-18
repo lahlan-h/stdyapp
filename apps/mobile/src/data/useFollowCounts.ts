@@ -6,10 +6,8 @@ import { withAuth } from "./auth";
 /**
  * GET /api/follows/user/:userId/count, as getFollowSummary answers it.
  *
- * followedByMe and followsMe are facts about the VIEWER, not the user being
- * read - the API works them out from the token. Nothing renders them yet; they
- * are kept on the type because the follow button a profile will need reads
- * followedByMe, and dropping them here would only mean adding them back.
+ * Everything after the two counts is a fact about the VIEWER, not the user
+ * being read - the API works it out from the token.
  */
 export interface FollowSummary {
   userId: string;
@@ -17,6 +15,16 @@ export interface FollowSummary {
   following: number;
   followedByMe: boolean;
   followsMe: boolean;
+  /** The viewer has asked to follow this private account and is waiting. */
+  requestedByMe: boolean;
+  /** This person has asked to follow the VIEWER - their profile offers Accept. */
+  requestsMe: boolean;
+  /**
+   * Whether the viewer may see this account's posts and activity. False only
+   * for a private account the viewer is not an approved follower of - the
+   * profile then shows a lock where its posts would be.
+   */
+  canView: boolean;
 }
 
 export interface FollowCountsState {

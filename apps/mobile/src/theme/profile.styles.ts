@@ -11,6 +11,13 @@ const AVATAR_SIZE = 84;
 /** Leading icon on an action button. */
 export const PROFILE_ACTION_ICON_SIZE = 16;
 
+/** The circle around the lock on a private account's locked posts. */
+const PROFILE_LOCK_BADGE_SIZE = 56;
+
+/** The lock inside it, and the small one beside a private account's name. */
+export const PROFILE_LOCK_ICON_SIZE = 24;
+export const PROFILE_PRIVATE_BADGE_ICON_SIZE = 14;
+
 /** Icon beside each figure in the study pill. */
 export const PROFILE_STUDY_ICON_SIZE = 16;
 
@@ -79,6 +86,12 @@ export const createProfileStyles = (colors: ColorScheme) => {
       fontSize: 15,
       color: colors.textMuted,
     },
+    // The username and, on a private account, a small lock after it.
+    usernameRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+    },
     bio: {
       fontFamily: "PlusJakartaSans_400Regular",
       fontSize: 15,
@@ -139,6 +152,58 @@ export const createProfileStyles = (colors: ColorScheme) => {
       fontFamily: "PlusJakartaSans_400Regular",
       fontSize: 13,
       color: colors.danger,
+      textAlign: "center",
+    },
+
+    // --- A follow request from this person, on their profile ---
+    // The card recipe at the control radius, holding a sentence and the same
+    // two-to-a-row pills as the actions under it, so Accept and Decline read
+    // as actions rather than as a separate widget.
+    requestCard: {
+      gap: 12,
+      padding: 14,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    requestText: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.text,
+      textAlign: "center",
+    },
+
+    // --- A private account's locked posts, for a viewer it has not approved ---
+    locked: {
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 32,
+      paddingHorizontal: 24,
+    },
+    lockedBadge: {
+      width: PROFILE_LOCK_BADGE_SIZE,
+      height: PROFILE_LOCK_BADGE_SIZE,
+      borderRadius: PROFILE_LOCK_BADGE_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      marginBottom: 4,
+    },
+    lockedTitle: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 16,
+      color: colors.text,
+      textAlign: "center",
+    },
+    lockedText: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.textMuted,
       textAlign: "center",
     },
 
