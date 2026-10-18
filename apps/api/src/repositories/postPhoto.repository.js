@@ -88,3 +88,19 @@ export const findPhotosOfPosts = ({ postId, authorId }) =>
     where: postId ? { postId } : { post: { userId: authorId } },
     select: { userId: true, url: true },
   });
+
+/**
+ * EVERY photo one user has uploaded - on a post or still waiting for one.
+ *
+ * For account deletion, where findPhotosOfPosts is not enough: an upload not yet
+ * on a post has no post to be found through, its row cascades away with the
+ * user, and the sweep works from rows - so its object would never be reclaimed.
+ *
+ * @param {string} userId
+ * @returns {Promise<Array<{ userId: string, url: string }>>}
+ */
+export const findPhotosByUploader = (userId) =>
+  prisma.postPhoto.findMany({
+    where: { userId },
+    select: { userId: true, url: true },
+  });

@@ -1,5 +1,7 @@
 import * as userService from "../services/user.service.js";
 import * as avatarService from "../services/avatar.service.js";
+import * as authService from "../services/auth.service.js";
+import * as accountService from "../services/account.service.js";
 
 /**
  * POST /api/users - creates a user.
@@ -64,11 +66,21 @@ export const updateUser = async (req, res) => {
 };
 
 /**
- * DELETE /api/users/:id - 204 with no body.
- * 409 when the user still has study sessions, 404 when they do not exist.
+ * DELETE /api/users/:id - deletes the account and all of its data. 204 with no
+ * body.
+ *
+ * The body is proof of ownership, { password } or { googleIdToken } - see
+ * deleteUserSchema. requireSelf has already made sure the id is the caller's own;
+ * this asks for more than the token because a token is all a thief would have.
+ *
+ * 400 on a body that is neither, 403 when the proof does not hold, 404 when the
+ * user is already gone, 502 when Stripe cannot cancel their subscription - in
+ * which case nothing was deleted.
  */
 export const deleteUser = async (req, res) => {
-  await userService.deleteUser(req.validated.params.id);
+  const { id } = req.validated.params;
+  await authService.verifyAccountOwner(id, req.validated.body);
+  await accountService.deleteAccount(id);
   res.status(204).end();
 };
 

@@ -54,6 +54,7 @@ const ICONS: Record<NotificationType, ComponentProps<typeof Feather>["name"]> = 
   POST_LIKE: "heart",
   POST_COMMENT: "message-circle",
   GROUP_JOIN: "users",
+  GROUP_DISBANDED: "users",
   STREAK_MILESTONE: "zap",
   GOAL_REACHED: "target",
   SYSTEM: "info",

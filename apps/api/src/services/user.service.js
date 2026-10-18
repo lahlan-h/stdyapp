@@ -41,8 +41,6 @@ import {
 const BCRYPT_COST_FACTOR = 12;
 
 const USER_NOT_FOUND = "User not found";
-const USER_HAS_SESSIONS =
-  "This user still has study sessions and cannot be deleted";
 
 /**
  * The ONLY shape of a user that leaves this service.
@@ -165,7 +163,7 @@ const buildUserData = async (input) => {
  * No post scope. Post payloads are bare Post rows with no embedded user fields
  * (see the postKey block in utils/cache.js), so nothing there can go stale.
  *
- * SPLIT from the bump rather than doing both, because deleteUser has to read
+ * SPLIT from the bump rather than doing both, because account deletion has to read
  * these BEFORE the delete — afterwards the comment, like, follow and block rows
  * it reads from are gone, and the fan-out would silently shrink to nothing. That
  * ordering is what stops a deleted user lingering as a phantom entry in the block
@@ -360,36 +358,41 @@ export const updateUser = async (id, input) => {
 };
 
 /**
- * @param {string} id
- * @returns {Promise<void>}
+ * Every cache version key that embeds this user, read but not yet bumped.
+ *
+ * Exported for account deletion (account.service.js), which must read these
+ * BEFORE its delete - afterwards this user's comment and like rows are gone, so
+ * the lookups would come back empty and the fan-out would silently shrink to the
+ * own-scope keys, leaving every thread they commented in serving a deleted user
+ * for the full TTL. The profile key is the one that matters most: without it a
+ * deleted user stays readable from GET /api/users/:id for the whole TTL.
  */
-export const deleteUser = async (id) => {
-  // Read the invalidation scopes BEFORE the delete, the same read-first shape
-  // deleteMyPosts uses in post.service.js. Afterwards this user's comment and
-  // like rows are gone, so the two lookups would come back empty and the
-  // fan-out would silently shrink to the three own-scope keys — leaving every
-  // thread they commented in serving a deleted user for the full TTL.
-  //
-  // Wasted only when the delete then fails, which is the cheap direction to be
-  // wrong: two indexed reads against a 409 that a caller can hit at most five
-  // times an hour.
-  const versionKeys = await collectUserVersionKeys(id);
+export { collectUserVersionKeys };
 
+/**
+ * Deletes the user row, inside the caller's transaction.
+ *
+ * ONLY the row. Seven foreign keys to users are ON DELETE RESTRICT - sessions,
+ * groups owned, memberships, routines, posts, comments and focus ratings - so
+ * this throws P2003 unless those are already gone. Clearing them, and the cache
+ * and storage around them, is account.service.js's job; this stays here because
+ * this module is the one that touches prisma.user.
+ *
+ * Everything else that hangs off a user cascades: tokens, follows, blocks,
+ * likes, bookmarks, goals, the streak, the subscription row, notifications,
+ * messages and the rest - see schema.prisma.
+ *
+ * @param {string} id
+ * @param {object} [tx] - a Prisma transaction client, to run inside the caller's
+ * @returns {Promise<void>}
+ * @throws {HttpError} 404 when the user is already gone
+ */
+export const deleteUserRow = async (id, tx = prisma) => {
   try {
-    // sessions.userId is ON DELETE RESTRICT (see the init migration), so this
-    // throws P2003 - not P2025 - for any user who has ever studied. Without
-    // mapping that, the most ordinary delete in the app would return a 500.
-    await prisma.user.delete({ where: { id } });
+    await tx.user.delete({ where: { id } });
   } catch (err) {
-    throw toHttpError(err, {
-      notFoundMessage: USER_NOT_FOUND,
-      conflictMessage: USER_HAS_SESSIONS,
-    });
+    throw toHttpError(err, { notFoundMessage: USER_NOT_FOUND });
   }
-
-  // The profile bump is the one that matters most here: without it a deleted
-  // user stays readable from GET /api/users/:id for the whole TTL.
-  await bumpVersions(versionKeys);
 };
 
 /**

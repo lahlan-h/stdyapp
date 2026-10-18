@@ -1010,11 +1010,14 @@ model PostPhoto {
 /// FOLLOW, POST_LIKE, POST_COMMENT and GROUP_JOIN are raised through
 /// notifyActivity() in notification.service.js, which also records the actor.
 /// STREAK_MILESTONE and GOAL_REACHED are raised directly and have none.
+/// GROUP_DISBANDED is raised directly too, by account deletion, and has none
+/// for a sharper reason: the actor is the owner whose row was just deleted.
 enum NotificationType {
   FOLLOW
   POST_LIKE
   POST_COMMENT
   GROUP_JOIN
+  GROUP_DISBANDED
   STREAK_MILESTONE
   GOAL_REACHED
   SYSTEM

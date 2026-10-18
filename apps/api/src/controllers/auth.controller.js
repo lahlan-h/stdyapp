@@ -114,10 +114,18 @@ export const logoutAll = async (req, res) => {
  * Re-read through userService rather than returning req.user, so this responds
  * with exactly the same shape as GET /api/users/:id. requireAuth only loads the
  * three fields it needs.
+ *
+ * Plus `hasGoogle`, which only this route carries: whether the account can
+ * prove itself with a Google sign-in, which is how the app knows to offer one
+ * where it asks for proof - deleting the account. Never on GET /api/users/:id,
+ * where anyone would learn how a stranger signs in.
  */
 export const me = async (req, res) => {
-  const user = await userService.getUserById(req.user.id);
-  res.status(200).json({ data: user });
+  const [user, hasGoogle] = await Promise.all([
+    userService.getUserById(req.user.id),
+    authService.hasLinkedGoogle(req.user.id),
+  ]);
+  res.status(200).json({ data: { ...user, hasGoogle } });
 };
 
 /**

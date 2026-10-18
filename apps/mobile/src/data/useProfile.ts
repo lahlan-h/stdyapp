@@ -36,6 +36,12 @@ export interface PublicProfile {
 export interface Profile extends PublicProfile {
   email: string;
   isPrivate: boolean;
+  /**
+   * Whether a Google account is linked, so a Google sign-in can stand in for
+   * the password when deleting the account. Only GET /api/auth/me carries it -
+   * the PATCH answer does not, which is why save() keeps the value it had.
+   */
+  hasGoogle?: boolean;
 }
 
 /**
@@ -122,7 +128,9 @@ export const useProfile = (): ProfileState => {
             token,
           }),
         );
-        setProfile(data);
+        // Merged rather than replaced, so hasGoogle - which this answer lacks -
+        // survives an edit.
+        setProfile((previous) => ({ ...previous, ...data }));
         // Names and usernames are embedded in every feed row this user wrote.
         markFeedStale();
         return true;

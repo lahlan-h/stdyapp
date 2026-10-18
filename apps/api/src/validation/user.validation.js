@@ -159,6 +159,47 @@ export const listUsersQuerySchema = z.strictObject({
 });
 
 /**
+ * The longest proof a delete will look at. loginSchema's cap, for loginSchema's
+ * reason: only a sanity bound on what reaches bcrypt, never a rule about what a
+ * password may be - a wrong password must be a 403, not a 400.
+ */
+const MAX_PROOF_PASSWORD_LENGTH = 512;
+
+/**
+ * Google ID tokens are JWTs of a kilobyte or two. The cap only stops a body of
+ * megabytes reaching the verifier.
+ */
+const MAX_GOOGLE_ID_TOKEN_LENGTH = 8192;
+
+/**
+ * DELETE /api/users/:id - proof that the caller is the account's owner, not just
+ * someone holding its access token.
+ *
+ * EXACTLY ONE of the two, as a union of strict objects: a body with both is a
+ * client bug rather than a choice for the server to make, and one with neither
+ * would otherwise delete an account on the token alone.
+ *
+ *   { password }       - every account that knows its password
+ *   { googleIdToken }  - a fresh Google sign-in, for accounts Google created,
+ *                        whose password nobody was ever told
+ *
+ * The password is NOT passwordSchema, and must not become it: that is the rule
+ * for SETTING a password. An account made before a rule changed would be told
+ * its real password is malformed, and refused the one thing it asked for.
+ */
+export const deleteUserSchema = z.union([
+  z.strictObject({
+    password: z.string().min(1, "password is required").max(MAX_PROOF_PASSWORD_LENGTH),
+  }),
+  z.strictObject({
+    googleIdToken: z
+      .string()
+      .min(1, "googleIdToken is required")
+      .max(MAX_GOOGLE_ID_TOKEN_LENGTH),
+  }),
+]);
+
+/**
  * users.id is TEXT in Postgres, not a native uuid column, so an invalid id
  * would otherwise just miss and return a confusing 404. Validating the shape
  * here upgrades that to a 400 that says what is actually wrong.

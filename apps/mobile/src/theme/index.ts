@@ -9,6 +9,7 @@ export {
   useNewPostStyles,
   usePostDetailStyles,
   useReportDialogStyles,
+  useDeleteAccountDialogStyles,
   useLoginStyles,
   useRegisterStyles,
   useForgotPasswordStyles,
@@ -67,6 +68,11 @@ export {
   REPORT_STATE_ICON_SIZE,
   REPORT_STATE_FLAG_SIZE,
 } from "./reportDialog.styles";
+export {
+  createDeleteAccountDialogStyles,
+  DELETE_REVEAL_ICON_SIZE,
+  DELETE_GOOGLE_MARK_SIZE,
+} from "./deleteAccountDialog.styles";
 export {
   createLoginStyles,
   LOGIN_ICON_SIZE,

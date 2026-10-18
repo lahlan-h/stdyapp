@@ -43,6 +43,12 @@ export {
 } from "./focusTrace";
 export { useRegister, type RegisterState } from "./useRegister";
 export { useGoogleSignIn, type GoogleSignInState } from "./useGoogleSignIn";
+export { useGoogleIdToken, type GoogleIdTokenState } from "./useGoogleIdToken";
+export {
+  useDeleteAccount,
+  type DeleteAccountProof,
+  type DeleteAccountState,
+} from "./useDeleteAccount";
 export {
   useForgotPassword,
   normalizeResetCode,
