@@ -489,13 +489,19 @@ export const getLeaderboard = async (
     throw new HttpError(403, "Only members can see this group's leaderboard");
   }
 
-  const [blocked, people] = await Promise.all([
+  const isGlobal = !isFollowing && !isGroup;
+
+  const [blocked, people, hiddenPrivate] = await Promise.all([
     focusRepo.findBlockedUserIds(userId),
     isFollowing
       ? focusRepo.findFollowingIds(userId)
       : isGroup
         ? findMemberIds(groupId)
         : Promise.resolve(null),
+    // Private accounts the caller is not an approved follower of. Global only:
+    // the following board is approved follows already, and a group's board
+    // shows its members to each other whatever their privacy.
+    isGlobal ? focusRepo.findHiddenPrivateUserIds(userId) : Promise.resolve([]),
   ]);
   // A bounded board - see above. The caller is in their own group's roll
   // already; audienceIds adds them for a following board and dedupes either way.
@@ -507,7 +513,7 @@ export const getLeaderboard = async (
       metric,
       since,
       userIds: audience,
-      excludeUserIds: blocked,
+      excludeUserIds: [...blocked, ...hiddenPrivate],
       minSessions: minSessionsFor(metric),
       take: bounded ? undefined : limit,
     }),

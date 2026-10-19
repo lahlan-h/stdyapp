@@ -3,6 +3,7 @@ import * as likeRepo from "../repositories/like.repository.js";
 // sessionRepo and routineRepo: the existence check below needs posts, and going
 // through post.service.js instead would drag its ownership gate along with it.
 import { findPostById } from "../repositories/post.repository.js";
+import { canViewPost } from "./privacy.service.js";
 // The only sanctioned way to reach prisma.user from here — see post.service.js.
 import { getUserById } from "./user.service.js";
 import { notifyActivity } from "./notification.service.js";
@@ -113,6 +114,10 @@ const invalidateLike = async ({ postId, userId }) => {
  */
 export const likePost = async ({ userId, postId }) => {
   const post = await assertPostExists(postId);
+  // A post the caller may not see - a private author's, or a group's they are
+  // not in - is "not found", exactly as a missing one is. Without this, writing
+  // to it would be a way to read it: the caller's own list hands the Post back.
+  if (!(await canViewPost(userId, postId))) throw notFound("Post");
 
   const existing = await likeRepo.findLikeByUserAndPost(userId, postId);
   // Nothing changed, so nothing to invalidate — the cheap path stays cheap.
@@ -212,10 +217,12 @@ export const listLikesByPost = async (postId) => {
  *
  * Returns the { items, total, page, limit } shape listUsers returns.
  */
-export const listAllLikes = async ({ page, limit }) => {
+export const listAllLikes = async ({ page, limit }, viewerId) => {
   const [items, total] = await likeRepo.findAllLikes({
     skip: (page - 1) * limit,
     take: limit,
+    // Private accounts the viewer may not see are left out - see the repository.
+    viewerId,
   });
 
   return { items, total, page, limit };

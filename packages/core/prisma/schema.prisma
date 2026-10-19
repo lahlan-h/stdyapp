@@ -48,10 +48,15 @@ model User {
   // controller/repository), so read any bare `isPrivate` in that code as the
   // group's, not this.
   //
-  // Declared but NOT YET ENFORCED: nothing reads it, so GET /api/users/:id
-  // still returns the same body to every viewer. That is what keeps the viewer
-  // out of userKey in apps/api/src/utils/cache.js — see the warning there
-  // before making this flag change the response per-viewer.
+  // ENFORCED by apps/api/src/services/privacy.service.js: a private account's
+  // posts and activity are seen only by itself and its approved followers, and
+  // following it takes a FollowRequest it accepts. Inside a study group it
+  // belongs to, the group's own surfaces still show it to fellow members.
+  //
+  // GET /api/users/:id still returns the same body to every viewer - the
+  // profile header stays visible by design - which is what keeps the viewer
+  // out of userKey in apps/api/src/utils/cache.js. The per-user routes that DO
+  // depend on it are gated before their cache instead; see requireCanViewUser.
   isPrivate    Boolean   @default(false)
 
   // Account-level moderation flag, server-owned: there is deliberately NO write
@@ -104,6 +109,12 @@ model User {
   // the rows where this user is the follower ARE this user's following list.
   following     Follow[]           @relation("Following")
   followers     Follow[]           @relation("Followers")
+
+  // Follow requests to and from private accounts. Named after the user's side,
+  // unlike the follow pair above: these are the requests I sent, and the
+  // requests waiting for my answer.
+  sentFollowRequests     FollowRequest[] @relation("FollowRequester")
+  receivedFollowRequests FollowRequest[] @relation("FollowRequestTarget")
 
   // Both sides of the block graph. NOTE the relation names differ in style from
   // the follow pair directly above, deliberately: Follow's "Following" and
@@ -695,6 +706,37 @@ model Follow {
   @@map("follows")
 }
 
+/// A follow waiting for a private account to accept it.
+///
+/// A table of its own rather than a status column on Follow, so that a Follow
+/// row keeps meaning one thing - an approved follow - and every existing read of
+/// the follow graph (counts, lists, the feed's audience, the leaderboard's) stays
+/// correct without a filter added to each.
+///
+/// Accepting turns the row into a Follow and deletes it; declining or cancelling
+/// just deletes it. Read left-to-right, a row says "requester asks to follow
+/// target".
+model FollowRequest {
+  id          String   @id @default(uuid())
+
+  // Cascade at both ends, for Follow's reasons: a request means nothing once
+  // either person is gone.
+  requesterId String
+  requester   User     @relation("FollowRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  targetId    String
+  target      User     @relation("FollowRequestTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  // Kept, unlike Follow: a list of requests is read newest first.
+  createdAt   DateTime @default(now())
+
+  // One pending request per ordered pair, which makes asking again idempotent.
+  @@unique([requesterId, targetId])
+  // "My incoming requests", newest first.
+  @@index([targetId, createdAt])
+
+  @@map("follow_requests")
+}
+
 /// One directed edge of the block graph — the privacy counterpart of Follow.
 ///
 /// Structurally identical to Follow: an ordered pair of users, no createdAt, one
@@ -1010,11 +1052,18 @@ model PostPhoto {
 /// FOLLOW, POST_LIKE, POST_COMMENT and GROUP_JOIN are raised through
 /// notifyActivity() in notification.service.js, which also records the actor.
 /// STREAK_MILESTONE and GOAL_REACHED are raised directly and have none.
+/// FOLLOW_REQUEST and FOLLOW_ACCEPTED go through notifyActivity as well; a
+/// FOLLOW_REQUEST row is withdrawn once its request is answered or cancelled.
+/// GROUP_DISBANDED is raised directly too, by account deletion, and has none
+/// for a sharper reason: the actor is the owner whose row was just deleted.
 enum NotificationType {
   FOLLOW
   POST_LIKE
   POST_COMMENT
   GROUP_JOIN
+  GROUP_DISBANDED
+  FOLLOW_REQUEST
+  FOLLOW_ACCEPTED
   STREAK_MILESTONE
   GOAL_REACHED
   SYSTEM

@@ -146,6 +146,11 @@ const studyBuddySelect = (viewerId) => ({
     lastName: true,
     blocking: { where: { blockedId: viewerId }, select: { blockerId: true } },
     blockedBy: { where: { blockerId: viewerId }, select: { blockedId: true } },
+    // Whether this person is private and, if so, whether the viewer is one of
+    // their approved followers - toStudiedWith leaves out anyone the viewer may
+    // not see, and strips both fields before anything reaches the wire.
+    isPrivate: true,
+    followers: { where: { followerId: viewerId }, select: { id: true } },
   },
 });
 
@@ -262,17 +267,39 @@ const postInclude = (viewerId) => ({
 
 /**
  * The posts a viewer may see, as a `where`: their own, everything shared to
- * followers, and anything shared to a group they are in. The one definition of
- * "can see" every list here takes, so no read can disagree with another about
- * whether a group-only post is visible.
+ * followers BY AN AUTHOR THE VIEWER MAY SEE, and anything shared to a group
+ * they are in. The one definition of "can see" every list here takes, so no
+ * read can disagree with another about whether a post is visible.
+ *
+ * The group branch ignores privacy on purpose: sharing a post to a group is
+ * choosing to be seen there, by everyone in it. See authorVisibleTo.
  *
  * @param {string} viewerId
  */
 export const visibleTo = (viewerId) => ({
   OR: [
     { userId: viewerId },
-    { shareToFollowers: true },
+    { shareToFollowers: true, user: authorVisibleTo(viewerId) },
     { groupShares: { some: { group: { memberships: { some: { userId: viewerId } } } } } },
+  ],
+});
+
+/**
+ * The users whose activity a viewer may see, as a `where` on a User: the viewer
+ * themselves, anyone public, and private accounts the viewer is an APPROVED
+ * follower of - a pending FollowRequest is not a Follow row, so it does not
+ * count. privacy.service.js's canViewUser is the same rule for one user.
+ *
+ * `followers` is the relation of Follow rows where this user is the one being
+ * followed - see the note on the User model about its inverted-looking names.
+ *
+ * @param {string} viewerId
+ */
+export const authorVisibleTo = (viewerId) => ({
+  OR: [
+    { id: viewerId },
+    { isPrivate: false },
+    { followers: { some: { followerId: viewerId } } },
   ],
 });
 

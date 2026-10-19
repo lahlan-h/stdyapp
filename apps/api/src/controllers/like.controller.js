@@ -69,6 +69,7 @@ export const listAll = async (req, res, next) => {
   try {
     const { items, total, page, limit } = await likeService.listAllLikes(
       req.validated.query,
+      req.user.id,
     );
 
     res.status(200).json({

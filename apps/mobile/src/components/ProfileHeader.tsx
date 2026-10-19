@@ -1,6 +1,7 @@
 import { View, Text, Image } from "react-native";
+import Feather from "@expo/vector-icons/Feather";
 
-import { useStyles } from "@theme";
+import { useStyles, useTheme, PROFILE_PRIVATE_BADGE_ICON_SIZE } from "@theme";
 import type { PublicProfile } from "@data";
 
 import { defaultAvatar } from "./defaultAvatar";
@@ -31,6 +32,7 @@ const displayNameOf = ({ firstName, lastName, username }: PublicProfile): string
  * queries nothing.
  */
 const ProfileHeader = ({ profile }: ProfileHeaderProps) => {
+  const { colors } = useTheme();
   const styles = useStyles("profile");
   const displayName = displayNameOf(profile);
 
@@ -47,9 +49,21 @@ const ProfileHeader = ({ profile }: ProfileHeaderProps) => {
           <Text style={styles.displayName} numberOfLines={2}>
             {displayName}
           </Text>
-          <Text style={styles.username} numberOfLines={1}>
-            @{profile.username}
-          </Text>
+          <View style={styles.usernameRow}>
+            <Text style={styles.username} numberOfLines={1}>
+              @{profile.username}
+            </Text>
+            {/* A private account says so before anyone taps Follow, so a
+                Requested button that follows is no surprise. */}
+            {profile.isPrivate ? (
+              <Feather
+                name="lock"
+                size={PROFILE_PRIVATE_BADGE_ICON_SIZE}
+                color={colors.textMuted}
+                accessibilityLabel="Private account"
+              />
+            ) : null}
+          </View>
         </View>
       </View>
 

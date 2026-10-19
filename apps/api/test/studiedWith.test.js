@@ -12,7 +12,7 @@ import { toStudiedWith } from "../src/services/studiedWith.js";
 const AUTHOR = "author";
 
 /** A room member as studyBuddySelect returns them. */
-const person = (id, { blocking = [], blockedBy = [] } = {}) => ({
+const person = (id, { blocking = [], blockedBy = [], isPrivate = false, followers = [] } = {}) => ({
   id,
   username: id,
   avatarUrl: null,
@@ -20,6 +20,8 @@ const person = (id, { blocking = [], blockedBy = [] } = {}) => ({
   lastName: null,
   blocking,
   blockedBy,
+  isPrivate,
+  followers,
 });
 
 const baseSession = (overrides = {}) => ({
@@ -79,5 +81,29 @@ describe("toStudiedWith", () => {
     const [sam] = toStudiedWith(baseSession({ participants: [{ user: person("sam") }] }), AUTHOR);
     assert.equal("blocking" in sam, false);
     assert.equal("blockedBy" in sam, false);
+  });
+
+  it("hides a private account the viewer does not follow, and shows one they do", () => {
+    const session = baseSession({
+      participants: [
+        { user: person("stranger", { isPrivate: true }) },
+        { user: person("friend", { isPrivate: true, followers: [{ id: "f1" }] }) },
+        { user: person("sam") },
+      ],
+    });
+    assert.deepEqual(ids(toStudiedWith(session, AUTHOR, "viewer")), ["friend", "sam"]);
+  });
+
+  it("always shows the viewer to themselves, private or not", () => {
+    const session = baseSession({
+      participants: [{ user: person("viewer", { isPrivate: true }) }],
+    });
+    assert.deepEqual(ids(toStudiedWith(session, AUTHOR, "viewer")), ["viewer"]);
+  });
+
+  it("never puts the privacy fields on the wire", () => {
+    const [sam] = toStudiedWith(baseSession({ participants: [{ user: person("sam") }] }), AUTHOR);
+    assert.equal("isPrivate" in sam, false);
+    assert.equal("followers" in sam, false);
   });
 });

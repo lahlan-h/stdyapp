@@ -9,6 +9,7 @@ export {
   useNewPostStyles,
   usePostDetailStyles,
   useReportDialogStyles,
+  useDeleteAccountDialogStyles,
   useLoginStyles,
   useRegisterStyles,
   useForgotPasswordStyles,
@@ -68,6 +69,11 @@ export {
   REPORT_STATE_FLAG_SIZE,
 } from "./reportDialog.styles";
 export {
+  createDeleteAccountDialogStyles,
+  DELETE_REVEAL_ICON_SIZE,
+  DELETE_GOOGLE_MARK_SIZE,
+} from "./deleteAccountDialog.styles";
+export {
   createLoginStyles,
   LOGIN_ICON_SIZE,
   LOGIN_CHECK_ICON_SIZE,
@@ -86,6 +92,8 @@ export {
   PROFILE_STUDY_ICON_SIZE,
   PROFILE_BACK_ICON_SIZE,
   PROFILE_SETTINGS_ICON_SIZE,
+  PROFILE_LOCK_ICON_SIZE,
+  PROFILE_PRIVATE_BADGE_ICON_SIZE,
 } from "./profile.styles";
 export {
   createHomeSearchStyles,

@@ -148,7 +148,23 @@ const invalidatePost = async ({ postIds = [], authorId }) => {
  * @param {string} authorId
  */
 const invalidatePostFanout = async (postIds, authorId) => {
-  if (postIds.length === 0) return invalidatePost({ authorId });
+  await bumpVersions(await collectPostFanoutKeys(postIds, authorId));
+};
+
+/**
+ * The version keys invalidatePostFanout bumps, read but not yet bumped.
+ *
+ * Split out for account deletion, which has to read these BEFORE its delete -
+ * afterwards the comment, like, bookmark and report rows they come from are gone
+ * - and bump them only once the whole account has. Exported so the key layout
+ * stays owned here, for invalidateDetachedPosts' reason.
+ *
+ * @param {string[]} postIds
+ * @param {string} authorId
+ * @returns {Promise<string[]>}
+ */
+export const collectPostFanoutKeys = async (postIds, authorId) => {
+  if (postIds.length === 0) return [postAuthorVersionKey(authorId)];
 
   const [commenters, likers, bookmarkers, reporters] = await Promise.all([
     findCommenterIdsByPosts(postIds),
@@ -157,14 +173,14 @@ const invalidatePostFanout = async (postIds, authorId) => {
     findReporterIdsByPosts(postIds),
   ]);
 
-  await bumpVersions([
+  return [
     ...postIds.map(postContentVersionKey),
     postAuthorVersionKey(authorId),
     ...commenters.map(({ userId }) => userVersionKey(userId)),
     ...likers.map(({ userId }) => likeUserVersionKey(userId)),
     ...bookmarkers.map(({ userId }) => bookmarkUserVersionKey(userId)),
     ...reporters.map(({ reporterId }) => reportUserVersionKey(reporterId)),
-  ]);
+  ];
 };
 
 /**
@@ -388,6 +404,7 @@ const toViewerPost = (viewerId, personalBests = new Set()) => ({
     ...post,
     session: toViewerSession(post.session, post.userId, {
       isPersonalBest: personalBests.has(post.sessionId),
+      viewerId,
     }),
     isLiked: likes.length > 0,
     isReported,
@@ -458,11 +475,21 @@ const toViewerPost = (viewerId, personalBests = new Set()) => ({
  *   group     - what was SHARED to the group, by anyone in it. Membership is
  *               the gate - a group's feed is for its members - and 403 rather
  *               than 404, because the group's existence is not a secret.
- *   everyone  - every followers-shared post, and your own. Never a group-only
- *               post, which is what keeps this audience from leaking them.
+ *   everyone  - every followers-shared post from an author you may see, and
+ *               your own. Never a group-only post, which is what keeps this
+ *               audience from leaking them.
  */
 const feedWhere = async ({ audience, groupId }, viewerId) => {
-  const mineOrForFollowers = { OR: [{ userId: viewerId }, { shareToFollowers: true }] };
+  // Shared to followers counts only from an author the viewer may see, which is
+  // what keeps a private account's posts off a stranger's feed. A group's feed
+  // below has no such clause: inside a group, its members see what was shared
+  // to it, private author or not.
+  const mineOrForFollowers = {
+    OR: [
+      { userId: viewerId },
+      { shareToFollowers: true, user: postRepo.authorVisibleTo(viewerId) },
+    ],
+  };
   if (audience === "following") {
     return {
       AND: [

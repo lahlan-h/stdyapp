@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getMine, getForUser } from "../controllers/streak.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { requireCanViewUser } from "../middleware/privacy.js";
 import { validate } from "../middleware/validate.js";
 import { rateLimit } from "../middleware/rateLimit.js";
 import { cache } from "../middleware/cache.js";
@@ -58,6 +59,8 @@ router.get(
   "/user/:userId",
   readLimit,
   validate({ params: streakUserParamSchema }),
+  // Before the cache, whose key carries no viewer - see middleware/privacy.js.
+  requireCanViewUser((req) => req.validated.params.userId),
   cacheForUser,
   getForUser,
 );

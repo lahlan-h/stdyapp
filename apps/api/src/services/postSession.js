@@ -67,9 +67,13 @@ export const toHighlights = (session, isPersonalBest) => {
  *
  * @param {object | null} session
  * @param {string} authorId
- * @param {{ isPersonalBest?: boolean }} [facts]
+ * @param {{ isPersonalBest?: boolean, viewerId?: string }} [facts]
  */
-export const toViewerSession = (session, authorId, { isPersonalBest = false } = {}) => {
+export const toViewerSession = (
+  session,
+  authorId,
+  { isPersonalBest = false, viewerId } = {},
+) => {
   if (!session) return null;
 
   const {
@@ -81,7 +85,7 @@ export const toViewerSession = (session, authorId, { isPersonalBest = false } = 
 
   return {
     ...rest,
-    studiedWith: toStudiedWith(session, authorId),
+    studiedWith: toStudiedWith(session, authorId, viewerId),
     highlights: toHighlights(session, isPersonalBest),
   };
 };

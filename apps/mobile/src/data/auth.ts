@@ -408,23 +408,20 @@ export const subscribeAuth = (listener: () => void): (() => void) => subscribe(l
 export const isSignedIn = (): boolean => session !== null;
 
 /**
- * Signs out - on this device and on the server.
+ * Forgets the session on THIS DEVICE only - the local half of logout, and all
+ * of what deleting an account needs, since the server has already removed every
+ * token the account had and there is nothing left to revoke.
  *
- * The local half happens first and cannot fail: the session and any
- * remembered token are gone, the feed cache is emptied so the next account
- * never sees this one's likes, and the root layout's guard returns to login.
- * The server half then revokes the refresh token, so a copy of it is worthless
- * too. That call is best-effort: POST /api/auth/logout is public and always
- * answers 204, and a network failure must not leave someone stuck signed in.
+ * Cannot fail: the session and any remembered token are gone, the feed cache is
+ * emptied so the next account never sees this one's likes, and the root
+ * layout's guard returns to login.
  *
  * The remembered token is cleared again here, and AWAITED, though setSession
  * already cleared it. setSession's clear is fire-and-forget, so without this a
  * save still queued from a recent rotation could land after it and leave Remember
- * me in force. Awaited before the network call, so being offline cannot delay it.
+ * me in force.
  */
-export const logout = async (): Promise<void> => {
-  const refreshToken = session?.refreshToken;
-
+export const clearLocalSession = async (): Promise<void> => {
   setSession(null);
   resetPosts();
   // Who this account looked up is as personal as what it liked.
@@ -434,6 +431,21 @@ export const logout = async (): Promise<void> => {
   // And, most of all, what it has been saying to people.
   resetMessages();
   await clearRefreshToken();
+};
+
+/**
+ * Signs out - on this device and on the server.
+ *
+ * The local half happens first - see clearLocalSession. The server half then
+ * revokes the refresh token, so a copy of it is worthless too. That call is
+ * best-effort: POST /api/auth/logout is public and always answers 204, and a
+ * network failure must not leave someone stuck signed in. The local half is
+ * awaited before it, so being offline cannot delay signing out.
+ */
+export const logout = async (): Promise<void> => {
+  const refreshToken = session?.refreshToken;
+
+  await clearLocalSession();
 
   if (!refreshToken) return;
   try {

@@ -44,15 +44,22 @@ export const create = async (req, res, next) => {
       return res.status(400).json({ error: "followingId is required" });
     }
 
-    const { follow, created } = await followService.followUser({
+    const result = await followService.followUser({
       followerId: req.user.id,
       followingId,
     });
 
+    // A private account was ASKED rather than followed: 202, because what was
+    // asked for has not happened yet - it waits on the other person.
+    if (result.status === "requested") {
+      return res.status(202).json({ status: "requested" });
+    }
+
     // 201 the first time, 200 for a repeat. Following is idempotent (see
     // followUser), so a double-tap is a success, not a 409 — but a client that
-    // does care which happened can still tell from the status.
-    res.status(created ? 201 : 200).json(follow);
+    // does care which happened can still tell from the status. `status` rides
+    // along on the follow row so the one field tells both answers apart.
+    res.status(result.created ? 201 : 200).json({ ...result.follow, status: "following" });
   } catch (err) {
     next(err);
   }
@@ -137,6 +144,7 @@ export const listAll = async (req, res, next) => {
   try {
     const { items, total, page, limit } = await followService.listAllFollows(
       req.validated.query,
+      req.user.id,
     );
 
     res.status(200).json({
@@ -191,6 +199,47 @@ export const remove = async (req, res, next) => {
 export const removeFollower = async (req, res, next) => {
   try {
     await followService.removeFollower(req.params.userId, req.user.id);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/follows/requests - requests waiting on the caller, newest first.
+ */
+export const listRequests = async (req, res, next) => {
+  try {
+    res.status(200).json(await followService.listIncomingFollowRequests(req.user.id));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/follows/requests/:userId/accept - the caller accepts :userId's
+ * request to follow them. 204; 404 when there is no such request.
+ *
+ * The caller is always the one ASKED, from the token - never from the path -
+ * so nobody can accept a request on someone else's behalf.
+ */
+export const acceptRequest = async (req, res, next) => {
+  try {
+    await followService.acceptFollowRequest(req.params.userId, req.user.id);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * DELETE /api/follows/requests/:userId - the caller declines :userId's request.
+ * 204; 404 when there is no such request. A requester cancels their OWN request
+ * with DELETE /api/follows/user/:userId instead, the same tap as unfollowing.
+ */
+export const declineRequest = async (req, res, next) => {
+  try {
+    await followService.declineFollowRequest(req.params.userId, req.user.id);
     res.status(204).send();
   } catch (err) {
     next(err);

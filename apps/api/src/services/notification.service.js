@@ -122,7 +122,7 @@ export const emitNotification = async ({ userId, type, message, actorId }) => {
  * @param {{
  *   recipientId: string,
  *   actorId: string,
- *   type: "FOLLOW" | "POST_LIKE" | "POST_COMMENT" | "GROUP_JOIN",
+ *   type: "FOLLOW" | "FOLLOW_REQUEST" | "FOLLOW_ACCEPTED" | "POST_LIKE" | "POST_COMMENT" | "GROUP_JOIN",
  *   describe: (actorName: string) => string,
  * }} input
  * @returns {Promise<object | null>} the row, or null when skipped or failed
@@ -256,6 +256,35 @@ export const dismissNotification = async (id, userId) => {
   await publishNotificationEvent(userId, { type: "deleted", id });
 
   return result;
+};
+
+/**
+ * Takes back notifications that no longer mean anything - a FOLLOW_REQUEST once
+ * the request has been accepted, declined or cancelled, so nobody is left
+ * holding Accept and Decline buttons for a request that is gone.
+ *
+ * Each removed row is published as `deleted`, exactly as a dismissal is, so an
+ * open app drops it on the spot.
+ *
+ * ⚠ NEVER THROWS, for emitNotification's reason: it runs on the tail of a
+ * follow write that has already committed, and a stale notification is not a
+ * reason to fail it.
+ *
+ * @param {{ userId: string, actorId: string, type: string }} scope
+ * @returns {Promise<void>}
+ */
+export const withdrawNotifications = async ({ userId, actorId, type }) => {
+  try {
+    const ids = await notificationRepo.deleteNotificationsByActor({ userId, actorId, type });
+    if (ids.length === 0) return;
+
+    await invalidateNotifications(userId);
+    await Promise.all(
+      ids.map((id) => publishNotificationEvent(userId, { type: "deleted", id })),
+    );
+  } catch (err) {
+    log.warn(`failed to withdraw ${type} notifications for ${userId}: ${err?.message}`);
+  }
 };
 
 /**

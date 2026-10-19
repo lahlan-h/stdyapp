@@ -4,7 +4,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useTheme, useStyles } from "@theme";
 
 interface ProfileStatsProps {
-  posts: number;
+  /** Undefined on a private account's locked profile, as well as while loading. */
+  posts?: number;
   followers?: number;
   following?: number;
 }
@@ -46,7 +47,7 @@ const ProfileStats = ({ posts, followers, following }: ProfileStatsProps) => {
       start={{ x: 0.5, y: 0 }}
       end={{ x: 0.5, y: 1 }}
     >
-      <Stat value={String(posts)} label="Posts" />
+      <Stat value={show(posts)} label="Posts" />
       <View style={styles.statDivider} />
       <Stat value={show(followers)} label="Followers" />
       <View style={styles.statDivider} />

@@ -10,9 +10,13 @@ import {
   removeFollower,
   removeMine,
   listAll,
+  listRequests,
+  acceptRequest,
+  declineRequest,
   resolveTargetUserId,
 } from "../controllers/follow.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { requireCanViewUser } from "../middleware/privacy.js";
 import { validate } from "../middleware/validate.js";
 import { rateLimit } from "../middleware/rateLimit.js";
 import { cache } from "../middleware/cache.js";
@@ -131,8 +135,12 @@ const cacheMyFollowing = cache({
 // keyed by the other person's id, which a client rendering a Follow button
 // already has, whereas it may never have seen the edge's own id.
 router.get("/user/:userId/count", readLimit, cacheSummary, summary);
-router.get("/user/:userId/followers", readLimit, cacheFollowers, listFollowers);
-router.get("/user/:userId/following", readLimit, cacheFollowing, listFollowing);
+// The two lists are a private account's to show, so they are gated BEFORE their
+// caches, whose keys carry no viewer - see middleware/privacy.js. The summary
+// above stays open: counts are part of the profile header everyone sees.
+const canViewTarget = requireCanViewUser(resolveTargetUserId);
+router.get("/user/:userId/followers", readLimit, canViewTarget, cacheFollowers, listFollowers);
+router.get("/user/:userId/following", readLimit, canViewTarget, cacheFollowing, listFollowing);
 router.delete("/user/:userId", writeLimit, remove);
 
 // The /followers prefix is the "people who follow ME" half of this router, as
@@ -165,6 +173,15 @@ router.delete("/mine", bulkLimit, removeMine);
 // expensive query in the file, and leaving the one uncached route with no
 // ceiling at all would be the wrong reading of "except /all".
 router.get("/all", readLimit, validate({ query: paginationQuerySchema }), listAll);
+
+// Follow requests waiting on the CALLER - a private account's inbox. Uncached:
+// they are read rarely and answered at once, and every write to them would
+// orphan a cached copy anyway. Accept and decline take the REQUESTER's id; the
+// caller is always the one asked. A requester cancels their own request with
+// DELETE /user/:userId above - the same tap as unfollowing.
+router.get("/requests", readLimit, listRequests);
+router.post("/requests/:userId/accept", writeLimit, acceptRequest);
+router.delete("/requests/:userId", writeLimit, declineRequest);
 
 router.post("/", writeLimit, create);
 router.get("/", readLimit, cacheMyFollowing, listMine);

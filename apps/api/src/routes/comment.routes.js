@@ -13,6 +13,7 @@ import {
   resolveTargetUserId,
 } from "../controllers/comment.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { requireCanViewUser, requirePostVisible } from "../middleware/privacy.js";
 import { validate } from "../middleware/validate.js";
 import { rateLimit } from "../middleware/rateLimit.js";
 import { cache } from "../middleware/cache.js";
@@ -127,8 +128,12 @@ const cacheUserList = cache({
 //
 // "/count" is declared above its parent so a "/post/:postId/:something" added
 // later cannot shadow it.
-router.get("/post/:postId/count", readLimit, cacheSummary, summary);
-router.get("/post/:postId", readLimit, cacheThread, listByPost);
+// Gated BEFORE the cache, for private accounts - see middleware/privacy.js. A
+// hidden post answers 404, like one that does not exist.
+const postVisible = requirePostVisible((req) => req.params.postId);
+
+router.get("/post/:postId/count", readLimit, postVisible, cacheSummary, summary);
+router.get("/post/:postId", readLimit, postVisible, cacheThread, listByPost);
 
 // Two segments deep, so "/:id" below cannot swallow them either way — but
 // declared first so that adding a "/user/:userId" DELETE later cannot silently
@@ -136,7 +141,13 @@ router.get("/post/:postId", readLimit, cacheThread, listByPost);
 //
 // listByUser is the one route here that reads a named person's data; the bulk
 // delete is strictly self-only and takes its target from the token.
-router.get("/user/:userId", readLimit, cacheUserList, listByUser);
+router.get(
+  "/user/:userId",
+  readLimit,
+  requireCanViewUser(resolveTargetUserId),
+  cacheUserList,
+  listByUser,
+);
 router.delete("/user/me", bulkLimit, removeMine);
 
 // MUST stay above GET "/:id". That pattern is a single segment, so it matches

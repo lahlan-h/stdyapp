@@ -20,6 +20,7 @@ import { createSettingsStyles } from "./settings.styles";
 import { createNewPostStyles } from "./newPost.styles";
 import { createPostDetailStyles } from "./postDetail.styles";
 import { createReportDialogStyles } from "./reportDialog.styles";
+import { createDeleteAccountDialogStyles } from "./deleteAccountDialog.styles";
 import { createTabBarStyles } from "./tabBar.styles";
 import { createLoginStyles } from "./login.styles";
 import { createRegisterStyles } from "./register.styles";
@@ -106,6 +107,7 @@ const styleMap = {
   newPost: createNewPostStyles,
   postDetail: createPostDetailStyles,
   reportDialog: createReportDialogStyles,
+  deleteAccountDialog: createDeleteAccountDialogStyles,
   tabBar: createTabBarStyles,
   login: createLoginStyles,
   register: createRegisterStyles,
@@ -302,6 +304,9 @@ export const usePostDetailStyles = () => useStyles("postDetail");
 
 /** The report-dialog stylesheet for the active theme. Never rebuilds. */
 export const useReportDialogStyles = () => useStyles("reportDialog");
+
+/** The delete-account dialog's own stylesheet. Used alongside useReportDialogStyles. */
+export const useDeleteAccountDialogStyles = () => useStyles("deleteAccountDialog");
 
 /** The login stylesheet for the active theme. Never rebuilds. */
 export const useLoginStyles = () => useStyles("login");

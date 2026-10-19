@@ -317,6 +317,54 @@ export const cancelSubscription = async (userId) => {
 };
 
 /**
+ * Ends a user's Stripe subscription NOW, for account deletion.
+ *
+ * Immediate, where cancelSubscription waits for the period to end - and the
+ * opposite call is right here. That one keeps paid access the user still has;
+ * a deleted account has nothing left to keep access to, and a subscription
+ * left running would go on billing a customer whose account no longer exists.
+ * CANCELLED rows are ended too: they would stop billing on their own, but the
+ * account is going now, not at renewsAt.
+ *
+ * Writes nothing locally. The row cascades away with the user, and the webhook
+ * that follows finds no user for the customer and answers 200 - see
+ * findUserIdByStripeCustomer.
+ *
+ * Stub rows (no `sub_` reference) exist nowhere at Stripe, so there is nothing
+ * to call. Neither is there for a subscription Stripe says is already gone.
+ *
+ * @param {string} userId
+ * @returns {Promise<void>}
+ * @throws {HttpError} 502 when Stripe cannot cancel it - the caller must then
+ *   delete nothing, or the account would be gone while still being billed
+ */
+export const cancelSubscriptionNow = async (userId) => {
+  const existing = await subscriptionRepo.findSubscriptionByUser(userId);
+  if (!existing || existing.status === "EXPIRED") return;
+  if (!existing.paymentReference?.startsWith("sub_")) return;
+
+  const stripe = getStripe();
+  try {
+    await stripe.subscriptions.cancel(existing.paymentReference);
+  } catch (err) {
+    // Never there under this reference.
+    if (err?.code === "resource_missing") return;
+
+    // Already over at Stripe - a webhook the local row has not caught up with.
+    // Asked rather than inferred from the error, whose wording Stripe owns.
+    const current = await stripe.subscriptions
+      .retrieve(existing.paymentReference)
+      .catch(() => null);
+    if (current?.status === "canceled" || current?.status === "incomplete_expired") return;
+
+    throw new HttpError(
+      502,
+      "Couldn't cancel your subscription, so nothing was deleted. Try again.",
+    );
+  }
+};
+
+/**
  * Brings the local row into line with what Stripe currently says.
  *
  * ⚠ THE EVENT PAYLOAD IS DELIBERATELY NOT TRUSTED. Only the subscription id is

@@ -31,13 +31,16 @@ export interface GoogleSignInState {
  * right here, unlike for anything secret. There is no client secret in this
  * flow at all.
  */
-const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || undefined;
-const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
-const ANDROID_CLIENT_ID =
+export const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || undefined;
+export const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
+export const ANDROID_CLIENT_ID =
   process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || undefined;
 
-/** Whether THIS platform has the client ID it needs. */
-const GOOGLE_CONFIGURED = Boolean(
+/**
+ * Whether THIS platform has the client ID it needs. Exported for
+ * useGoogleIdToken, which makes the same choice for the same reason.
+ */
+export const GOOGLE_CONFIGURED = Boolean(
   Platform.select({
     web: WEB_CLIENT_ID,
     ios: IOS_CLIENT_ID,

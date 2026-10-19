@@ -12,6 +12,7 @@ import {
   resolveTargetUserId,
 } from "../controllers/post.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { requireCanViewUser } from "../middleware/privacy.js";
 import { validate } from "../middleware/validate.js";
 import { rateLimit } from "../middleware/rateLimit.js";
 import { cache } from "../middleware/cache.js";
@@ -131,7 +132,14 @@ const cacheUserList = cache({
 //
 // listByUser is the one route here that reads someone else's data; the bulk
 // delete is strictly self-only and takes its target from the token.
-router.get("/user/:userId", readLimit, cacheUserList, listByUser);
+// The privacy gate sits BEFORE the cache - see middleware/privacy.js.
+router.get(
+  "/user/:userId",
+  readLimit,
+  requireCanViewUser(resolveTargetUserId),
+  cacheUserList,
+  listByUser,
+);
 router.delete("/user/me", bulkLimit, removeMine);
 
 // MUST stay above GET "/:id". That pattern is a single segment, so it matches

@@ -4,6 +4,7 @@ import * as commentRepo from "../repositories/comment.repository.js";
 // instead would drag getOwnedPostOrThrow along — which would make commenting on
 // someone else's post a 403, i.e. break the entire feature.
 import { findPostById } from "../repositories/post.repository.js";
+import { canViewPost } from "./privacy.service.js";
 // The only sanctioned way to reach prisma.user from here — see post.service.js.
 import { getUserById } from "./user.service.js";
 import { notifyActivity, excerpt } from "./notification.service.js";
@@ -165,6 +166,10 @@ const invalidateComment = async (comment) => {
  */
 export const createComment = async ({ userId, postId, body }) => {
   const post = await assertPostExists(postId);
+  // A post the caller may not see - a private author's, or a group's they are
+  // not in - is "not found", exactly as a missing one is. Without this, writing
+  // to it would be a way to read it: the caller's own list hands the Post back.
+  if (!(await canViewPost(userId, postId))) throw notFound("Post");
 
   let comment;
   try {
@@ -272,10 +277,12 @@ export const listCommentsByUser = async (targetUserId) => {
  * Returns the { items, total, page, limit } shape listUsers returns, so the
  * controller can build the pagination envelope the same way.
  */
-export const listAllComments = async ({ page, limit }) => {
+export const listAllComments = async ({ page, limit }, viewerId) => {
   const [items, total] = await commentRepo.findAllComments({
     skip: (page - 1) * limit,
     take: limit,
+    // Private accounts the viewer may not see are left out - see the repository.
+    viewerId,
   });
 
   return { items, total, page, limit };
