@@ -3,6 +3,8 @@ import { StyleSheet } from "react-native";
 
 /** Diameter of the author avatar on a post card. */
 const AVATAR_SIZE = 65;
+/** The space between photos in a post's grid - Facebook's hairline-plus. */
+const PHOTO_GRID_GAP = 2;
 
 export const createHomeStyles = (colors: ColorScheme) => {
   const styles = StyleSheet.create({
@@ -37,6 +39,20 @@ export const createHomeStyles = (colors: ColorScheme) => {
       padding: 12,
       alignItems: "center",
     },
+    // flex: 1, so the column is exactly the space beside the avatar and a long
+    // list of groups wraps inside the card rather than running off its edge.
+    postCardHeaderText: { flex: 1 },
+    // Top-aligned rather than centred: when the groups wrap onto a second
+    // line, the icon stays beside the first one.
+    postCardAudience: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 5,
+      marginTop: 2,
+    },
+    // Nudges the 12pt icon onto the centre of the label's first 13pt line.
+    postCardAudienceIcon: { marginTop: 3 },
+    postCardAudienceText: { flex: 1 },
     postCardAvatar: {
       borderColor: colors.border,
       borderWidth: 1,
@@ -75,6 +91,75 @@ export const createHomeStyles = (colors: ColorScheme) => {
       // and caption wrap.
       alignItems: "stretch",
     },
+    // --- "Studied with" - who else was in the session's group room ---
+    // Shared with the post detail screen through the StudiedWith component.
+    studiedWith: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    studiedWithAvatars: { flexDirection: "row" },
+    studiedWithAvatar: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      // A ring in the card's own colour, so overlapping faces stay separate.
+      borderWidth: 2,
+      borderColor: colors.surface,
+    },
+    studiedWithAvatarOverlap: { marginLeft: -8 },
+    studiedWithText: {
+      flex: 1,
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.textMuted,
+    },
+    studiedWithName: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      color: colors.text,
+    },
+    // --- A post's photos: one on its own, or Facebook's grid (PostPhotos) ---
+    // Shared with the post detail screen, whose frame differs only in its own
+    // outer style. The gaps show the card behind, so the tiles read as separate
+    // photos without a border colour of their own.
+    photoGrid: {
+      gap: PHOTO_GRID_GAP,
+    },
+    photoGridRow: {
+      flexDirection: "row",
+      gap: PHOTO_GRID_GAP,
+    },
+    photoGridTile: {
+      flex: 1,
+    },
+    photoGridImage: {
+      width: "100%",
+      height: "100%",
+    },
+
+    // --- Badges a session earned ("Personal best"...) ---
+    // Shared with the post detail screen through the PostHighlights component.
+    highlights: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+    },
+    highlight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.bg,
+    },
+    highlightText: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 12,
+      color: colors.text,
+    },
     statsContainer: {
       paddingHorizontal: 12,
       paddingTop: 10,
@@ -84,7 +169,9 @@ export const createHomeStyles = (colors: ColorScheme) => {
     },
     postCardImage: {
       width: "100%",
-      aspectRatio: 1 / 1,
+      // Square only until the first photo's shape is known - PostPhotos
+      // replaces this with it, within 4:5 and 2:1.
+      aspectRatio: 1,
       borderColor: colors.border,
       borderTopWidth: 1,
       borderBottomWidth: 1,

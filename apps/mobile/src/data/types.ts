@@ -25,6 +25,15 @@ export interface FeedAuthor {
  * offer a picker yet. The card renders its stats only when this resolves,
  * rather than showing zeroes for a session that does not exist.
  */
+/**
+ * A badge a session earned, as a post shows it. The API decides who earned
+ * what (services/postSession.js); this only names it.
+ */
+export type PostHighlight =
+  | { kind: "personalBest" }
+  | { kind: "hitPlan"; plannedMinutes: number }
+  | { kind: "phoneFree" };
+
 export interface FeedSession {
   /**
    * Null while the session is still running.
@@ -35,6 +44,54 @@ export interface FeedSession {
   durationMinutes: number | null;
   /** Minutes studied, less 10 for each interruption over 20 minutes. */
   focusPoints: number;
+  /**
+   * Tasks ticked off during the session, out of how many it had. Absent when
+   * the session had no task list - not 0 of 0, which reads like a failure.
+   */
+  tasks?: { done: number; total: number };
+  /**
+   * The 0-100 focus ESTIMATE, or null when the session was not measured -
+   * which is not the same as 0, "measured and it was bad".
+   */
+  focusScore: number | null;
+  /** Badges earned, in the order to show them. Usually empty. */
+  highlights: PostHighlight[];
+  /**
+   * Everyone else in the session's group room, in the order they joined.
+   * Empty for a solo session. The API has already removed the author and
+   * anyone with a block between them and the viewer.
+   */
+  studiedWith: FeedAuthor[];
+}
+
+/**
+ * The routine a post links to, when it links one - enough to label the chip.
+ *
+ * Always the AUTHOR'S routine: the API refuses to link anyone else's. The tasks
+ * are not here; the chip opens them on demand, from the routine itself for the
+ * author and from its preview for everyone else.
+ */
+export interface FeedRoutine {
+  id: string;
+  title: string;
+}
+
+/**
+ * One photo on a post. width / height are what the app measured when it was
+ * uploaded, so its frame can be sized before the image loads; absent for
+ * photos from before they were recorded, which the app measures itself.
+ */
+export interface FeedPhoto {
+  id: string;
+  url: string;
+  width?: number;
+  height?: number;
+}
+
+/** Who a post went to, as its author chose. */
+export interface PostAudience {
+  followers: boolean;
+  groups: { id: string; name: string }[];
 }
 
 export interface FeedPost {
@@ -43,7 +100,8 @@ export interface FeedPost {
   title: string;
   /** Optional supporting text below the title. */
   caption?: string;
-  imageUrl?: string;
+  /** Up to four, in display order. Empty for a text-only post. */
+  photos: FeedPhoto[];
   likeCount: number;
   /**
    * Whether the CURRENT viewer has liked it - what decides the heart's colour.
@@ -99,9 +157,15 @@ export interface FeedPost {
    * throws away the user the dev-token response arrives with.
    */
   isMine: boolean;
+  /**
+   * Where the post was shared - followers, groups, or both. Only for the
+   * viewer's OWN posts: the API tells nobody else which groups saw a post.
+   */
+  sharedTo?: PostAudience;
   commentCount: number;
   /** Epoch milliseconds. */
   createdAt: number;
   author: FeedAuthor;
   session?: FeedSession;
+  routine?: FeedRoutine;
 }

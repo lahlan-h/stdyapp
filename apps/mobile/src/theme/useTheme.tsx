@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useColorScheme } from "react-native";
+import { Appearance, useColorScheme } from "react-native";
 
 import { darkColors, lightColors, type ColorScheme } from "./colors";
 
@@ -20,6 +20,7 @@ import { createSettingsStyles } from "./settings.styles";
 import { createNewPostStyles } from "./newPost.styles";
 import { createPostDetailStyles } from "./postDetail.styles";
 import { createReportDialogStyles } from "./reportDialog.styles";
+import { createDeleteAccountDialogStyles } from "./deleteAccountDialog.styles";
 import { createTabBarStyles } from "./tabBar.styles";
 import { createLoginStyles } from "./login.styles";
 import { createRegisterStyles } from "./register.styles";
@@ -30,7 +31,10 @@ import { createHomeSearchStyles } from "./homeSearch.styles";
 import { createMessagesStyles } from "./messages.styles";
 import { createRoutinesStyles } from "./routines.styles";
 import { createSessionHistoryStyles } from "./sessionHistory.styles";
+import { createLeaderboardStyles } from "./leaderboard.styles";
 import { createGroupsStyles } from "./groups.styles";
+import { createPhotoViewerStyles } from "./photoViewer.styles";
+import { createPlansStyles } from "./plans.styles";
 
 const STORAGE_KEY = "themePreference";
 
@@ -56,6 +60,31 @@ const isThemePreference = (value: unknown): value is ThemePreference =>
   value === "light" || value === "dark" || value === "system";
 
 /**
+ * Hands the choice down to the NATIVE views, which never read this context.
+ *
+ * The tab bar is the system's own (Liquid Glass on iOS 26, Material on
+ * Android), and like alerts, the keyboard and the date picker it takes its
+ * light or dark look from the OS rather than from `colors`. Without this, a
+ * phone in dark mode running the app in Light drew a dark glass bar with white
+ * labels over a white screen - and the reverse in Light-on-Dark. An override
+ * here is what UIKit's overrideUserInterfaceStyle and Android's night mode
+ * read, so every native view follows the in-app choice.
+ *
+ * "unspecified" lifts the override, which is exactly what "system" means.
+ *
+ * Safe to call repeatedly with the same value: it is a no-op on the native
+ * side when nothing changes.
+ *
+ * Skipped where it does not exist: react-native-web's Appearance has no
+ * setColorScheme - a browser has no native views to override - and calling it
+ * there threw inside ThemeProvider and took the whole web app down.
+ */
+const applyNativeScheme = (preference: ThemePreference) => {
+  if (typeof Appearance.setColorScheme !== "function") return;
+  Appearance.setColorScheme(preference === "system" ? "unspecified" : preference);
+};
+
+/**
  * Translates an old `darkMode` value. Only a real boolean was ever a choice the
  * user made - anything else is junk, and junk means "no preference", not "light".
  */
@@ -78,6 +107,7 @@ const styleMap = {
   newPost: createNewPostStyles,
   postDetail: createPostDetailStyles,
   reportDialog: createReportDialogStyles,
+  deleteAccountDialog: createDeleteAccountDialogStyles,
   tabBar: createTabBarStyles,
   login: createLoginStyles,
   register: createRegisterStyles,
@@ -88,7 +118,10 @@ const styleMap = {
   messages: createMessagesStyles,
   routines: createRoutinesStyles,
   sessionHistory: createSessionHistoryStyles,
+  leaderboard: createLeaderboardStyles,
   groups: createGroupsStyles,
+  photoViewer: createPhotoViewerStyles,
+  plans: createPlansStyles,
 } as const;
 
 type StyleName = keyof typeof styleMap;
@@ -175,12 +208,33 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
+  /**
+   * Keeps the native views on the same theme as the screens - see
+   * applyNativeScheme. An effect as well as the call in setThemePreference,
+   * because the stored choice also arrives by way of the load above, and a JS
+   * reload starts back at "system" while the native override from before the
+   * reload is still in place.
+   */
+  useEffect(() => {
+    applyNativeScheme(preference);
+  }, [preference]);
+
+  // While an override is in place, useColorScheme reports the OVERRIDE rather
+  // than the OS. That is harmless here: "system" is the only preference that
+  // reads systemScheme, and choosing it lifts the override.
   const isDarkMode =
     preference === "system" ? systemScheme === "dark" : preference === "dark";
 
   // Saves alongside the state update rather than inside a setState updater:
   // updaters must be pure, and React may call them more than once.
   const setThemePreference = useCallback((next: ThemePreference) => {
+    // In the same tap as the state update rather than an effect after it, so
+    // the native bar and the screens repaint together instead of a frame
+    // apart. Choosing System is the one case that settles a moment later:
+    // until the OS reports its own scheme, useColorScheme still answers with
+    // the override just lifted - which is the theme already on screen, so the
+    // switch arrives as one clean change rather than a flicker.
+    applyNativeScheme(next);
     setPreference(next);
     AsyncStorage.setItem(STORAGE_KEY, next).catch(() => {
       /* the choice still applies for this session */
@@ -250,6 +304,9 @@ export const usePostDetailStyles = () => useStyles("postDetail");
 
 /** The report-dialog stylesheet for the active theme. Never rebuilds. */
 export const useReportDialogStyles = () => useStyles("reportDialog");
+
+/** The delete-account dialog's own stylesheet. Used alongside useReportDialogStyles. */
+export const useDeleteAccountDialogStyles = () => useStyles("deleteAccountDialog");
 
 /** The login stylesheet for the active theme. Never rebuilds. */
 export const useLoginStyles = () => useStyles("login");

@@ -11,6 +11,7 @@ import {
   resolveTargetUserId,
 } from "../controllers/like.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { requireCanViewUser, requirePostVisible } from "../middleware/privacy.js";
 import { validate } from "../middleware/validate.js";
 import { rateLimit } from "../middleware/rateLimit.js";
 import { cache } from "../middleware/cache.js";
@@ -119,11 +120,22 @@ const cacheUserList = cache({
 // no "/:id" route at all — unlike is keyed by postId, which a client rendering
 // a heart already has, whereas it may never have seen the like's own id. That
 // removes the shadowing hazard post.routes.js has to warn about.
-router.get("/post/:postId/count", readLimit, cacheSummary, summary);
-router.get("/post/:postId", readLimit, cacheLikedBy, listByPost);
+// Every read below that names a post or a user is gated BEFORE its cache, for
+// private accounts - see middleware/privacy.js. A hidden post answers 404, like
+// one that does not exist.
+const postVisible = requirePostVisible((req) => req.params.postId);
+
+router.get("/post/:postId/count", readLimit, postVisible, cacheSummary, summary);
+router.get("/post/:postId", readLimit, postVisible, cacheLikedBy, listByPost);
 router.delete("/post/:postId", writeLimit, removeByPost);
 
-router.get("/user/:userId", readLimit, cacheUserList, listByUser);
+router.get(
+  "/user/:userId",
+  readLimit,
+  requireCanViewUser(resolveTargetUserId),
+  cacheUserList,
+  listByUser,
+);
 router.delete("/user/me", bulkLimit, removeMine);
 
 // UNCACHED by request. It keeps a limiter anyway: it is the most expensive
@@ -141,8 +153,8 @@ router.get("/", readLimit, cacheMyList, listMine);
 // No PATCH, and its absence next to post.routes.js is deliberate rather than an
 // oversight. Every column on a like is either the primary key or half the row's
 // identity: rewriting userId or postId does not EDIT a like, it makes it a
-// different one — a delete plus a create. Post has a PATCH because caption and
-// photoUrl are editable content; a like has no such field. If a reaction type
+// different one — a delete plus a create. Post has a PATCH because its title,
+// caption and links are editable content; a like has no such field. If a reaction type
 // is ever added, that is when a PATCH earns its place.
 
 export default router;

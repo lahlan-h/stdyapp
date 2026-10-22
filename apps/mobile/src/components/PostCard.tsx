@@ -1,4 +1,4 @@
-import { Image, Pressable } from "react-native";
+import { Pressable } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 
@@ -9,6 +9,10 @@ import PostCardHeader from "./PostCardHeader";
 import PostCardBody from "./PostCardBody";
 import PostCardStats from "./PostCardStats";
 import PostCardFooter from "./PostCardFooter";
+import PostRoutineLink from "./PostRoutineLink";
+import PostPhotos from "./PostPhotos";
+import StudiedWith from "./StudiedWith";
+import PostHighlights from "./PostHighlights";
 
 interface PostCardProps {
   post: FeedPost;
@@ -63,18 +67,32 @@ const PostCard = ({ post, onToggleLike, onReport }: PostCardProps) => {
           displayName={post.author.displayName}
           avatarUrl={post.author.avatarUrl}
           createdAt={post.createdAt}
+          sharedTo={post.sharedTo}
         />
         <PostCardBody title={post.title} caption={post.caption} />
+        <StudiedWith
+          people={post.session?.studiedWith ?? []}
+          style={{ marginHorizontal: 12, marginTop: 8 }}
+        />
+        {/* Its own Pressable, nested: a tap on the chip opens the routine
+            rather than the post. */}
+        {post.routine ? (
+          <PostRoutineLink
+            routine={post.routine}
+            isMine={post.isMine}
+            style={{ marginHorizontal: 12, marginTop: 8 }}
+          />
+        ) : null}
         {/* Always rendered. PostCardStats holds the row's place with a dash when
             a post has no linked session, rather than the row coming and going. */}
         <PostCardStats session={post.session} />
-        {post.imageUrl && (
-          <Image
-            style={homeStyles.postCardImage}
-            source={{ uri: post.imageUrl }}
-            resizeMode="cover"
-          />
-        )}
+        <PostHighlights
+          highlights={post.session?.highlights ?? []}
+          style={{ marginHorizontal: 12, marginBottom: 12 }}
+        />
+        {/* Opens full size rather than the post - see PostPhotos. Renders
+            nothing for a text-only post. */}
+        <PostPhotos photos={post.photos} title={post.title} style={homeStyles.postCardImage} />
       </Pressable>
       <PostCardFooter
         postId={post.id}

@@ -94,6 +94,30 @@ export const remove = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/sessions/:id/pause - starts a break, and answers with the session's
+ * break state: whether one is running, when it stops counting, and how many
+ * are left. See sessionPause.js.
+ */
+export const pause = async (req, res, next) => {
+  try {
+    const state = await sessionService.pauseSession(req.validated.params.id, req.user.id);
+    res.status(200).json(state);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** POST /api/sessions/:id/resume - ends the running break, if there is one. */
+export const resume = async (req, res, next) => {
+  try {
+    const state = await sessionService.resumeSession(req.validated.params.id, req.user.id);
+    res.status(200).json(state);
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const addInterruption = async (req, res, next) => {
   try {
     const { durationSec, type } = req.validated.body;

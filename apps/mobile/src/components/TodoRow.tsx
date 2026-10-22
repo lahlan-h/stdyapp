@@ -1,7 +1,7 @@
 import { Pressable, Text, View } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 
-import { useTheme, useRoutinesStyles, ROUTINES_ICON_SIZE } from "@theme";
+import { useTheme, useRoutinesStyles, haptics, ROUTINES_ICON_SIZE } from "@theme";
 import type { TodoItem } from "@data";
 
 import DueDateChips, { formatDue, isOverdue } from "@components/DueDateChips";
@@ -53,7 +53,10 @@ const TodoRow = ({
     <View style={!isFirst && styles.todoDivider}>
       <Pressable
         style={({ pressed }) => [styles.todoRow, pressed && styles.pressed]}
-        onPress={onToggle}
+        onPress={() => {
+          haptics.tick();
+          onToggle();
+        }}
         accessibilityRole="checkbox"
         accessibilityState={{ checked: todo.isComplete }}
         accessibilityLabel={todo.title}

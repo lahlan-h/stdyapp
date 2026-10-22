@@ -1,5 +1,6 @@
 import { REPORT_REASONS, type ReportReason } from "./reportReasons";
-import type { FeedPost, FeedSession } from "./types";
+import type { FeedAuthor, FeedPhoto, FeedPost, FeedSession, PostHighlight } from "./types";
+import { studiedMinutes } from "./sessionTime";
 
 /**
  * One row as GET /api/posts/all returns it.
@@ -7,24 +8,41 @@ import type { FeedPost, FeedSession } from "./types";
  * Declared structurally rather than generated from Prisma so replacing the
  * backend does not ripple outward. `_count` and `photoUrl` stop here.
  */
+/** A person as the API's public user allowlist sends them. */
+interface RawUser {
+  id: string;
+  username: string;
+  avatarUrl: string | null;
+  firstName: string | null;
+  lastName: string | null;
+}
+
 export interface RawFeedRow {
   id: string;
   title: string;
   caption: string | null;
-  photoUrl: string | null;
+  /** In display order. Absent from an API that predates multi-photo posts. */
+  photos?: { id: string; url: string; width: number | null; height: number | null }[];
   createdAt: string;
-  user: {
-    id: string;
-    username: string;
-    avatarUrl: string | null;
-    firstName: string | null;
-    lastName: string | null;
-  };
+  user: RawUser;
   session: {
     startedAt: string;
     endedAt: string | null;
+    /** Credited break seconds - absent from an API that predates breaks. */
+    pausedSeconds?: number;
     focusPoints: number;
+    /** Null when the session had no task list. */
+    tasksTotal?: number | null;
+    tasksCompleted?: number | null;
+    /** Absent from an API that predates group-room tagging. */
+    studiedWith?: RawUser[];
+    focusScore?: number | null;
+    plannedMinutes?: number | null;
+    /** Keys from services/postSession.js's HIGHLIGHTS. */
+    highlights?: string[];
   } | null;
+  /** Null when no routine is linked, or the linked one was deleted. */
+  routine: { id: string; title: string } | null;
   _count: { likes: number; comments: number };
   /**
    * The viewer's own like, already flattened to a boolean by the API - see
@@ -52,6 +70,8 @@ export interface RawFeedRow {
    * dev-token response hands it.
    */
   isMine: boolean;
+  /** Where the post went - only ever sent to its author. */
+  sharedTo?: { followers: boolean; groups: { id: string; name: string }[] } | null;
 }
 
 /**
@@ -75,20 +95,45 @@ const toReportReason = (value: string | null): ReportReason | undefined => {
 const toSession = (row: RawFeedRow): FeedSession | undefined => {
   if (!row.session) return undefined;
 
-  const { startedAt, endedAt, focusPoints } = row.session;
+  const {
+    startedAt,
+    endedAt,
+    pausedSeconds,
+    focusPoints,
+    tasksTotal,
+    tasksCompleted,
+    studiedWith,
+    focusScore,
+    plannedMinutes,
+    highlights,
+  } = row.session;
 
   return {
-    durationMinutes: endedAt
-      ? Math.max(
-          0,
-          Math.round(
-            (new Date(endedAt).getTime() - new Date(startedAt).getTime()) /
-              60000,
-          ),
-        )
-      : null,
+    // Studied time, breaks left out - the post says what the history says.
+    durationMinutes: endedAt ? studiedMinutes({ startedAt, endedAt, pausedSeconds }) : null,
     focusPoints,
+    tasks: tasksTotal ? { done: tasksCompleted ?? 0, total: tasksTotal } : undefined,
+    studiedWith: (studiedWith ?? []).map(toAuthor),
+    focusScore: focusScore ?? null,
+    highlights: (highlights ?? []).flatMap((key) => toHighlight(key, plannedMinutes)),
   };
+};
+
+/**
+ * One badge key from the API, as the app names it - or nothing for a key this
+ * build does not know, so the API can ship a new badge before the app does.
+ */
+const toHighlight = (key: string, plannedMinutes?: number | null): PostHighlight[] => {
+  switch (key) {
+    case "PERSONAL_BEST":
+      return [{ kind: "personalBest" }];
+    case "HIT_PLAN":
+      return plannedMinutes ? [{ kind: "hitPlan", plannedMinutes }] : [];
+    case "PHONE_FREE":
+      return [{ kind: "phoneFree" }];
+    default:
+      return [];
+  }
 };
 
 /**
@@ -106,6 +151,14 @@ export const toDisplayName = (
   username: string,
 ): string => [firstName, lastName].filter(Boolean).join(" ") || username;
 
+/** A person as the UI names and pictures them - the author, or a study buddy. */
+const toAuthor = (user: RawUser): FeedAuthor => ({
+  id: user.id,
+  username: user.username,
+  displayName: toDisplayName(user.firstName, user.lastName, user.username),
+  avatarUrl: user.avatarUrl ?? undefined,
+});
+
 /**
  * Lives here rather than inside usePosts because more than one screen needs it
  * now. Duplicating it would duplicate the rules this layer exists to contain -
@@ -113,13 +166,18 @@ export const toDisplayName = (
  * rather than null, and how a display name is built.
  */
 export const toFeedPost = (row: RawFeedRow): FeedPost => {
-  const { firstName, lastName, username } = row.user;
-
   return {
     id: row.id,
     title: row.title,
     caption: row.caption ?? undefined,
-    imageUrl: row.photoUrl ?? undefined,
+    photos: (row.photos ?? []).map(
+      (photo): FeedPhoto => ({
+        id: photo.id,
+        url: photo.url,
+        width: photo.width ?? undefined,
+        height: photo.height ?? undefined,
+      }),
+    ),
     likeCount: row._count.likes,
     isLiked: row.isLiked,
     isReported: row.isReported,
@@ -129,14 +187,13 @@ export const toFeedPost = (row: RawFeedRow): FeedPost => {
     // was renamed would arrive as a string this app has no label for.
     reportReason: toReportReason(row.reportReason),
     isMine: row.isMine,
+    sharedTo: row.sharedTo ?? undefined,
     commentCount: row._count.comments,
     createdAt: new Date(row.createdAt).getTime(),
-    author: {
-      id: row.user.id,
-      username,
-      displayName: toDisplayName(firstName, lastName, username),
-      avatarUrl: row.user.avatarUrl ?? undefined,
-    },
+    author: toAuthor(row.user),
     session: toSession(row),
+    // `?? undefined` for the same reason as caption: an API that predates the
+    // routine join sends no key at all, and the card must not crash on it.
+    routine: row.routine ?? undefined,
   };
 };

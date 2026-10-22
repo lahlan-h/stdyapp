@@ -19,6 +19,7 @@
  * averaged over the session, blended with how much of the session was actually
  * seen through, and finally scaled to 0-100.
  */
+import { isTimeAway } from "./sessionPause.js";
 
 /**
  * Relative importance of each signal in the per-sample composite.
@@ -321,16 +322,29 @@ export const scoreSample = (sample, baselines = {}) => {
  *
  * Coverage returns 0 for fewer than two samples: a single sample spans no time.
  *
+ * BREAKS ARE NOT TIME. `pausedMs` comes off the elapsed time in both cases -
+ * a planned hour with a five-minute break is complete at 65 minutes of wall
+ * clock - and off the sample span too, since no samples are sent during a
+ * break and the gap it leaves is not the user drifting off.
+ *
  * @param {{
  *   startedAt: Date,
  *   endedAt: Date,
  *   samples: Array<{ timestamp: Date }>,
  *   plannedMinutes?: number|null,
+ *   pausedMs?: number,
  * }} args
  * @returns {number}
  */
-export const computeCompletionFactor = ({ startedAt, endedAt, samples, plannedMinutes = null }) => {
-  const elapsedMs = new Date(endedAt).getTime() - new Date(startedAt).getTime();
+export const computeCompletionFactor = ({
+  startedAt,
+  endedAt,
+  samples,
+  plannedMinutes = null,
+  pausedMs = 0,
+}) => {
+  const elapsedMs =
+    new Date(endedAt).getTime() - new Date(startedAt).getTime() - Math.max(0, pausedMs);
   if (!(elapsedMs > 0)) return 0;
 
   if (Number.isFinite(plannedMinutes) && plannedMinutes > 0) {
@@ -340,7 +354,7 @@ export const computeCompletionFactor = ({ startedAt, endedAt, samples, plannedMi
   if (!Array.isArray(samples) || samples.length < 2) return 0;
 
   const times = samples.map((s) => new Date(s.timestamp).getTime());
-  const coveredMs = Math.max(...times) - Math.min(...times);
+  const coveredMs = Math.max(0, Math.max(...times) - Math.min(...times) - Math.max(0, pausedMs));
 
   return clamp01(coveredMs / elapsedMs);
 };
@@ -359,14 +373,17 @@ export const computeCompletionFactor = ({ startedAt, endedAt, samples, plannedMi
  * interruption with how long it was away, which is what this reads.
  *
  * @param {Array<{ durationSec: number }>} interruptions
- * @param {number} elapsedMs - the session's wall-clock duration
+ * @param {number} elapsedMs - the session's duration, breaks already taken out:
+ *   a break is not time away, so it must not dilute the time that was
  * @returns {number}
  */
 export const computeAwayFraction = (interruptions, elapsedMs) => {
   if (!Array.isArray(interruptions) || interruptions.length === 0) return 0;
   if (!(elapsedMs > 0)) return 0;
 
-  const awaySec = interruptions.reduce(
+  // A break is recorded as an interruption too, so the chart can place it,
+  // but it is not time away - see isTimeAway.
+  const awaySec = interruptions.filter(isTimeAway).reduce(
     (sum, i) => sum + (Number.isFinite(i?.durationSec) ? Math.max(0, i.durationSec) : 0),
     0,
   );
@@ -408,6 +425,7 @@ export const computeTaskCompletion = (tasks) => {
  *   plannedMinutes?: number|null,
  *   interruptions?: Array<{ durationSec: number }>,
  *   tasks?: Array<{ isComplete?: boolean }>,
+ *   pausedMs?: number,
  * }} args
  * @returns {{
  *   focusScore: number|null,
@@ -425,6 +443,10 @@ export const scoreSession = ({
   plannedMinutes = null,
   interruptions = [],
   tasks = [],
+  // Credited break time - see sessionPause.js. Off every duration below, so a
+  // break neither scores as focus nor as distraction: it is simply not part
+  // of the session being judged.
+  pausedMs = 0,
 }) => {
   const list = Array.isArray(samples) ? samples : [];
 
@@ -447,7 +469,10 @@ export const scoreSession = ({
     list.reduce((sum, sample) => sum + scoreSample(sample, baselines).composite, 0) /
     list.length;
 
-  const elapsedMs = new Date(endedAt).getTime() - new Date(startedAt).getTime();
+  const elapsedMs = Math.max(
+    0,
+    new Date(endedAt).getTime() - new Date(startedAt).getTime() - Math.max(0, pausedMs),
+  );
   const awayFraction = computeAwayFraction(interruptions, elapsedMs);
 
   // Time away counts as zero focus, rather than simply not counting. The
@@ -461,6 +486,7 @@ export const scoreSession = ({
     endedAt,
     samples: list,
     plannedMinutes,
+    pausedMs,
   });
 
   const taskCompletion = computeTaskCompletion(tasks);

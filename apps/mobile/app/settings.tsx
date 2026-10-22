@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -24,6 +25,8 @@ import { useNotificationPreferences } from "@data";
 import SettingsSection from "@components/SettingsSection";
 import SettingsRow from "@components/SettingsRow";
 import { confirmSignOut } from "@components/confirmSignOut";
+import DeleteAccountDialog from "@components/DeleteAccountDialog";
+import PrivacyRow from "@components/PrivacyRow";
 import ThemeSegmentedControl from "@components/ThemeSegmentedControl";
 
 /**
@@ -46,6 +49,7 @@ const Settings = () => {
   const settingsStyles = useStyles("settings");
   const insets = useSafeAreaInsets();
   const { preferences, setPreference } = useNotificationPreferences();
+  const [isDeleteOpen, setDeleteOpen] = useState(false);
 
   /**
    * thumbColor is deliberately left to the platform. Setting it to a palette
@@ -136,9 +140,9 @@ const Settings = () => {
 
           {/* Analytics and Routines both live under the Study tab. */}
           {/*
-            Edit profile and Sign out are live. Privacy and Delete account are
-            still placeholders: the API stores isPrivate but nothing enforces it
-            yet, and account deletion needs its own confirm-with-password flow.
+            Every row here is live. Private account is a switch the API
+            enforces - see PrivacyRow. Delete account opens a dialog that asks
+            for the password first - nothing is deleted from the row itself.
           */}
           <SettingsSection title="Account">
             <SettingsRow
@@ -150,17 +154,19 @@ const Settings = () => {
               right={<Feather name="chevron-right" size={ROW_ICON_SIZE} color={colors.textMuted} />}
             />
             <SettingsRow
-              isPlaceholder
-              icon="lock"
-              label="Privacy"
-              description="Who can see your sessions"
+              icon="credit-card"
+              label="Manage subscription"
+              description="Free or Premium, and billing"
+              onPress={() => router.push("/plans")}
+              right={<Feather name="chevron-right" size={ROW_ICON_SIZE} color={colors.textMuted} />}
             />
+            <PrivacyRow />
             <SettingsRow icon="log-out" label="Sign out" onPress={confirmSignOut} />
             <SettingsRow
-              isPlaceholder
               isDestructive
               icon="trash-2"
               label="Delete account"
+              onPress={() => setDeleteOpen(true)}
             />
           </SettingsSection>
 
@@ -185,6 +191,11 @@ const Settings = () => {
           </View>
         </ScrollView>
       </SafeAreaView>
+
+      <DeleteAccountDialog
+        visible={isDeleteOpen}
+        onClose={() => setDeleteOpen(false)}
+      />
     </LinearGradient>
   );
 };

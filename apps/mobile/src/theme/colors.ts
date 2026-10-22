@@ -67,6 +67,19 @@ export interface ColorScheme {
    */
   scrim: string;
   /**
+   * The full-screen photo viewer: its ground, its round buttons, and the
+   * glyphs and text on them.
+   *
+   * THE SAME IN BOTH THEMES, for scrim's reason: a photo is judged against
+   * black, and a light-theme viewer would wash out every image it showed. Kept
+   * as tokens anyway, by the rule at the top of this file.
+   */
+  lightbox: {
+    bg: string;
+    control: string;
+    text: string;
+  };
+  /**
    * What the login screen's logo banner paints behind itself.
    *
    * The logo (packages/shared/assets/stdy.png) sets its wordmark in #add8e6 on
@@ -139,6 +152,11 @@ export const lightColors: ColorScheme = {
   primaryEdge: "rgba(59,130,246,0.32)",
   notificationBadge: "#dc2626",
   scrim: "rgba(0,0,0,0.55)",
+  lightbox: {
+    bg: "#000000",
+    control: "rgba(255,255,255,0.16)",
+    text: "#ffffff",
+  },
   brandBanner: "#0f172a",
   google: {
     fill: "#ffffff",
@@ -184,6 +202,11 @@ export const darkColors: ColorScheme = {
   primaryEdge: "rgba(96,165,250,0.38)",
   notificationBadge: "#dc2626",
   scrim: "rgba(0,0,0,0.55)",
+  lightbox: {
+    bg: "#000000",
+    control: "rgba(255,255,255,0.16)",
+    text: "#ffffff",
+  },
   brandBanner: "transparent",
   google: {
     fill: "#131314",

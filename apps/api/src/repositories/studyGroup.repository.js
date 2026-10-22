@@ -13,6 +13,15 @@ export const findGroupById = (id) => {
   });
 };
 
+// The group a join code names. Unique, so at most one - and the lookup is the
+// unique index itself.
+export const findGroupByJoinCode = (joinCode) => {
+  return prisma.studyGroup.findUnique({
+    where: { joinCode },
+    include: { _count: { select: { memberships: true } } },
+  });
+};
+
 // The viewer's own membership row, at most one, so a list can say "joined"
 // without a query per group. Filtered to the viewer: the full membership list
 // is GET /:id/members, not something every search result should carry.
@@ -64,6 +73,26 @@ export const transferOwnership = (id, newOwnerId) => {
 
 export const deleteGroup = (id) => {
   return prisma.studyGroup.delete({ where: { id } });
+};
+
+// Which of these groups the user belongs to - one query for a post's whole
+// list of groups to share to, rather than a membership read per group.
+export const findMemberGroupIds = async (userId, groupIds) => {
+  if (groupIds.length === 0) return [];
+  const rows = await prisma.groupMembership.findMany({
+    where: { userId, groupId: { in: groupIds } },
+    select: { groupId: true },
+  });
+  return rows.map((row) => row.groupId);
+};
+
+// A member's posts leave the group's feed with them - see PostGroupShare.
+// Returns how many shares went, so the caller knows whether anything changed.
+export const deleteSharesOfMember = async (userId, groupId) => {
+  const { count } = await prisma.postGroupShare.deleteMany({
+    where: { groupId, post: { userId } },
+  });
+  return count;
 };
 
 export const findMembership = (userId, groupId) => {

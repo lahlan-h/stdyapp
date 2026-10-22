@@ -9,6 +9,7 @@ export {
   useNewPostStyles,
   usePostDetailStyles,
   useReportDialogStyles,
+  useDeleteAccountDialogStyles,
   useLoginStyles,
   useRegisterStyles,
   useForgotPasswordStyles,
@@ -31,10 +32,8 @@ export {
   TASK_ICON_SIZE,
   TOUCH_MIN,
   STUDY_FOOTER_ROOM,
-  WEEK_CHART_HEIGHT,
-  WEEK_PILL_ICON_SIZE,
-  ADVANCED_ANALYTICS_ICON_SIZE,
   BEGIN_CHEVRON_SIZE,
+  LOCK_IN_THUMB_SIZE,
 } from "./study.styles";
 export {
   createSettingsStyles,
@@ -42,14 +41,12 @@ export {
   SETTINGS_FOOTER_ROOM,
   SETTINGS_BACK_ICON_SIZE,
 } from "./settings.styles";
-export { useTabBarClearance } from "./useTabBarClearance";
+export { useTabBarClearance, useTabBarInset } from "./useTabBarClearance";
 export {
   createTabBarStyles,
-  TAB_ICON_SIZE,
-  TAB_BAR_HEIGHT,
-  BAR_HEIGHT,
   SESSION_BAR_CLEARANCE,
   SESSION_BAR_ICON_SIZE,
+  FALLBACK_TAB_BAR_HEIGHT,
 } from "./tabBar.styles";
 export {
   createNewPostStyles,
@@ -72,6 +69,11 @@ export {
   REPORT_STATE_FLAG_SIZE,
 } from "./reportDialog.styles";
 export {
+  createDeleteAccountDialogStyles,
+  DELETE_REVEAL_ICON_SIZE,
+  DELETE_GOOGLE_MARK_SIZE,
+} from "./deleteAccountDialog.styles";
+export {
   createLoginStyles,
   LOGIN_ICON_SIZE,
   LOGIN_CHECK_ICON_SIZE,
@@ -90,10 +92,13 @@ export {
   PROFILE_STUDY_ICON_SIZE,
   PROFILE_BACK_ICON_SIZE,
   PROFILE_SETTINGS_ICON_SIZE,
+  PROFILE_LOCK_ICON_SIZE,
+  PROFILE_PRIVATE_BADGE_ICON_SIZE,
 } from "./profile.styles";
 export {
   createHomeSearchStyles,
   HOME_PANEL_HEIGHT,
+  GROUP_PANEL_HEIGHT,
   PANEL_TITLE_ICON_SIZE,
   HOME_SEARCH_ICON_SIZE,
   SEARCH_ROW_ICON_SIZE,
@@ -107,6 +112,7 @@ export {
   SEND_ICON_SIZE,
 } from "./messages.styles";
 export { useReducedMotion } from "./useReducedMotion";
+export { haptics } from "./haptics";
 export { useKeyboardLift, type KeyboardLift } from "./useKeyboardLift";
 export {
   createAnalyticsStyles,
@@ -115,6 +121,8 @@ export {
   DAILY_CHART_HEIGHT,
   HOURLY_CHART_HEIGHT,
   MIN_VISIBLE_BAR,
+  WEEK_CHART_HEIGHT,
+  WEEK_PILL_ICON_SIZE,
 } from "./analytics.styles";
 export {
   createRoutinesStyles,
@@ -128,7 +136,23 @@ export {
   SESSION_HISTORY_STAR_SIZE,
 } from "./sessionHistory.styles";
 export {
+  createLeaderboardStyles,
+  LEADERBOARD_BACK_ICON_SIZE,
+  LEADERBOARD_AVATAR_SIZE,
+  LEADERBOARD_ICON_SIZE,
+  LEADERBOARD_EMPTY_ICON_SIZE,
+  LEADERBOARD_PODIUM_AVATAR,
+  LEADERBOARD_MEDALS,
+  LEADERBOARD_PEDESTAL_HEIGHT,
+} from "./leaderboard.styles";
+export {
   createGroupsStyles,
   GROUPS_HEADER_ICON_SIZE,
   GROUPS_ICON_SIZE,
 } from "./groups.styles";
+export {
+  createPlansStyles,
+  PLANS_BACK_ICON_SIZE,
+  PLANS_ICON_SIZE,
+} from "./plans.styles";
+export { createPhotoViewerStyles, PHOTO_VIEWER_ICON_SIZE } from "./photoViewer.styles";

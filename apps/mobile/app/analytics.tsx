@@ -25,6 +25,8 @@ import { useAnalytics, type Analytics, type AnalyticsRange, type GoalHitRate } f
 
 import AnalyticsBarChart from "@components/AnalyticsBarChart";
 import AnalyticsStatTile from "@components/AnalyticsStatTile";
+import LeaderboardTeaser from "@components/LeaderboardTeaser";
+import WeeklyStudyCard from "@components/WeeklyStudyCard";
 
 const RANGES: { key: AnalyticsRange; label: string }[] = [
   { key: "7d", label: "7 days" },
@@ -100,9 +102,9 @@ const HOURLY_AXIS = [0, 6, 12, 18, 23].map(formatHour);
 // --- Screen -------------------------------------------------------------------
 
 /**
- * Personal study analytics, opened from "See Advanced Analytics" under the
- * Study tab's weekly card. A push rather than a tab: the week at a glance
- * lives on Study, and this is where you go for the rest of it.
+ * Personal study analytics, opened from the Analytics button on your profile.
+ * A push rather than a tab: it is somewhere you go to look back, not where
+ * the studying happens. The week at a glance opens it, then the rest.
  *
  * Every number comes from GET /api/analytics/me; nothing is computed here
  * beyond formatting. Keeping the arithmetic on the server is what lets the
@@ -145,6 +147,13 @@ const AnalyticsScreen = () => {
             </Pressable>
             <Text style={styles.screenTitle}>Analytics</Text>
           </View>
+
+          {/* The headline: this week against last, a day at a time. */}
+          <WeeklyStudyCard />
+
+          {/* The social side of these numbers: your live standing, which opens
+              the leaderboard. A push, so back returns here. */}
+          <LeaderboardTeaser />
 
           <View style={styles.segmentGroup} accessibilityRole="tablist">
             {RANGES.map(({ key, label }) => {
@@ -211,9 +220,11 @@ const AnalyticsBody = ({ analytics }: { analytics: Analytics }) => {
         </View>
       ) : null}
 
-      {/* 1. Focus time - the headline, then the shape of it. */}
+      {/* 1. Study time - the headline, then the shape of it. Not "Focus time":
+          that is the leaderboard's name for minutes WEIGHTED by the focus
+          estimate, in the teaser just above, and this is every minute studied. */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Focus time</Text>
+        <Text style={styles.cardTitle}>Study time</Text>
         <Text style={styles.heroValue}>{formatMinutes(focusTime.totalMinutes)}</Text>
         <Trend focusTime={focusTime} days={range.days} />
         <AnalyticsBarChart

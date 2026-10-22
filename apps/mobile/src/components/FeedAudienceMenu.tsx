@@ -1,7 +1,7 @@
 import { Modal, Pressable, ScrollView, Text, View, ActivityIndicator } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 
-import { useTheme, useStyles, SEARCH_ROW_ICON_SIZE } from "@theme";
+import { useTheme, useStyles, haptics, SEARCH_ROW_ICON_SIZE } from "@theme";
 import { useGroups, type FeedAudience } from "@data";
 
 interface FeedAudienceMenuProps {
@@ -13,8 +13,8 @@ interface FeedAudienceMenuProps {
 }
 
 /**
- * Whose posts the feed shows: the people you follow, everyone, or one of your
- * study groups.
+ * Whose posts the feed shows: the people you follow, or one of your study
+ * groups. Nothing wider - see FeedAudience.
  *
  * Mounted only while open, which is what keeps the groups request off the
  * feed's own start-up: the list is read when someone asks to choose from it.
@@ -41,7 +41,10 @@ const FeedAudienceMenu = ({ audience, top, onSelect, onClose }: FeedAudienceMenu
         selected && styles.audienceOptionSelected,
         pressed && { opacity: 0.7 },
       ]}
-      onPress={() => onSelect(next)}
+      onPress={() => {
+        if (!selected) haptics.tick();
+        onSelect(next);
+      }}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={caption ? `${label}. ${caption}` : label}
@@ -76,9 +79,6 @@ const FeedAudienceMenu = ({ audience, top, onSelect, onClose }: FeedAudienceMenu
             audience.kind === "following",
             { kind: "following" },
           )}
-          {option("everyone", "Everyone", "Every post on stdy", audience.kind === "everyone", {
-            kind: "everyone",
-          })}
 
           <Text style={styles.audienceSection}>Study groups</Text>
           {myGroups === undefined ? (

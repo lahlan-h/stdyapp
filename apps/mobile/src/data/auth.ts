@@ -46,6 +46,15 @@ interface Session {
    * would restore from a dead one next launch.
    */
   remember: boolean;
+  /**
+   * A brand-new account that has not picked a plan yet. While set, the root
+   * layout's guard shows choose-plan and nothing else - see useChoosingPlan.
+   *
+   * In memory only, never persisted: an app closed mid-onboarding relaunches
+   * on the feed, on the free plan, which is exactly what skipping would have
+   * given them anyway.
+   */
+  choosingPlan?: boolean;
 }
 
 interface DevTokenResponse {
@@ -63,6 +72,11 @@ interface TokenResponse {
     tokenType: string;
     refreshTokenExpiresAt: string;
   };
+}
+
+/** POST /api/auth/google answers a token pair, and whether it made the account. */
+interface GoogleTokenResponse {
+  data: TokenResponse["data"] & { isNewUser?: boolean };
 }
 
 let session: Session | null = null;
@@ -169,6 +183,9 @@ export const register = async ({
     accessToken: response.data.accessToken,
     refreshToken: response.data.refreshToken,
     remember: true,
+    // Set in the same update that signs in, so the guard never sees a signed-in
+    // session without it and flashes the feed first.
+    choosingPlan: true,
   });
 };
 
@@ -181,12 +198,16 @@ export const register = async ({
  * `remember` follows the screen: login passes its Remember me box, registration
  * always remembers, for the reason register() gives. Throws the ApiError
  * untouched - wording it is the hook's job.
+ *
+ * Only an account the API has just CREATED goes on to pick a plan, from either
+ * screen: Continue with Google on login can make one too, and on register it
+ * can land in an account that already exists.
  */
 export const googleSignIn = async (
   idToken: string,
   remember: boolean,
 ): Promise<void> => {
-  const response = await request<TokenResponse>("/api/auth/google", {
+  const response = await request<GoogleTokenResponse>("/api/auth/google", {
     method: "POST",
     body: { idToken },
   });
@@ -195,6 +216,7 @@ export const googleSignIn = async (
     accessToken: response.data.accessToken,
     refreshToken: response.data.refreshToken,
     remember,
+    choosingPlan: response.data.isNewUser === true,
   });
 };
 
@@ -267,6 +289,8 @@ const refresh = async (): Promise<string> => {
       accessToken: response.data.accessToken,
       refreshToken: response.data.refreshToken,
       remember: current.remember,
+      // A token expiring mid-onboarding must not skip the rest of it.
+      choosingPlan: current.choosingPlan,
     });
     return response.data.accessToken;
   } catch (err) {
@@ -384,23 +408,20 @@ export const subscribeAuth = (listener: () => void): (() => void) => subscribe(l
 export const isSignedIn = (): boolean => session !== null;
 
 /**
- * Signs out - on this device and on the server.
+ * Forgets the session on THIS DEVICE only - the local half of logout, and all
+ * of what deleting an account needs, since the server has already removed every
+ * token the account had and there is nothing left to revoke.
  *
- * The local half happens first and cannot fail: the session and any
- * remembered token are gone, the feed cache is emptied so the next account
- * never sees this one's likes, and the root layout's guard returns to login.
- * The server half then revokes the refresh token, so a copy of it is worthless
- * too. That call is best-effort: POST /api/auth/logout is public and always
- * answers 204, and a network failure must not leave someone stuck signed in.
+ * Cannot fail: the session and any remembered token are gone, the feed cache is
+ * emptied so the next account never sees this one's likes, and the root
+ * layout's guard returns to login.
  *
  * The remembered token is cleared again here, and AWAITED, though setSession
  * already cleared it. setSession's clear is fire-and-forget, so without this a
  * save still queued from a recent rotation could land after it and leave Remember
- * me in force. Awaited before the network call, so being offline cannot delay it.
+ * me in force.
  */
-export const logout = async (): Promise<void> => {
-  const refreshToken = session?.refreshToken;
-
+export const clearLocalSession = async (): Promise<void> => {
   setSession(null);
   resetPosts();
   // Who this account looked up is as personal as what it liked.
@@ -410,6 +431,21 @@ export const logout = async (): Promise<void> => {
   // And, most of all, what it has been saying to people.
   resetMessages();
   await clearRefreshToken();
+};
+
+/**
+ * Signs out - on this device and on the server.
+ *
+ * The local half happens first - see clearLocalSession. The server half then
+ * revokes the refresh token, so a copy of it is worthless too. That call is
+ * best-effort: POST /api/auth/logout is public and always answers 204, and a
+ * network failure must not leave someone stuck signed in. The local half is
+ * awaited before it, so being offline cannot delay signing out.
+ */
+export const logout = async (): Promise<void> => {
+  const refreshToken = session?.refreshToken;
+
+  await clearLocalSession();
 
   if (!refreshToken) return;
   try {
@@ -485,6 +521,25 @@ const getSignedIn = () => session !== null;
  */
 export const useIsSignedIn = (): boolean =>
   useSyncExternalStore(subscribe, getSignedIn, getSignedIn);
+
+const getChoosingPlan = () => session?.choosingPlan === true;
+
+/**
+ * Whether a new account still has to pick a plan, re-rendering when that
+ * changes. The root layout routes on it alongside useIsSignedIn.
+ */
+export const useChoosingPlan = (): boolean =>
+  useSyncExternalStore(subscribe, getChoosingPlan, getChoosingPlan);
+
+/**
+ * Ends onboarding's pick-a-plan step, whichever plan was picked.
+ *
+ * No navigation, for the reason everything else here has none: clearing the
+ * flag closes choose-plan's guard and opens the feed's.
+ */
+export const finishChoosingPlan = (): void => {
+  if (session?.choosingPlan) setSession({ ...session, choosingPlan: false });
+};
 
 const getRestored = () => restored;
 

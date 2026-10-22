@@ -29,6 +29,7 @@ import {
   updateUserSchema,
   listUsersQuerySchema,
   userIdParamSchema,
+  deleteUserSchema,
 } from "../validation/user.validation.js";
 
 const router = Router();
@@ -173,10 +174,13 @@ router.patch(
   asyncHandler(updateUser),
 );
 
+// The body is the password (or a fresh Google sign-in) that proves the caller
+// owns the account - see deleteUserSchema. deleteLimit doubles as the cap on
+// guessing that password through this route.
 router.delete(
   "/:id",
   deleteLimit,
-  validate({ params: userIdParamSchema }),
+  validate({ params: userIdParamSchema, body: deleteUserSchema }),
   requireSelf,
   asyncHandler(deleteUser),
 );

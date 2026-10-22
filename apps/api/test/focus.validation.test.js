@@ -10,6 +10,9 @@ import {
   MAX_SAMPLES_PER_BATCH,
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
+  leaderboardQuerySchema,
+  LEADERBOARD_METRICS,
+  LEADERBOARD_SCOPES,
 } from "../src/validation/focus.validation.js";
 
 /**
@@ -212,5 +215,112 @@ describe("listSamplesQuerySchema", () => {
 
   it("rejects a page below 1", () => {
     assert.equal(listSamplesQuerySchema.safeParse({ page: 0 }).success, false);
+  });
+});
+
+describe("leaderboardQuerySchema", () => {
+  it("defaults to this week's following board by weighted minutes", () => {
+    assert.deepEqual(leaderboardQuerySchema.parse({}), {
+      scope: "following",
+      metric: "weightedMinutes",
+      days: 7,
+      limit: 20,
+    });
+  });
+
+  it("accepts every metric and every scope", () => {
+    const groupId = "6f1c1c1e-6f6e-4f8a-9d55-0c2b8e7f3a21";
+    for (const metric of LEADERBOARD_METRICS) {
+      for (const scope of LEADERBOARD_SCOPES) {
+        // A group board names its group; the others must not.
+        const query = scope === "group" ? { metric, scope, groupId } : { metric, scope };
+        assert.equal(
+          leaderboardQuerySchema.safeParse(query).success,
+          true,
+          `${metric}/${scope} should be accepted`,
+        );
+      }
+    }
+  });
+
+  it("rejects an unknown metric or scope rather than silently ranking by the default", () => {
+    assert.equal(leaderboardQuerySchema.safeParse({ metric: "minutes" }).success, false);
+    assert.equal(leaderboardQuerySchema.safeParse({ scope: "friends" }).success, false);
+  });
+
+  it("requires a groupId with the group scope, and refuses one anywhere else", () => {
+    const groupId = "6f1c1c1e-6f6e-4f8a-9d55-0c2b8e7f3a21";
+    assert.equal(leaderboardQuerySchema.safeParse({ scope: "group" }).success, false);
+    assert.equal(leaderboardQuerySchema.safeParse({ groupId }).success, false);
+    assert.equal(
+      leaderboardQuerySchema.safeParse({ scope: "global", groupId }).success,
+      false,
+    );
+    assert.equal(
+      leaderboardQuerySchema.parse({ scope: "group", groupId }).groupId,
+      groupId,
+    );
+  });
+
+  it("refuses a groupId that is not a UUID", () => {
+    assert.equal(
+      leaderboardQuerySchema.safeParse({ scope: "group", groupId: "night-owls" }).success,
+      false,
+    );
+  });
+
+  it("coerces a query-string day count", () => {
+    assert.equal(leaderboardQuerySchema.parse({ days: "30" }).days, 30);
+  });
+
+  it('accepts "all" as the one spelling of all time', () => {
+    assert.equal(leaderboardQuerySchema.parse({ days: "all" }).days, "all");
+  });
+
+  it('accepts "week" for the calendar week, with or without a timezone', () => {
+    assert.equal(leaderboardQuerySchema.parse({ days: "week" }).days, "week");
+    assert.equal(
+      leaderboardQuerySchema.parse({ days: "week", tz: "Australia/Sydney" }).tz,
+      "Australia/Sydney",
+    );
+  });
+
+  it("canonicalises the timezone, as analytics does", () => {
+    assert.equal(
+      leaderboardQuerySchema.parse({ days: "week", tz: "australia/sydney" }).tz,
+      "Australia/Sydney",
+    );
+  });
+
+  it("refuses a timezone that is not one", () => {
+    assert.equal(
+      leaderboardQuerySchema.safeParse({ days: "week", tz: "Mars/Olympus_Mons" }).success,
+      false,
+    );
+  });
+
+  it("refuses a timezone on a rolling or all-time board, where it would change nothing", () => {
+    for (const days of ["7", "all"]) {
+      assert.equal(
+        leaderboardQuerySchema.safeParse({ days, tz: "Australia/Sydney" }).success,
+        false,
+        `tz with days=${days} should have been rejected`,
+      );
+    }
+    assert.equal(leaderboardQuerySchema.safeParse({ tz: "UTC" }).success, false);
+  });
+
+  it("rejects day counts outside the window and words other than all and week", () => {
+    for (const days of ["0", "121", "-7", "forever", "7.5", "month"]) {
+      assert.equal(
+        leaderboardQuerySchema.safeParse({ days }).success,
+        false,
+        `days=${days} should have been rejected`,
+      );
+    }
+  });
+
+  it("refuses unknown keys, as every schema in this file does", () => {
+    assert.equal(leaderboardQuerySchema.safeParse({ range: "week" }).success, false);
   });
 });

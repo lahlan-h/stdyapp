@@ -3,7 +3,9 @@ import { FlatList, StatusBar, View, Text, Pressable } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { useTheme, useStyles } from "@theme";
+import Feather from "@expo/vector-icons/Feather";
+
+import { useTheme, useStyles, PROFILE_LOCK_ICON_SIZE } from "@theme";
 import {
   useLikePost,
   type FeedPost,
@@ -33,12 +35,20 @@ interface ProfileViewProps {
   showTotals?: boolean;
   followers?: number;
   following?: number;
-  /** The buttons under the header: edit and sign out for you, follow for anyone else. */
+  /** The buttons under the header: your own four, or follow and message for anyone else. */
   actions: ReactNode;
-  /** Drawn above the header - the back control, on a pushed profile. */
-  topBar?: ReactNode;
+  /** The top bar's leading control - the back button, on a pushed profile. */
+  topBarStart?: ReactNode;
+  /** The top bar's last control, after the study pill - the gear, on your own. */
+  topBarEnd?: ReactNode;
   /** The tab bar's clearance on the Profile tab, the home indicator's on a pushed screen. */
   bottomPadding: number;
+  /**
+   * A private account the viewer is not an approved follower of: a lock takes
+   * the posts' place, and the post count shows a dash. The header, counts and
+   * actions stay - they are how someone asks to follow.
+   */
+  locked?: boolean;
 }
 
 /**
@@ -66,8 +76,10 @@ const ProfileView = ({
   followers,
   following,
   actions,
-  topBar,
+  topBarStart,
+  topBarEnd,
   bottomPadding,
+  locked = false,
 }: ProfileViewProps) => {
   const { colors } = useTheme();
   const styles = useStyles("profile");
@@ -91,7 +103,7 @@ const ProfileView = ({
       />
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <FlatList
-          data={posts}
+          data={locked ? [] : posts}
           keyExtractor={(post: FeedPost) => post.id}
           renderItem={({ item }: { item: FeedPost }) => (
             <PostCard
@@ -105,35 +117,35 @@ const ProfileView = ({
           // scroll views and break the inner one's virtualisation.
           ListHeaderComponent={
             <View style={styles.postList}>
-              {topBar}
-              {/*
-                The bubble is absolutely positioned against THIS wrapper, which
-                is what keeps the avatar centred on the screen: a sibling in a
-                row would push it off-centre by half the bubble's width.
-                Rendered after the header so it draws on top of it.
-              */}
-              <View style={styles.headerArea}>
-                <ProfileHeader profile={profile} />
+              {/* The study pill rides in the bar, at its far end, ahead of
+                  the gear on your own profile. */}
+              <View style={styles.topBar}>
+                {topBarStart}
+                <View style={styles.topBarSpacer} />
                 <ProfileStudyBubble
                   streak={streak}
                   totals={totals}
                   showTotals={showTotals}
                 />
+                {topBarEnd}
               </View>
+              <ProfileHeader profile={profile} />
               {actions}
               <ProfileStats
-                posts={posts.length}
+                posts={locked ? undefined : posts.length}
                 followers={followers}
                 following={following}
               />
               {likeError ? (
                 <Text style={styles.message}>{likeError}</Text>
               ) : null}
-              <Text style={styles.sectionTitle}>Posts</Text>
+              {locked ? null : <Text style={styles.sectionTitle}>Posts</Text>}
             </View>
           }
           ListEmptyComponent={
-            postsLoading ? null : (
+            locked ? (
+              <LockedPosts />
+            ) : postsLoading ? null : (
               <Text style={styles.message}>No posts yet.</Text>
             )
           }
@@ -168,6 +180,24 @@ const ProfileView = ({
 };
 
 /** The spinner a profile shows before its first read lands. */
+/** What a private account shows a viewer it has not approved, where its posts would be. */
+const LockedPosts = () => {
+  const { colors } = useTheme();
+  const styles = useStyles("profile");
+
+  return (
+    <View style={styles.locked} accessible accessibilityLabel="This account is private">
+      <View style={styles.lockedBadge}>
+        <Feather name="lock" size={PROFILE_LOCK_ICON_SIZE} color={colors.textMuted} />
+      </View>
+      <Text style={styles.lockedTitle}>This account is private</Text>
+      <Text style={styles.lockedText}>
+        Follow them to see their posts and study activity once they accept.
+      </Text>
+    </View>
+  );
+};
+
 export const ProfileLoading = () => {
   const { colors } = useTheme();
   const styles = useStyles("profile");

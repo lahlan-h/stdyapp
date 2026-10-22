@@ -532,7 +532,7 @@ export const bookmarkStatusKey = (viewerId, postId, version) =>
  *
  * THE COHERENCE HOLE IS CLOSED FROM BOTH SIDES, which makes this the only entity
  * in this file that needs both walks. A report payload embeds a reported USER's
- * username and avatarUrl AND a reported POST's caption and photoUrl, where the
+ * username and avatarUrl AND a reported POST's caption and photos, where the
  * block payload carries only people and the bookmark payload only posts:
  *   - findReporterIdsByPosts, called by invalidatePostFanout in post.service.js,
  *     covers an edited or deleted post;
@@ -791,10 +791,12 @@ export const groupMemberVersionKey = (groupId) =>
  *
  * GET /api/groups/:id is open to any authenticated caller and 403s for nobody.
  * What makes it per-viewer is sanitizeGroup in studyGroup.service.js, which
- * strips joinCode unless the requester is the owner: the route returns TWO
+ * strips joinCode unless the requester is a member: the route returns TWO
  * different bodies depending on who asks. A viewer-less key would cache
- * whichever one happened to be computed first, and if that was the owner's, the
- * private group's join code would be served to every non-member who asked next.
+ * whichever one happened to be computed first, and if that was a member's, the
+ * group's join code - the whole key to it - would be served to every
+ * non-member who asked next. Joining or leaving moves the member counter
+ * below, so the body a viewer gets follows their membership.
  *
  * Unlike postKey the hit rate DOES cost something here - one entry per reader
  * rather than one entry - and it is worth paying. The alternative is moving

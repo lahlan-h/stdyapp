@@ -11,6 +11,16 @@ const AVATAR_SIZE = 32;
 
 /** 44pt minimum hit target, as in study.styles.ts. */
 const TOUCH_MIN = 44;
+/** The create page's close button - the size of the app's back buttons. */
+const CLOSE_SIZE = 40;
+
+/**
+ * One box of the six a join code is typed into. Tall rather than square, so
+ * a row of six fits a 360pt phone with room between them and the characters
+ * still read at a glance across a desk.
+ */
+const CODE_BOX_WIDTH = 46;
+const CODE_BOX_HEIGHT = 56;
 
 /**
  * Groups list and group detail.
@@ -95,6 +105,118 @@ export const createGroupsStyles = (colors: ColorScheme) => {
 
     // --- Codes ---
     codeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    // The code's own buttons - share it, or make a new one.
+    codeActions: { flexDirection: "row", gap: 8 },
+
+    // --- Typing a code: six boxes over one invisible input ---
+    codeBoxes: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    codeBox: {
+      width: CODE_BOX_WIDTH,
+      height: CODE_BOX_HEIGHT,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 14,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      backgroundColor: colors.backgrounds.input,
+    },
+    codeBoxFilled: {
+      borderColor: colors.textMuted,
+    },
+    // The box the next character goes in, while the keyboard is up.
+    codeBoxActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryTint,
+    },
+    codeBoxInvalid: {
+      borderColor: colors.danger,
+    },
+    codeBoxChar: {
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 24,
+      color: colors.text,
+    },
+    // Covers the boxes so a tap anywhere on them focuses it; never seen.
+    codeHiddenInput: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      opacity: 0,
+      color: "transparent",
+    },
+
+    // --- Join or create, before a session starts ---
+    joinCardCaption: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.textMuted,
+    },
+    joinError: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 13,
+      color: colors.danger,
+    },
+    // "or" between the boxes and Create, rules either side.
+    orRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    orRule: {
+      flex: 1,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+    },
+    orText: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 12,
+      color: colors.textMuted,
+    },
+
+    // --- The create-group page ---
+    createPage: { flex: 1 },
+    createContent: {
+      gap: 14,
+      paddingHorizontal: 20,
+    },
+    createHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      marginBottom: 6,
+    },
+    // The analytics and settings back button's shape, with a cross: this page
+    // is closed, not stepped back from.
+    createClose: {
+      width: CLOSE_SIZE,
+      height: CLOSE_SIZE,
+      borderRadius: CLOSE_SIZE / 2,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    createTitle: {
+      flex: 1,
+      fontFamily: "PlusJakartaSans_700Bold",
+      fontSize: 28,
+      color: colors.text,
+    },
+    createCaption: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.textMuted,
+    },
+    // A single-line input that is not in a row with a button, so it does not
+    // take flex: 1 from the shared input style's row layout.
+    createInput: {
+      flex: 0,
+    },
     codeText: {
       fontFamily: "PlusJakartaSans_700Bold",
       fontSize: 22,

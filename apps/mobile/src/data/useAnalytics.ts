@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, request } from "./api";
 import { withAuth } from "./auth";
+import { deviceTimeZone } from "./deviceTimeZone";
 
 /** The windows the API accepts - mirrors ANALYTICS_RANGES in analytics.validation.js. */
 export type AnalyticsRange = "7d" | "30d";
@@ -94,23 +95,6 @@ export interface AnalyticsState {
   loadError?: string;
   reload: () => void;
 }
-
-/**
- * The device's IANA zone, so "Tuesday" and "9am" on the screen mean the
- * user's Tuesday and 9am rather than the server's UTC ones.
- *
- * Read on every request rather than once at import: a phone that lands in
- * another timezone mid-session should get that zone's days on the next load.
- * UTC is the fallback for an engine without Intl zone data, and it is also
- * the API's own default, so the answer is still consistent - just in UTC days.
- */
-const deviceTimeZone = (): string => {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
-  }
-};
 
 /**
  * The signed-in user's study analytics for a range.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   StatusBar,
@@ -8,20 +8,25 @@ import {
   Animated,
   Easing,
   Keyboard,
+  RefreshControl,
   type TextInput,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect, useNavigation } from "expo-router";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import type { BottomTabNavigationProp } from "expo-router/js-tabs";
 
 import {
   useTheme,
   useStyles,
   useTabBarClearance,
+  useTabBarInset,
   useReducedMotion,
+  haptics,
   HOME_PANEL_HEIGHT,
-  BAR_HEIGHT,
+  GROUP_PANEL_HEIGHT,
+  HOME_SEARCH_ICON_SIZE,
 } from "@theme";
 import {
   usePosts,
@@ -48,12 +53,13 @@ import FeedAudienceTitle from "@components/FeedAudienceTitle";
 import FeedAudienceMenu from "@components/FeedAudienceMenu";
 import { useSessionBarClearance } from "@components/SessionBar";
 import ReportDialog from "@components/ReportDialog";
-import HomeSearchPanel, { type HomeSheetMode } from "@components/HomeSearchPanel";
+import HomeSearchPanel, { PanelButton, type HomeSheetMode } from "@components/HomeSearchPanel";
 import HomeDropSheet from "@components/HomeDropSheet";
 import UserSearchList from "@components/UserSearchList";
 import FeedFilterPanel from "@components/FeedFilterPanel";
 import NotificationList from "@components/NotificationList";
 import MessagesPage from "@components/MessagesPage";
+import StudyingNowStrip from "@components/StudyingNowStrip";
 
 /** Space between the panel's lower edge and the first card. Matches the old list padding. */
 const FEED_TOP_GAP = 8;
@@ -72,6 +78,9 @@ const REFRESHING_OPACITY = 0.45;
 const DIM_MS = 120;
 const REVEAL_MS = 180;
 
+/** The shortest a pull-to-refresh spinner shows, however fast the feed comes back. */
+const MIN_PULL_SPINNER_MS = 600;
+
 type TabNavigation = BottomTabNavigationProp<Record<string, object | undefined>>;
 
 const Index = () => {
@@ -86,6 +95,8 @@ const Index = () => {
   // screen explaining why.
   const sessionBarClearance = useSessionBarClearance();
   const tabBarClearance = useTabBarClearance() + sessionBarClearance;
+  // Where the bar's top edge is - the drop-down page stops there.
+  const tabBarInset = useTabBarInset() + sessionBarClearance;
 
   /**
    * The feed's filter. Screen state rather than module state: the tab stays
@@ -100,6 +111,26 @@ const Index = () => {
    */
   const [audience, setAudience] = useState<FeedAudience>(DEFAULT_FEED_AUDIENCE);
   const [audienceMenuOpen, setAudienceMenuOpen] = useState(false);
+  /**
+   * A study group's feed has no filter page to set or reset a filter from, so
+   * it is read unfiltered rather than through one left on from Following -
+   * which is still there, untouched, on the way back.
+   */
+  const inGroup = audience.kind === "group";
+  const unfiltered = useMemo(defaultFeedFilters, []);
+
+  /**
+   * Whether Home is the tab on screen. The tab stays mounted behind the
+   * others, so the group strip would otherwise keep polling for a row nobody
+   * can see.
+   */
+  const [focused, setFocused] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
   const [sheet, setSheet] = useState<HomeSheetMode | null>(null);
   const [query, setQuery] = useState("");
 
@@ -115,7 +146,7 @@ const Index = () => {
     error,
     refresh,
     setLiked,
-  } = usePosts(filters, audience);
+  } = usePosts(inGroup ? unfiltered : filters, audience);
   // usePosts owns the array, so the optimistic update is handed back to it
   // rather than kept a second time over there - see SetLiked.
   const { toggleLike, error: likeError } = useLikePost(setLiked);
@@ -130,6 +161,35 @@ const Index = () => {
    */
   const [reportingId, setReportingId] = useState<string | null>(null);
   const reporting = posts.find((post) => post.id === reportingId) ?? null;
+
+  /**
+   * A pull from the top re-reads the feed, with the spinner showing until it
+   * lands and a tap in the hand as the pull lets go.
+   *
+   * Only a PULL shows the spinner. A changed filter refreshes too, but that
+   * one dims the posts instead (see feedOpacity): the user is looking at a
+   * chip, not at the top of the list, and a spinner up there would be noise.
+   * isRefreshing turns on in the same tick refresh() is called, so clearing
+   * `pulled` once it turns off again cannot race the start.
+   *
+   * The spinner stays up for at least MIN_PULL_SPINNER_MS: a fast network
+   * answers in tens of milliseconds, and a spinner that flashes for one frame
+   * reads as a glitch rather than as "that was fresh".
+   */
+  const [pulled, setPulled] = useState(false);
+  const pulledAt = useRef(0);
+  const pullToRefresh = useCallback(() => {
+    haptics.tap();
+    pulledAt.current = Date.now();
+    setPulled(true);
+    refresh();
+  }, [refresh]);
+  useEffect(() => {
+    if (isRefreshing || !pulled) return;
+    const left = MIN_PULL_SPINNER_MS - (Date.now() - pulledAt.current);
+    const timer = setTimeout(() => setPulled(false), Math.max(0, left));
+    return () => clearTimeout(timer);
+  }, [isRefreshing, pulled]);
 
   // Re-reads only when something actually wrote, rather than on every focus:
   // refreshing on each tab switch would discard every page past the first to
@@ -320,7 +380,7 @@ const Index = () => {
   /**
    * Home pressed while already on Home: close the page if one is open,
    * otherwise go back to the top - the usual meaning of tapping the tab you are
-   * on. TabBar emits tabPress for exactly this.
+   * on. The native tab bar emits tabPress for exactly this.
    *
    * Read through a ref so the listener is attached once rather than re-attached
    * every time a page opens or closes.
@@ -348,12 +408,12 @@ const Index = () => {
   const feedOpacity = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     Animated.timing(feedOpacity, {
-      toValue: isRefreshing && !isLoading ? REFRESHING_OPACITY : 1,
+      toValue: isRefreshing && !isLoading && !pulled ? REFRESHING_OPACITY : 1,
       duration: reducedMotion ? 0 : isRefreshing ? DIM_MS : REVEAL_MS,
       easing: Easing.out(Easing.ease),
       useNativeDriver: true,
     }).start();
-  }, [isRefreshing, isLoading, reducedMotion, feedOpacity]);
+  }, [isRefreshing, isLoading, pulled, reducedMotion, feedOpacity]);
 
   // A new filter or audience starts at the top of its results, not wherever
   // the old ones happened to be scrolled to.
@@ -362,11 +422,21 @@ const Index = () => {
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   }, [filterKey]);
 
-  const hasFilters = !isDefaultFilters(filters);
+  const hasFilters = !inGroup && !isDefaultFilters(filters);
 
   // Everything below the panel starts here: the panel is drawn over the status
-  // bar and owns the top inset itself.
-  const panelBottom = insets.top + HOME_PANEL_HEIGHT;
+  // bar and owns the top inset itself. A group's panel is shorter - it has no
+  // control row.
+  const panelBottom = insets.top + (inGroup ? GROUP_PANEL_HEIGHT : HOME_PANEL_HEIGHT);
+
+  /** A group's own board - the same leaderboard screen, ranked by its members. */
+  const openGroupLeaderboard = useCallback(() => {
+    if (audience.kind !== "group") return;
+    router.push({
+      pathname: "/leaderboard",
+      params: { groupId: audience.groupId, groupName: audience.groupName },
+    });
+  }, [audience]);
 
   /**
    * An empty feed means different things filtered and unfiltered. With no
@@ -374,7 +444,8 @@ const Index = () => {
    * and the filter ruled them out, so it says that and offers the way back.
    *
    * The audience is the same question one level up: an empty Following feed
-   * usually means following nobody yet, so it points at Everyone.
+   * usually means following nobody yet, so it points at the search box that
+   * finds people to follow.
    */
   const emptyFeed = hasFilters ? (
     <View style={homeStyles.emptyContainer}>
@@ -395,17 +466,20 @@ const Index = () => {
         Your posts and those of people you follow show up here.
       </Text>
       <Pressable
-        onPress={() => setAudience({ kind: "everyone" })}
+        // Focusing the box is what opens search - see HomeSearchPanel.
+        onPress={() => inputRef.current?.focus()}
         accessibilityRole="button"
         hitSlop={8}
       >
-        <Text style={[homeStyles.bold, { color: colors.primary }]}>See everyone</Text>
+        <Text style={[homeStyles.bold, { color: colors.primary }]}>Find people to follow</Text>
       </Pressable>
     </View>
   ) : audience.kind === "group" ? (
     <View style={homeStyles.emptyContainer}>
       <Text style={homeStyles.bold}>No posts in {audience.groupName} yet</Text>
-      <Text style={homeStyles.soft}>Sessions its members post will show up here.</Text>
+      <Text style={homeStyles.soft}>
+        Posts shared to it show up here - choose it under Share to when you post a session.
+      </Text>
     </View>
   ) : (
     <EmptyFeed />
@@ -465,11 +539,18 @@ const Index = () => {
               }
               ListEmptyComponent={emptyFeed}
               showsVerticalScrollIndicator={false}
-              onRefresh={refresh}
-              refreshing={false}
-              // Without this Android draws the pull-to-refresh spinner under
-              // the panel, where nobody can see it.
-              progressViewOffset={panelBottom}
+              refreshControl={
+                <RefreshControl
+                  refreshing={pulled}
+                  onRefresh={pullToRefresh}
+                  // Without this the spinner is drawn under the panel, where
+                  // nobody can see it.
+                  progressViewOffset={panelBottom}
+                  tintColor={colors.textMuted}
+                  colors={[colors.primary]}
+                  progressBackgroundColor={colors.surface}
+                />
+              }
               onEndReached={canLoadMore ? loadMore : undefined}
               onEndReachedThreshold={0.5}
             />
@@ -487,7 +568,7 @@ const Index = () => {
         <HomeDropSheet
           mode={sheet}
           top={panelBottom}
-          bottom={BAR_HEIGHT + insets.bottom + sessionBarClearance}
+          bottom={tabBarInset}
           onClose={closeSheet}
           onBack={sheetBack}
         >
@@ -530,8 +611,23 @@ const Index = () => {
               audience={audience}
               open={audienceMenuOpen}
               onPress={() => setAudienceMenuOpen((open) => !open)}
+              trailing={
+                inGroup ? (
+                  <PanelButton
+                    onPress={openGroupLeaderboard}
+                    accessibilityLabel={`${audience.groupName} leaderboard`}
+                    renderIcon={(color) => (
+                      <Ionicons name="trophy-outline" size={HOME_SEARCH_ICON_SIZE} color={color} />
+                    )}
+                  />
+                ) : null
+              }
             />
           }
+          // Search, messages, filter and notifications are about your people,
+          // not one group, so a group's feed leaves them out - and shows who
+          // in it is studying instead.
+          showControls={!inGroup}
           query={query}
           onChangeQuery={setQuery}
           onFocusSearch={openSearch}
@@ -542,13 +638,24 @@ const Index = () => {
           unreadMessages={unreadMessages}
           hasFilters={hasFilters}
           unread={unread}
-        />
+        >
+          {audience.kind === "group" ? (
+            <StudyingNowStrip
+              groupId={audience.groupId}
+              groupName={audience.groupName}
+              active={focused}
+            />
+          ) : null}
+        </HomeSearchPanel>
 
         {audienceMenuOpen ? (
           <FeedAudienceMenu
             audience={audience}
             top={panelBottom - 8}
             onSelect={(next) => {
+              // A group's feed has none of the pages the panel drops, so one
+              // left open from Following would have no button to close it.
+              if (next.kind === "group") closeSheet();
               setAudience(next);
               setAudienceMenuOpen(false);
             }}

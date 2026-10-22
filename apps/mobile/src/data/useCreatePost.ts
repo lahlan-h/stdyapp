@@ -1,31 +1,41 @@
 import { useCallback, useState } from "react";
+import { Platform } from "react-native";
 import { File } from "expo-file-system";
 
 import { ApiError, request } from "./api";
 import { withAuth } from "./auth";
 import { markFeedStale } from "./feedSignal";
+import type { PreparedPhoto } from "./preparePhoto";
 
-/** What the API accepts, mirrored here so the screen can reject early. */
+/**
+ * What the API accepts, mirrored here so the screen can reject early. The API
+ * cannot import from @stdyapp/shared (it is TypeScript), so these are copies:
+ * MAX_POST_PHOTO_BYTES and MAX_POST_PHOTOS in apps/api/src/config/upload.js.
+ */
 export const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+export const MAX_POST_PHOTOS = 5;
 export const MAX_CAPTION_LENGTH = 2000;
 export const MAX_TITLE_LENGTH = 100;
-
-export interface NewPostPhoto {
-  uri: string;
-  /** image/jpeg, image/png or image/webp. Anything else is a 415. */
-  mimeType: string;
-  fileName?: string;
-}
 
 export interface NewPost {
   title: string;
   /** Omitted entirely when the user typed nothing - see createPost. */
   caption?: string;
-  photo: NewPostPhoto;
+  /**
+   * Up to MAX_POST_PHOTOS, in display order, already through preparePhoto.
+   * Optional - but a post needs photos OR a caption; the API refuses neither.
+   */
+  photos: PreparedPhoto[];
   /** One of the user's own sessions. Anyone else's is a 403. */
   sessionId?: string;
   /** One of the user's own routines. Anyone else's is a 403. */
   routineId?: string;
+  /**
+   * Who it is for: the user's followers, any of their groups, or both - at
+   * least one, which the API also insists on. A group they are not in is a 403.
+   */
+  shareToFollowers: boolean;
+  groupIds: string[];
 }
 
 /** The created row, as POST /api/posts returns it - a bare object, not `{ data }`. */
@@ -34,46 +44,85 @@ export interface CreatedPost {
   userId: string;
   title: string;
   caption: string | null;
-  photoUrl: string;
   createdAt: string;
 }
 
-/**
- * The photo as a form part this runtime will actually accept.
- *
- * Expo installs a WinterCG fetch over React Native's, and its FormData encoder
- * takes only a string, a real Blob, or something exposing bytes(). React
- * Native's classic `{ uri, name, type }` part - which is what every older
- * upload example shows - is rejected outright with "Unsupported FormDataPart
- * implementation", thrown before the request is ever sent. That failure looks
- * exactly like the server being unreachable, which is what made it confusing:
- * reads worked and only the upload died.
- *
- * expo-file-system's File satisfies that contract, and carries the two things
- * the part headers are built from: `name` becomes the filename, and `type`
- * becomes the Content-Type that multer's allowlist checks before the API
- * re-derives the real format from the bytes.
- */
-const toFilePart = (photo: NewPostPhoto): File => new File(photo.uri);
+/** Where a post is in being published, for the button to say so. */
+export type CreatePostStage =
+  | { step: "idle" }
+  | { step: "uploading"; done: number; total: number }
+  | { step: "posting" };
 
 export interface CreatePostState {
   createPost: (post: NewPost) => Promise<CreatedPost | null>;
   isSubmitting: boolean;
+  stage: CreatePostStage;
   /** The API's own wording where there is any - it is more use than "failed". */
   error?: string;
   reset: () => void;
 }
 
+/** One answer from POST /api/posts/photos. */
+interface PhotoUpload {
+  photoId: string;
+  uploadUrl: string;
+  contentType: string;
+}
+
+/** An upload to storage that did not succeed - worded here, not by the API. */
+class StorageUploadError extends Error {}
+
 /**
- * Creates a post, photo and all, in one multipart request.
+ * PUTs one photo straight to R2 through its presigned URL.
  *
- * The photo is mandatory: Post.photoUrl is not nullable and the route answers
- * 400 without a file part. There is no separate upload step - the API takes the
- * bytes, sniffs them, writes to R2 and inserts the row, reclaiming the object
- * if the insert fails.
+ * NOT through request(): that adds the API's auth and tunnel headers, and an
+ * access token has no business being sent to a storage bucket. The
+ * Content-Type must be exactly the one the URL was signed for, or R2 refuses.
+ *
+ * A phone streams the file from disk (File.upload), so a photo is never held
+ * whole in JavaScript memory. Web reads the picker's blob: URL into a Blob - the
+ * expo-file-system File is a stub there - which needs the bucket's CORS rule to
+ * allow PUT from the app's origin.
+ */
+const putToStorage = async (upload: PhotoUpload, photo: PreparedPhoto): Promise<void> => {
+  const headers = { "Content-Type": upload.contentType };
+
+  let status: number;
+  try {
+    if (Platform.OS === "web") {
+      const blob = await (await fetch(photo.uri)).blob();
+      status = (await fetch(upload.uploadUrl, { method: "PUT", headers, body: blob })).status;
+    } else {
+      status = (await new File(photo.uri).upload(upload.uploadUrl, { httpMethod: "PUT", headers }))
+        .status;
+    }
+  } catch (err) {
+    // Offline, a dropped connection - or, on web, a bucket whose CORS rule does
+    // not allow this origin, which the browser reports as a bare network error.
+    throw new StorageUploadError(err instanceof Error ? err.message : String(err));
+  }
+
+  if (status < 200 || status >= 300) {
+    throw new StorageUploadError(`Storage answered ${status}`);
+  }
+};
+
+/**
+ * Publishes a post, photos and all.
+ *
+ *   1. POST /api/posts/photos - an upload URL per photo
+ *   2. PUT each photo straight to R2, in parallel
+ *   3. POST /api/posts - the post, naming the photos by id
+ *
+ * The API never handles the image bytes; it checks in step 3 that each one
+ * arrived and really is an image. A text-only post skips straight to step 3.
+ *
+ * If step 3 fails, the uploads are simply left behind - the API's sweep
+ * deletes unattached photos after an hour - and a retry uploads afresh.
  */
 export const useCreatePost = (): CreatePostState => {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [stage, setStage] = useState<CreatePostStage>({ step: "idle" });
   const [error, setError] = useState<string | undefined>(undefined);
 
   const createPost = useCallback(async (post: NewPost) => {
@@ -81,51 +130,74 @@ export const useCreatePost = (): CreatePostState => {
     setError(undefined);
 
     try {
-      const formData = new FormData();
+      let photoIds: string[] | undefined;
 
-      // Cast because expo-file-system's File implements Blob structurally
-      // rather than extending it, so TypeScript's DOM lib does not see them as
-      // the same type. The encoder checks the shape, not the prototype.
-      formData.append("photo", toFilePart(post.photo) as unknown as Blob);
+      if (post.photos.length > 0) {
+        const total = post.photos.length;
+        setStage({ step: "uploading", done: 0, total });
 
-      formData.append("title", post.title.trim());
+        const { uploads } = await withAuth((token) =>
+          request<{ uploads: PhotoUpload[] }>("/api/posts/photos", {
+            method: "POST",
+            token,
+            body: {
+              photos: post.photos.map(({ mimeType, sizeBytes, width, height }) => ({
+                mimeType,
+                sizeBytes,
+                width,
+                height,
+              })),
+            },
+          }),
+        );
 
-      // Appended only when there is something to send. An empty string is a
-      // 400 from the strictObject schema, not "no caption" - the field has to
-      // be absent, the same trap the links below document.
+        let done = 0;
+        await Promise.all(
+          uploads.map(async (upload, index) => {
+            await putToStorage(upload, post.photos[index]);
+            done += 1;
+            setStage({ step: "uploading", done, total });
+          }),
+        );
+        photoIds = uploads.map(({ photoId }) => photoId);
+      }
+
+      setStage({ step: "posting" });
+
+      // Optional fields are left out rather than sent empty: an empty caption
+      // is a 400 ("you typed nothing"), not "no caption".
       const caption = post.caption?.trim();
-      if (caption) formData.append("caption", caption);
-
-      // Only when chosen. The API reads an empty part as "no link" too, but
-      // leaving it out says the same thing without relying on that.
-      if (post.sessionId) formData.append("sessionId", post.sessionId);
-      if (post.routineId) formData.append("routineId", post.routineId);
-
       const created = await withAuth((token) =>
         request<CreatedPost>("/api/posts", {
           method: "POST",
-          formData,
           token,
+          body: {
+            title: post.title.trim(),
+            ...(caption ? { caption } : {}),
+            ...(post.sessionId ? { sessionId: post.sessionId } : {}),
+            ...(post.routineId ? { routineId: post.routineId } : {}),
+            ...(photoIds ? { photoIds } : {}),
+            shareToFollowers: post.shareToFollowers,
+            ...(post.groupIds.length > 0 ? { groupIds: post.groupIds } : {}),
+          },
         }),
       );
 
       markFeedStale();
       return created;
     } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? describe(err)
-          : "Could not publish the post. Try again.",
-      );
+      setError(describe(err));
       return null;
     } finally {
       setIsSubmitting(false);
+      setStage({ step: "idle" });
     }
   }, []);
 
   return {
     createPost,
     isSubmitting,
+    stage,
     error,
     reset: useCallback(() => setError(undefined), []),
   };
@@ -134,16 +206,17 @@ export const useCreatePost = (): CreatePostState => {
 /**
  * Says what the user can do about it.
  *
- * The API's messages are good, but three of them describe a situation the user
- * can act on and deserve wording that says so - particularly 502, where
- * retrying really is the right advice rather than a platitude.
+ * The API's messages are good - a bad photo comes back as "Photo 2 never
+ * finished uploading" - but a few situations deserve wording that says what to
+ * do, particularly 502, where retrying really is the right advice.
  */
-const describe = (err: ApiError): string => {
+const describe = (err: unknown): string => {
+  if (err instanceof StorageUploadError) {
+    return "A photo didn't upload. Check your connection and try again.";
+  }
+  if (!(err instanceof ApiError)) return "Could not publish the post. Try again.";
+
   switch (err.status) {
-    case 413:
-      return "That photo is over 5 MB. Pick a smaller one.";
-    case 415:
-      return "That file is not a JPEG, PNG or WebP.";
     case 429:
       return err.retryAfter
         ? `Too many posts. Try again in ${err.retryAfter}s.`

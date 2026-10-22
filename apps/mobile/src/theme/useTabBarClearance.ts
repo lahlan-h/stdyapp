@@ -1,28 +1,29 @@
+import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { TAB_BAR_HEIGHT } from "./tabBar.styles";
+/** Air under a tab's last row, on top of the room the native bar takes. */
+const TAB_CONTENT_ROOM = 16;
 
 /**
- * How much a scrolling screen must leave clear at the bottom to scroll its last
- * row out from under the tab bar.
+ * How much of a tab's bottom edge the native tab bar covers.
  *
- * A HOOK rather than a constant because the answer is not knowable at module
- * load. The bar draws TAB_BAR_HEIGHT of itself and then pads by the safe-area
- * inset underneath - see TabBar's container - so what it actually occupies is
- * the sum, and the inset is a runtime value that differs between a phone with
- * gesture navigation, one with a three-button bar, and the same phone rotated.
- * Every stylesheet in this app is built once per palette at module load, so a
- * stylesheet physically cannot hold this number.
+ * iOS: every tab is its own view controller with its own safe area, and the
+ * Liquid Glass bar - its bottom accessory too - is part of that safe area. So
+ * the tab's bottom inset IS the bar, home indicator included. Automatic
+ * content insets are switched off in the tabs layout, because they cleared
+ * the bar on some screens and not others; this is applied by hand instead.
  *
- * That is the trap this exists to close. TAB_BAR_HEIGHT looks like the whole
- * answer and reads like it at a call site, and both screens that scroll under
- * the bar used it alone - so on any device with a non-zero inset the last card
- * in the feed had its action row cut in half by the bar, with the like, comment
- * and report buttons underneath it and untappable.
- *
- * Add breathing room to the result; never use it as breathing room.
+ * Android: native tabs lay a tab's content out above the bar already, so there
+ * is nothing to clear.
  */
-export const useTabBarClearance = (): number => {
+export const useTabBarInset = (): number => {
   const insets = useSafeAreaInsets();
-  return TAB_BAR_HEIGHT + insets.bottom;
+  return Platform.OS === "ios" ? insets.bottom : 0;
 };
+
+/**
+ * What a scrolling tab leaves clear at the bottom so its last row scrolls out
+ * from under the native tab bar. Add breathing room to the result; never use
+ * it as breathing room.
+ */
+export const useTabBarClearance = (): number => useTabBarInset() + TAB_CONTENT_ROOM;

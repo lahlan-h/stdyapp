@@ -4,6 +4,7 @@ import { request } from "./api";
 import { withAuth } from "./auth";
 import { buildFocusTimeline, interruptionsToSpells, type FocusTimeline } from "./focusTrace";
 import { describeLoadError, type SessionStatus } from "./useSessionHistory";
+import { studiedSeconds } from "./sessionTime";
 
 /** What GET /api/sessions/:id answers - the bare row, interruptions included. */
 interface RawSession {
@@ -12,7 +13,11 @@ interface RawSession {
   endedAt: string | null;
   groupId: string | null;
   focusPoints: number;
-  interruptions?: { startedAt: string; durationSec: number }[];
+  /** Credited break seconds - absent from an API that predates breaks. */
+  pausedSeconds?: number;
+  pauseCount?: number;
+  /** Trips away and breaks alike; `type` tells them apart. */
+  interruptions?: { startedAt: string; durationSec: number; type?: string | null }[];
 }
 
 /** What GET /api/sessions/:id/focus answers, the fields read here. */
@@ -49,9 +54,14 @@ export interface SessionDetail {
   startedAt: Date;
   endedAt: Date | null;
   status: SessionStatus;
-  /** Wall-clock seconds, for the total-time card and the trace's time axis. 0 with no end. */
+  /** Seconds STUDIED, breaks left out - the total-time card. 0 with no end. */
   totalSec: number;
+  /** Breaks taken, and their credited seconds. */
+  breakCount: number;
+  breakSec: number;
   isGroup: boolean;
+  /** The group it was studied in, if any - the composer shares to it by default. */
+  groupId: string | null;
   /** The 0-100 focus ESTIMATE, or null when there is none. Never 0 for "none". */
   focusScore: number | null;
   focusWeightedMinutes: number | null;
@@ -123,10 +133,11 @@ export const useSessionDetail = (id: string | undefined): SessionDetailState => 
         startedAt,
         endedAt,
         status,
-        totalSec: endedAt
-          ? Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 1000))
-          : 0,
+        totalSec: studiedSeconds(row),
+        breakCount: row.pauseCount ?? 0,
+        breakSec: row.pausedSeconds ?? 0,
         isGroup: row.groupId !== null,
+        groupId: row.groupId,
         focusScore: f.focusScore,
         focusWeightedMinutes: f.focusWeightedMinutes,
         completionFactor: f.completionFactor,
@@ -145,7 +156,10 @@ export const useSessionDetail = (id: string | undefined): SessionDetailState => 
                 samples: trace,
                 startedAtMs: startedAt.getTime(),
                 endedAtMs: endedAt ? endedAt.getTime() : Date.now(),
-                awaySpells: interruptionsToSpells(row.interruptions ?? []),
+                awaySpells: interruptionsToSpells(row.interruptions ?? [], "away"),
+                // Recorded by the server as BREAK interruptions, so a break
+                // shows as one rather than as an unexplained gap.
+                breakSpells: interruptionsToSpells(row.interruptions ?? [], "break"),
                 unmatchedGap: "down",
               })
             : null,

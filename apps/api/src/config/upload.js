@@ -55,3 +55,33 @@ export const AVATAR_MIME_TYPES = IMAGE_MIME_TYPES;
  * is chrome. Raising one should not silently raise the other.
  */
 export const MAX_POST_PHOTO_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Photos on one post. Mirrored by MAX_POST_PHOTOS in the app's useCreatePost.ts
+ * - the API cannot import @stdyapp/shared, which is TypeScript - so change both.
+ *
+ * Five, as Facebook's post grid shows them: two across the top and three below.
+ * Past five Facebook overlays a "+N", which a study post does not need - this
+ * is a session, not an album.
+ */
+export const MAX_POST_PHOTOS = 5;
+
+/**
+ * How long a presigned upload URL works. Long enough for five photos on a slow
+ * phone connection; short enough that a leaked URL is worth nothing by the time
+ * anyone could use it. It allows one PUT, to one key the API chose.
+ */
+export const PHOTO_UPLOAD_URL_TTL_SEC = 5 * 60;
+
+/**
+ * How long an uploaded photo may sit unattached to a post before the sweep
+ * deletes it. Comfortably past PHOTO_UPLOAD_URL_TTL_SEC plus the time it takes
+ * to write a caption - someone mid-post must never lose their photos.
+ */
+export const PHOTO_UPLOAD_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * The largest width or height the app may declare for a photo. Display-only -
+ * see PostPhoto.width - but bounded so a nonsense value cannot reach the feed.
+ */
+export const MAX_PHOTO_DIMENSION = 20_000;

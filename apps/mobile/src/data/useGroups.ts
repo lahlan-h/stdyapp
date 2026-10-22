@@ -25,6 +25,44 @@ export interface NewGroup {
   isPrivate: boolean;
 }
 
+/**
+ * Creates a group and answers with it as its new owner sees it - the create
+ * sheet's request, through useCreateGroup. The Groups view picks the new group
+ * up when it next re-reads "Your groups", on focus.
+ *
+ * Throws what the request throws - callers word it with describeGroupError.
+ */
+export const createGroupRequest = async ({
+  name,
+  description,
+  isPrivate,
+}: NewGroup): Promise<StudyGroup> => {
+  const created = await withAuth((token) =>
+    request<Omit<RawGroup, "_count" | "isMember" | "isOwner" | "role">>("/api/groups", {
+      method: "POST",
+      token,
+      body: {
+        name: name.trim(),
+        // Absent rather than "": an empty string is stored as an empty
+        // description, which is not the same as none.
+        ...(description?.trim() ? { description: description.trim() } : {}),
+        isPrivate,
+      },
+    }),
+  );
+  // POST answers the bare row. The creator is the owner and only member, so
+  // these are the truth rather than a guess.
+  return {
+    ...created,
+    memberCount: 1,
+    isMember: true,
+    isOwner: true,
+    // createGroup adds the owner with the default role; ownership is
+    // ownerId, not a role.
+    role: "MEMBER",
+  };
+};
+
 export interface GroupsState {
   /** The groups the user belongs to, owned ones included. */
   myGroups?: StudyGroup[];
@@ -36,9 +74,8 @@ export interface GroupsState {
   /** A search or a further page is on its way. */
   isSearching: boolean;
   loadError?: string;
-  /** A failed search or create. Separate from loadError so the list stays up. */
+  /** A failed search. Separate from loadError so the list stays up. */
   actionError?: string;
-  busy: boolean;
   reload: () => void;
   /** An empty query lists every group - the API's own "no filter". Loads page 1. */
   search: (query: string) => void;
@@ -49,8 +86,6 @@ export interface GroupsState {
    * deleted groups drop out, changed ones are re-read in place. Call on focus.
    */
   applyGroupChanges: () => void;
-  /** Resolves to the new group, or undefined when the request failed. */
-  create: (group: NewGroup) => Promise<StudyGroup | undefined>;
 }
 
 /**
@@ -67,7 +102,6 @@ export const useGroups = (): GroupsState => {
   const [isSearching, setIsSearching] = useState(false);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [actionError, setActionError] = useState<string | undefined>(undefined);
-  const [busy, setBusy] = useState(false);
 
   /** Drops a slow response that a newer request has already replaced. */
   const latestLoad = useRef(0);
@@ -169,51 +203,6 @@ export const useGroups = (): GroupsState => {
     }
   }, []);
 
-  const create = useCallback(async ({ name, description, isPrivate }: NewGroup) => {
-    const clean = name.trim();
-    if (!clean) return undefined;
-
-    setBusy(true);
-    try {
-      const created = await withAuth((token) =>
-        request<Omit<RawGroup, "_count" | "isMember" | "isOwner" | "role">>(
-          "/api/groups",
-          {
-            method: "POST",
-            token,
-            body: {
-              name: clean,
-              // Absent rather than "": an empty string is stored as an empty
-              // description, which is not the same as none.
-              ...(description?.trim() ? { description: description.trim() } : {}),
-              isPrivate,
-            },
-          },
-        ),
-      );
-      // POST answers the bare row. The creator is the owner and only member,
-      // so these are the truth rather than a guess.
-      const group: StudyGroup = {
-        ...created,
-        memberCount: 1,
-        isMember: true,
-        isOwner: true,
-        // createGroup adds the owner with the default role; ownership is
-        // ownerId, not a role.
-        role: "MEMBER",
-      };
-      setMyGroups((prev) =>
-        [...(prev ?? []), group].sort((a, b) => a.name.localeCompare(b.name)),
-      );
-      setActionError(undefined);
-      return group;
-    } catch (err) {
-      setActionError(describeGroupError(err, "Could not create the group."));
-      return undefined;
-    } finally {
-      setBusy(false);
-    }
-  }, []);
 
   return {
     myGroups,
@@ -223,11 +212,9 @@ export const useGroups = (): GroupsState => {
     isSearching,
     loadError,
     actionError,
-    busy,
     reload: load,
     search,
     loadMore,
     applyGroupChanges,
-    create,
   };
 };

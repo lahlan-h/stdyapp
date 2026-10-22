@@ -154,6 +154,30 @@ export const deleteNotification = (id, userId) => {
 };
 
 /**
+ * One recipient's notifications of one type from one actor - the FOLLOW_REQUEST
+ * a request raised, once that request is answered or withdrawn.
+ *
+ * Returns the deleted ids, so the service can tell an open app which rows to
+ * drop. A find then a delete, scoped on the same three columns: a row that
+ * arrived in between is simply left for the next withdrawal, which is the safe
+ * direction to be wrong in.
+ *
+ * @param {{ userId: string, actorId: string, type: string }} scope
+ * @returns {Promise<string[]>}
+ */
+export const deleteNotificationsByActor = async ({ userId, actorId, type }) => {
+  const rows = await prisma.notification.findMany({
+    where: { userId, actorId, type },
+    select: { id: true },
+  });
+  if (rows.length === 0) return [];
+
+  const ids = rows.map(({ id }) => id);
+  await prisma.notification.deleteMany({ where: { id: { in: ids }, userId } });
+  return ids;
+};
+
+/**
  * Clears the whole list.
  *
  * No ownership check needed here or in the service, for the reason

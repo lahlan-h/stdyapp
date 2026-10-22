@@ -58,16 +58,17 @@ export const login = async (req, res) => {
 
 /**
  * POST /api/auth/google - signs in with a Google ID token, creating or linking
- * the account as needed. 200 with a token pair, the same shape as login; 401
+ * the account as needed. 200 with a token pair, the same shape as login, plus
+ * isNewUser - which is how the app knows to show pick-a-plan; 401
  * when the token does not verify; 503 when Google sign-in is not configured.
  */
 export const googleSignIn = async (req, res) => {
-  const { user, tokens } = await authService.loginWithGoogle(
+  const { user, tokens, isNewUser } = await authService.loginWithGoogle(
     req.validated.body.idToken,
     req.get("user-agent"),
   );
 
-  res.status(200).json({ data: { user, ...toTokenPayload(tokens) } });
+  res.status(200).json({ data: { user, isNewUser, ...toTokenPayload(tokens) } });
 };
 
 /**
@@ -113,10 +114,18 @@ export const logoutAll = async (req, res) => {
  * Re-read through userService rather than returning req.user, so this responds
  * with exactly the same shape as GET /api/users/:id. requireAuth only loads the
  * three fields it needs.
+ *
+ * Plus `hasGoogle`, which only this route carries: whether the account can
+ * prove itself with a Google sign-in, which is how the app knows to offer one
+ * where it asks for proof - deleting the account. Never on GET /api/users/:id,
+ * where anyone would learn how a stranger signs in.
  */
 export const me = async (req, res) => {
-  const user = await userService.getUserById(req.user.id);
-  res.status(200).json({ data: user });
+  const [user, hasGoogle] = await Promise.all([
+    userService.getUserById(req.user.id),
+    authService.hasLinkedGoogle(req.user.id),
+  ]);
+  res.status(200).json({ data: { ...user, hasGoogle } });
 };
 
 /**

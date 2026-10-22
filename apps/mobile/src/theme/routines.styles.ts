@@ -156,6 +156,61 @@ export const createRoutinesStyles = (colors: ColorScheme) => {
       color: colors.textMuted,
     },
 
+    // --- A post's linked routine (feed card and post detail) ---
+    // Its own tap target inside the card's: tapping the chip opens the
+    // routine, anywhere else on the card opens the post.
+    linkChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      minHeight: TOUCH_MIN,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.bg,
+    },
+    linkText: { flex: 1, gap: 1 },
+    linkLabel: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 11,
+      letterSpacing: 0.6,
+      textTransform: "uppercase",
+      color: colors.textMuted,
+    },
+    linkTitle: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 14,
+      color: colors.text,
+    },
+
+    // --- Someone else's routine, previewed ---
+    ownerText: {
+      fontFamily: "PlusJakartaSans_400Regular",
+      fontSize: 14,
+      color: colors.textMuted,
+    },
+    saveButton: {
+      height: 52,
+      borderRadius: 14,
+      overflow: "hidden",
+    },
+    // Centring on the fill, for newPost.styles.ts's reason.
+    saveFill: {
+      flex: 1,
+      flexDirection: "row",
+      gap: 8,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    // White in both themes: it sits on gradients.primary, a mid blue either way.
+    saveLabel: {
+      fontFamily: "PlusJakartaSans_600SemiBold",
+      fontSize: 16,
+      color: "#ffffff",
+    },
+
     // --- Add rows (new routine, new task) ---
     addRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     input: {

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Platform,
   Pressable,
   ScrollView,
   Share,
   StatusBar,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -21,8 +21,9 @@ import {
   STUDY_FOOTER_ROOM,
   STUDY_ICON_SIZE,
   TASK_ICON_SIZE,
+  haptics,
 } from "@theme";
-import { useFocusSession, consumeStudyRequest, MAX_JOIN_CODE_LENGTH } from "@data";
+import { useFocusSession, consumeStudyRequest } from "@data";
 
 import FocusDial from "@components/FocusDial";
 import FocusTrace from "@components/FocusTrace";
@@ -31,10 +32,9 @@ import RoutineList from "@components/RoutineList";
 import { focusBand, focusBandColor } from "@components/focusBand";
 import GroupList from "@components/GroupList";
 import { formatClock } from "@components/sessionFormat";
-import WeeklyStudyCard from "@components/WeeklyStudyCard";
-import AdvancedAnalyticsRow from "@components/AdvancedAnalyticsRow";
 import BeginCard from "@components/BeginCard";
 import RoomParticipants from "@components/RoomParticipants";
+import JoinOrCreateGroupCard from "@components/JoinOrCreateGroupCard";
 import { confirmGroupAction } from "@components/confirmGroup";
 
 /** The three views under the Study tab. */
@@ -56,16 +56,20 @@ const VIEWS: { key: StudyView; label: string }[] = [
  * survives is the line saying the score is an estimate, because that claim is
  * the one we may not leave implied.
  *
- * THE DIAL IS FOR THE LIVE SESSION ONLY. Setting up shows the week instead,
- * and a finished session is summed up where it is posted.
+ * THE DIAL IS FOR THE LIVE SESSION ONLY. A finished session is summed up
+ * where it is posted, and the week is on the analytics page.
  *
  * Every colour is a palette token; the screen holds no hex of its own.
  *
  * THREE VIEWS, ONE SESSION. A switch at the top flips between Sessions,
  * Routines and Groups, and the session itself lives above the tabs in
  * FocusSessionProvider - so a running session keeps its timer, samples and
- * away-tracking while the user checks a routine, a group or another tab. Only
- * the rendered content swaps.
+ * away-tracking while the user checks a routine or another tab. Only the
+ * rendered content swaps.
+ *
+ * Groups is set-up - joining a group, making one - so it leaves the switch
+ * while a session runs: there is nothing in it to do mid-session but get
+ * distracted.
  */
 
 
@@ -85,10 +89,17 @@ const Study = () => {
     elapsedSec,
     remainingSec,
     plannedSec,
+    setPlannedSec,
     liveFocus,
     awaySec,
     phoneDownSec,
     isPhoneDown,
+    isPaused,
+    breakRemainingSec,
+    breaksLeft,
+    breakTimedOut,
+    pause,
+    resume,
     liveTimeline,
     tasks,
     addTask,
@@ -109,7 +120,6 @@ const Study = () => {
   } = useFocusSession();
 
   const [view, setView] = useState<StudyView>("sessions");
-  const [inviteDraft, setInviteDraft] = useState("");
 
   /**
    * Takes a request a group screen left on the way here - see studyRequest.ts.
@@ -138,12 +148,6 @@ const Study = () => {
     }, [join, setSelectedGroup, phase]),
   );
 
-  const submitInvite = () => {
-    if (!inviteDraft.trim()) return;
-    join(inviteDraft);
-    setInviteDraft("");
-  };
-
   /** "Invite copied", shown under the chip for a moment after a web copy. */
   const [inviteNotice, setInviteNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -170,7 +174,7 @@ const Study = () => {
   const shareInvite = async () => {
     if (!activeGroup?.inviteCode) return;
     const code = activeGroup.inviteCode;
-    const message = `Study with me in ${activeGroup.name} on stdy - join with code ${code}`;
+    const message = `Study with me in ${activeGroup.name} on stdy - type ${code} on the Study tab to join.`;
 
     if (Platform.OS !== "web") {
       void Share.share({ message });
@@ -196,6 +200,52 @@ const Study = () => {
   };
 
   const running = phase === "running";
+
+  /**
+   * The views the switch offers, and the one on screen. Groups drops out while
+   * a session runs (see above), and a Groups view still open as a session
+   * starts falls back to the session itself.
+   */
+  const views = running ? VIEWS.filter(({ key }) => key !== "groups") : VIEWS;
+  const shownView: StudyView = running && view === "groups" ? "sessions" : view;
+
+  /**
+   * A break, from the button beside End. The last one asks first: after it
+   * there are no more, and time away from the app counts against the focus
+   * estimate again - worth knowing before spending it.
+   */
+  const takeBreak = () => {
+    if (breaksLeft === 1) {
+      haptics.warning();
+      Alert.alert(
+        "Last break",
+        "This is your last break this session. After it you can't pause again, so any time away from the app will count against your focus score.",
+        [
+          { text: "Not yet", style: "cancel" },
+          {
+            text: "Take break",
+            onPress: () => {
+              haptics.tap();
+              pause();
+            },
+          },
+        ],
+      );
+      return;
+    }
+    haptics.tap();
+    pause();
+  };
+
+  const endBreak = () => {
+    haptics.thud();
+    resume();
+  };
+
+  // A break that ran its five minutes ended on its own - say so in the hand.
+  useEffect(() => {
+    if (breakTimedOut) haptics.warning();
+  }, [breakTimedOut]);
   const score = running ? liveFocus : null;
   // Shared with the session history, so a score reads the same in both.
   const scoreBand = focusBand(score);
@@ -228,7 +278,7 @@ const Study = () => {
     router.push({ pathname: "/new-post", params: { sessionId: finished } });
   }, [phase, sessionId, reset]);
 
-  const showingSessions = view === "sessions";
+  const showingSessions = shownView === "sessions";
 
   return (
     <LinearGradient colors={colors.gradients.background} style={styles.container}>
@@ -247,14 +297,17 @@ const Study = () => {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.viewSwitch} accessibilityRole="tablist">
-            {VIEWS.map(({ key, label }) => {
-              const selected = key === view;
+            {views.map(({ key, label }) => {
+              const selected = key === shownView;
               const live = key === "sessions" && running && !selected;
               return (
                 <Pressable
                   key={key}
                   style={[styles.viewSwitchItem, selected && styles.viewSwitchItemSelected]}
-                  onPress={() => setView(key)}
+                  onPress={() => {
+                    if (!selected) haptics.tick();
+                    setView(key);
+                  }}
                   accessibilityRole="tab"
                   accessibilityState={{ selected }}
                   accessibilityLabel={live ? `${label}, session running` : label}
@@ -270,8 +323,10 @@ const Study = () => {
             })}
           </View>
 
-          {view === "routines" ? <RoutineList /> : null}
-          {view === "groups" ? <GroupList /> : null}
+          {shownView === "routines" ? <RoutineList /> : null}
+          {shownView === "groups" ? (
+            <GroupList onJoinedSession={() => setView("sessions")} />
+          ) : null}
 
           {showingSessions && error ? (
             <View style={styles.errorBox}>
@@ -294,76 +349,29 @@ const Study = () => {
           {/* ---------------- set up ---------------- */}
           {showingSessions && phase === "idle" ? (
             <>
-              <WeeklyStudyCard />
-              <AdvancedAnalyticsRow />
-
-              {/* Chosen from a group's screen; clearing it makes the next
-                  session solo again. Above Begin, because it changes what
-                  Begin starts. */}
-              {selectedGroup ? (
-                <View style={styles.groupChip}>
-                  <Feather name="users" size={TASK_ICON_SIZE} color={colors.primary} />
-                  <Text style={styles.groupChipText} numberOfLines={1}>
-                    Studying with {selectedGroup.name}
-                  </Text>
-                  <Pressable
-                    style={styles.groupChipClear}
-                    onPress={() => setSelectedGroup(null)}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Study solo instead"
-                  >
-                    <Feather name="x" size={TASK_ICON_SIZE} color={colors.textMuted} />
-                  </Pressable>
-                </View>
-              ) : null}
-
-              {/* No length to pick and no checklist to fill first: a session
-                  starts the moment a mode is chosen. Tasks can still be added
-                  once it is running. */}
-              <BeginCard busy={busy} onStartNormal={start} />
+              {/* Length, who with, then slide to lock in. A group chosen on
+                  a group's screen arrives here already picked. Tasks are
+                  added once the session runs. */}
+              <BeginCard
+                busy={busy}
+                plannedSec={plannedSec}
+                onChangePlannedSec={setPlannedSec}
+                group={selectedGroup}
+                onChangeGroup={setSelectedGroup}
+                onStart={start}
+              />
 
               <Text style={styles.helpText}>
                 Focus is an estimate, not a measurement.
               </Text>
 
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Join a session</Text>
-                <View style={styles.taskAddRow}>
-                  <TextInput
-                    style={styles.taskInput}
-                    value={inviteDraft}
-                    onChangeText={setInviteDraft}
-                    onSubmitEditing={submitInvite}
-                    placeholder="Invite code"
-                    placeholderTextColor={colors.textMuted}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                    returnKeyType="go"
-                    maxLength={MAX_JOIN_CODE_LENGTH}
-                    accessibilityLabel="Session invite code"
-                  />
-                  <Pressable
-                    style={[
-                      styles.taskAddButton,
-                      (busy || !inviteDraft.trim()) && styles.actionDisabled,
-                    ]}
-                    disabled={busy || !inviteDraft.trim()}
-                    onPress={submitInvite}
-                    accessibilityRole="button"
-                    accessibilityLabel="Join session"
-                  >
-                    <Feather name="log-in" size={STUDY_ICON_SIZE} color={colors.surface} />
-                  </Pressable>
-                </View>
-                <Text style={styles.emptyText}>
-                  Joining a public group's session adds you to the group. Or
-                  open one of your groups to see who is studying now.
-                </Text>
-              </View>
+              {/* Into a group by its code, or a new one - before a session
+                  only. Joining someone's live session is on the group's
+                  own page, under Studying now. */}
+              <JoinOrCreateGroupCard />
 
-              {/* Past sessions live behind the profile's Session history
-                  button; the weekly card is this tab's look back. */}
+              {/* Looking back - past sessions and the week's analytics -
+                  lives behind the profile's History and Analytics buttons. */}
             </>
           ) : null}
 
@@ -371,27 +379,98 @@ const Study = () => {
           {showingSessions && running ? (
             <>
               <View style={styles.dialWrap}>
-                <FocusDial progress={dialProgress} color={bandColor}>
+                {/* On a break the dial counts the break down instead, in a
+                    quiet colour: the session clock is stopped. */}
+                <FocusDial
+                  progress={isPaused ? breakRemainingSec / 300 : dialProgress}
+                  color={isPaused ? colors.textMuted : bandColor}
+                >
                   <Text style={styles.dialValue}>
-                    {formatClock(remainingSec ?? elapsedSec)}
+                    {formatClock(isPaused ? breakRemainingSec : (remainingSec ?? elapsedSec))}
                   </Text>
                   <Text style={styles.dialCaption}>
-                    {remainingSec === null ? "elapsed" : "left"}
+                    {isPaused ? "break left" : remainingSec === null ? "elapsed" : "left"}
                   </Text>
                 </FocusDial>
               </View>
 
               <View style={styles.statusPill}>
-                <View style={[styles.statusDot, { backgroundColor: bandColor }]} />
+                <View
+                  style={[
+                    styles.statusDot,
+                    { backgroundColor: isPaused ? colors.textMuted : bandColor },
+                  ]}
+                />
                 <Text style={styles.statusText}>
                   {ending === "retrying"
                     ? "Ending… reconnecting"
                     : ending === "failed"
                       ? "Not ended yet"
-                      : liveFocus === null
+                      : isPaused
+                        ? "On a break"
+                        : liveFocus === null
                         ? "Reading…"
                         : scoreBand.label}
                 </Text>
+              </View>
+
+              {/* The session's two controls, right under the clock they act
+                  on: a break - three a session, five minutes each, greyed out
+                  once used - and End. While on a break, Resume takes the
+                  lead. */}
+              <View style={styles.controlRow}>
+                <Pressable
+                  style={[
+                    isPaused ? styles.action : styles.actionSecondary,
+                    styles.controlButton,
+                    (busy || (!isPaused && breaksLeft === 0)) && styles.actionDisabled,
+                  ]}
+                  disabled={busy || (!isPaused && breaksLeft === 0)}
+                  onPress={isPaused ? endBreak : takeBreak}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    isPaused
+                      ? "Resume session"
+                      : breaksLeft === 0
+                        ? "No breaks left"
+                        : `Take a break, ${breaksLeft} left`
+                  }
+                >
+                  <Feather
+                    name={isPaused ? "play" : "pause"}
+                    size={STUDY_ICON_SIZE}
+                    color={isPaused ? colors.surface : colors.text}
+                  />
+                  <Text style={isPaused ? styles.actionText : styles.actionSecondaryText}>
+                    {isPaused
+                      ? "Resume"
+                      : breaksLeft === 0
+                        ? "No breaks left"
+                        : `Break · ${breaksLeft} left`}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[
+                    styles.action,
+                    styles.actionDanger,
+                    styles.controlButton,
+                    busy && styles.actionDisabled,
+                  ]}
+                  disabled={busy}
+                  onPress={end}
+                  accessibilityRole="button"
+                  accessibilityLabel={ending === "failed" ? "Try ending again" : "End session"}
+                >
+                  <Feather
+                    name={ending === "failed" ? "refresh-cw" : "square"}
+                    size={STUDY_ICON_SIZE}
+                    color={colors.danger}
+                  />
+                  <Text style={[styles.actionText, styles.actionDangerText]}>
+                    {ending === "retrying" ? "Ending…" : ending === "failed" ? "Try again" : "End"}
+                  </Text>
+                </Pressable>
               </View>
 
               {/* The code is what lets someone else join; tapping shares it. */}
@@ -422,6 +501,36 @@ const Study = () => {
                 </Pressable>
               ) : null}
 
+              {/* Above everything that turns up mid-session. The notes, chips,
+                  chart and room all arrive later, and while they sat above the
+                  checklist each one pushed it down - once moving + out from
+                  under a finger adding a task. */}
+              <TaskChecklist
+                tasks={tasks}
+                onAdd={addTask}
+                onToggle={toggleTask}
+                onRemoveTask={removeTask}
+              />
+
+              {/* After the retries run out: the clock is already stopped, and
+                  the session is closed properly the next time they study. */}
+              {ending === "failed" ? (
+                <Pressable
+                  style={styles.actionSecondary}
+                  onPress={reset}
+                  accessibilityRole="button"
+                  accessibilityLabel="Leave it for now"
+                >
+                  <Text style={styles.actionSecondaryText}>Leave it for now</Text>
+                </Pressable>
+              ) : null}
+
+              {breakTimedOut && !isPaused ? (
+                <Text style={[styles.helpText, styles.centeredText]} accessibilityLiveRegion="polite">
+                  Break's over - back to it.
+                </Text>
+              ) : null}
+
               {/* Web only: says what the chip just did when there was no sheet. */}
               {inviteNotice ? (
                 <Text style={[styles.helpText, styles.centeredText]} accessibilityLiveRegion="polite">
@@ -449,43 +558,6 @@ const Study = () => {
 
               {/* Group sessions only: a solo session is a room of one. */}
               {activeGroup && sessionId ? <RoomParticipants sessionId={sessionId} /> : null}
-
-              <TaskChecklist
-                tasks={tasks}
-                onAdd={addTask}
-                onToggle={toggleTask}
-                onRemoveTask={removeTask}
-              />
-
-              <Pressable
-                style={[styles.action, styles.actionDanger, busy && styles.actionDisabled]}
-                disabled={busy}
-                onPress={end}
-                accessibilityRole="button"
-                accessibilityLabel={ending === "failed" ? "Try ending again" : "End session"}
-              >
-                <Feather
-                  name={ending === "failed" ? "refresh-cw" : "square"}
-                  size={STUDY_ICON_SIZE}
-                  color={colors.danger}
-                />
-                <Text style={[styles.actionText, styles.actionDangerText]}>
-                  {ending === "retrying" ? "Ending…" : ending === "failed" ? "Try again" : "End"}
-                </Text>
-              </Pressable>
-
-              {/* After the retries run out: the clock is already stopped, and
-                  the session is closed properly the next time they study. */}
-              {ending === "failed" ? (
-                <Pressable
-                  style={styles.actionSecondary}
-                  onPress={reset}
-                  accessibilityRole="button"
-                  accessibilityLabel="Leave it for now"
-                >
-                  <Text style={styles.actionSecondaryText}>Leave it for now</Text>
-                </Pressable>
-              ) : null}
             </>
           ) : null}
 
@@ -494,7 +566,7 @@ const Study = () => {
       </SafeAreaView>
 
       {/* Face-down mode: nobody can see the screen, so it goes black. */}
-      {running && isPhoneDown ? (
+      {running && isPhoneDown && !isPaused ? (
         <View style={styles.phoneDownOverlay} accessibilityLabel="Phone down, still focusing">
           <Text style={styles.phoneDownText}>Phone down · focusing</Text>
           <Text style={styles.phoneDownHint}>Pick it up to see your session</Text>

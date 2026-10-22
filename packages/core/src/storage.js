@@ -5,7 +5,9 @@ import {
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import { describeConnectionError } from "./errors.js";
 import { createLogger } from "./logger.js";
@@ -333,6 +335,67 @@ export const getFile = async (key) => {
     new GetObjectCommand({ Bucket: bucket(), Key: key }),
     withTimeout()
   );
+};
+
+/**
+ * A URL that lets whoever holds it PUT one object, once, for a short while -
+ * how the app uploads a post photo straight to R2 without the API ever holding
+ * the bytes.
+ *
+ * Signed locally; nothing is sent to R2 here.
+ *
+ * ⚠ signableHeaders IS LOAD-BEARING. Content-Type and Content-Length are only
+ * enforced by R2 when they are in the signature's SignedHeaders - and the
+ * presigner leaves them out by default. Without this option a URL signed for
+ * a 300 KB JPEG accepted any type and any size: checked against R2 directly,
+ * a PUT with a different Content-Type answered 200. With it, a different type
+ * or a different byte count is refused with 403 before anything is stored.
+ *
+ * So the uploader must send exactly `contentType` and exactly `contentLength`
+ * bytes. Clients should not set Content-Length by hand - fetch and the native
+ * uploaders derive it from the body.
+ *
+ * @param {{ key: string, contentType: string, contentLength: number,
+ *           expiresInSec: number }} input
+ * @returns {Promise<string>}
+ */
+export const createUploadUrl = ({ key, contentType, contentLength, expiresInSec }) =>
+  getSignedUrl(
+    getR2(),
+    new PutObjectCommand({
+      Bucket: bucket(),
+      Key: key,
+      ContentType: contentType,
+      ContentLength: contentLength,
+    }),
+    { expiresIn: expiresInSec, signableHeaders: new Set(["content-type", "content-length"]) },
+  );
+
+/**
+ * An object's metadata - size and stored Content-Type - without its body.
+ *
+ * Throws the SDK's NotFound (HTTP 404) when the key does not exist, which is
+ * how "the upload never arrived" shows up; callers check $metadata.
+ *
+ * @param {string} key
+ */
+export const headFile = (key) =>
+  getR2().send(new HeadObjectCommand({ Bucket: bucket(), Key: key }), withTimeout());
+
+/**
+ * The first `length` bytes of an object - enough to sniff its real format by
+ * magic bytes without downloading the whole file.
+ *
+ * @param {string} key
+ * @param {number} length
+ * @returns {Promise<Buffer>}
+ */
+export const readFileStart = async (key, length) => {
+  const response = await getR2().send(
+    new GetObjectCommand({ Bucket: bucket(), Key: key, Range: `bytes=0-${length - 1}` }),
+    withTimeout(),
+  );
+  return Buffer.from(await response.Body.transformToByteArray());
 };
 
 /** Closes the shared client. Safe to call when it was never created. */

@@ -1,5 +1,7 @@
 import { prisma } from "@stdyapp/core";
 
+import { visibleTo, authorVisibleTo } from "./post.repository.js";
+
 export const createLike = ({ userId, postId }) => {
   return prisma.like.create({ data: { userId, postId } });
 };
@@ -63,9 +65,13 @@ export const findLikesByUser = (userId) => {
  *
  * @returns {Promise<[object[], number]>} the page, and the total row count
  */
-export const findAllLikes = ({ skip, take }) => {
+export const findAllLikes = ({ skip, take, viewerId }) => {
+  // Only likes BY someone the viewer may see, ON a post they may see - so this
+  // directory cannot be a way round a private account. See authorVisibleTo.
+  const where = { user: authorVisibleTo(viewerId), post: visibleTo(viewerId) };
   return prisma.$transaction([
     prisma.like.findMany({
+      where,
       include: {
         user: { select: { id: true, username: true, avatarUrl: true } },
         post: true,
@@ -74,7 +80,7 @@ export const findAllLikes = ({ skip, take }) => {
       skip,
       take,
     }),
-    prisma.like.count(),
+    prisma.like.count({ where }),
   ]);
 };
 

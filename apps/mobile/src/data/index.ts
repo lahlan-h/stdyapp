@@ -8,12 +8,33 @@
  * API anywhere outside src/data is a bug, and so is a component that knows what
  * `_count` or `photoUrl` means.
  */
-export type { FeedAuthor, FeedPost, FeedSession } from "./types";
-export { useIsSignedIn, useSessionRestored, logout } from "./auth";
+export type {
+  FeedAuthor,
+  FeedPhoto,
+  FeedPost,
+  FeedSession,
+  FeedRoutine,
+  PostHighlight,
+  PostAudience,
+} from "./types";
+export {
+  useIsSignedIn,
+  useSessionRestored,
+  useChoosingPlan,
+  finishChoosingPlan,
+  logout,
+} from "./auth";
+export {
+  useSubscription,
+  type Subscription,
+  type SubscriptionState,
+} from "./useSubscription";
+export { PLANS, type Plan, type PlanId } from "./plans";
 export { useLogin, type LoginState } from "./useLogin";
 export {
   buildFocusTimeline,
   interruptionsToSpells,
+  traceAxisLabels,
   FOCUS_SAMPLE_INTERVAL_SEC,
   type FocusTimeline,
   type FocusSpell,
@@ -22,6 +43,12 @@ export {
 } from "./focusTrace";
 export { useRegister, type RegisterState } from "./useRegister";
 export { useGoogleSignIn, type GoogleSignInState } from "./useGoogleSignIn";
+export { useGoogleIdToken, type GoogleIdTokenState } from "./useGoogleIdToken";
+export {
+  useDeleteAccount,
+  type DeleteAccountProof,
+  type DeleteAccountState,
+} from "./useDeleteAccount";
 export {
   useForgotPassword,
   normalizeResetCode,
@@ -82,7 +109,8 @@ export {
 // For turning a profile into the person a chat is with - the same shape a
 // search result has.
 export { toUserSummary } from "./userSummary";
-export { useFollow, type FollowState } from "./useFollow";
+export { useFollow, type FollowState, type FollowStatus } from "./useFollow";
+export { useFollowRequest, type FollowRequestState } from "./useFollowRequest";
 export { useMotionVariance, type MotionSource } from "./useMotionVariance";
 export {
   FocusSessionProvider,
@@ -96,6 +124,7 @@ export {
   type SessionTask,
   type SessionGroup,
 } from "./useFocusSession";
+export { MAX_BREAKS, MAX_BREAK_SEC, studiedSeconds, studiedMinutes } from "./sessionTime";
 export {
   requestStudySession,
   consumeStudyRequest,
@@ -130,6 +159,11 @@ export {
 // hook to take it from. Same function usePosts hands back - there is one array.
 export { setLiked as setPostLiked } from "./postStore";
 export { useLikePost, type LikePostState } from "./useLikePost";
+export {
+  usePhotoSave,
+  type PhotoSaveState,
+  type PhotoSaveStatus,
+} from "./usePhotoSave";
 export { useReportPost, type ReportPostState } from "./useReportPost";
 export {
   REPORT_REASONS,
@@ -147,13 +181,15 @@ export { consumeFeedStale } from "./feedSignal";
 export {
   useCreatePost,
   MAX_PHOTO_BYTES,
+  MAX_POST_PHOTOS,
   MAX_CAPTION_LENGTH,
   MAX_TITLE_LENGTH,
   type NewPost,
-  type NewPostPhoto,
   type CreatedPost,
   type CreatePostState,
+  type CreatePostStage,
 } from "./useCreatePost";
+export { preparePhoto, type PreparedPhoto } from "./preparePhoto";
 export {
   useNotificationPreferences,
   DEFAULT_NOTIFICATION_PREFERENCES,
@@ -173,13 +209,31 @@ export {
   type ProfileState,
 } from "./useProfile";
 export { useRoutines, type RoutinesState } from "./useRoutines";
-export { useGroups, type GroupsState, type NewGroup } from "./useGroups";
+export {
+  useGroups,
+  createGroupRequest,
+  type GroupsState,
+  type NewGroup,
+} from "./useGroups";
+export { useCreateGroup, type CreateGroupState } from "./useCreateGroup";
+export {
+  useJoinGroupByCode,
+  type JoinGroupByCodeState,
+  type JoinByCodeResult,
+} from "./useJoinGroupByCode";
 export { useGroup, type GroupState, type GroupEdit } from "./useGroup";
+export {
+  useStudyingNow,
+  type StudyingMember,
+  type StudyingNowState,
+} from "./useStudyingNow";
 export { useRoom, type RoomState, type RoomParticipant } from "./useRoom";
 export {
   MAX_GROUP_NAME_LENGTH,
   MAX_GROUP_DESCRIPTION_LENGTH,
   MAX_JOIN_CODE_LENGTH,
+  JOIN_CODE_LENGTH,
+  cleanJoinCodeInput,
   type StudyGroup,
   type GroupMember,
   type GroupRole,
@@ -187,6 +241,11 @@ export {
   type LiveSession,
 } from "./groupTypes";
 export { useRoutine, type RoutineState, type TodoEdit } from "./useRoutine";
+export {
+  useRoutinePreview,
+  type RoutinePreview,
+  type RoutinePreviewState,
+} from "./useRoutinePreview";
 export {
   MAX_ROUTINE_TITLE_LENGTH,
   MAX_TODO_TITLE_LENGTH,
@@ -205,4 +264,15 @@ export {
 } from "./useAnalytics";
 export { toWeekComparison, type WeekComparison } from "./weekComparison";
 export { useSessionRating, type SessionRatingState } from "./useSessionRating";
+export { defaultPostTitle } from "./defaultPostTitle";
 export { useDiscardSession, type DiscardSessionState } from "./useDiscardSession";
+export {
+  useLeaderboard,
+  type Leaderboard,
+  type LeaderboardEntry,
+  type LeaderboardMe,
+  type LeaderboardMetric,
+  type LeaderboardRange,
+  type LeaderboardScope,
+  type LeaderboardState,
+} from "./useLeaderboard";

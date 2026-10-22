@@ -1,5 +1,7 @@
 import { prisma } from "@stdyapp/core";
 
+import { visibleTo, authorVisibleTo } from "./post.repository.js";
+
 // The user allowlist shared by findAllPosts, findLikesByPost and listMembers.
 // It is what keeps passwordHash and email out of a public comment thread, so it
 // must stay a select rather than becoming `user: true`. Named here because this
@@ -77,9 +79,13 @@ export const findCommentsByUser = (userId) => {
  *
  * @returns {Promise<[object[], number]>} the page, and the total row count
  */
-export const findAllComments = ({ skip, take }) => {
+export const findAllComments = ({ skip, take, viewerId }) => {
+  // Only comments BY someone the viewer may see, ON a post they may see - see
+  // findAllLikes.
+  const where = { user: authorVisibleTo(viewerId), post: visibleTo(viewerId) };
   return prisma.$transaction([
     prisma.comment.findMany({
+      where,
       include: {
         user: COMMENT_AUTHOR_SELECT,
         post: true,
@@ -88,7 +94,7 @@ export const findAllComments = ({ skip, take }) => {
       skip,
       take,
     }),
-    prisma.comment.count(),
+    prisma.comment.count({ where }),
   ]);
 };
 

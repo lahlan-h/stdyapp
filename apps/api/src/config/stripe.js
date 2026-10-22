@@ -35,9 +35,16 @@ const SECRET_KEY_PREFIX = "sk_";
 const WEBHOOK_SECRET_PREFIX = "whsec_";
 const PRICE_ID_PREFIX = "price_";
 
-/** Where Checkout sends the browser afterwards. Overridable, but not required. */
-const DEFAULT_SUCCESS_URL = "http://localhost:8081/subscription/success";
-const DEFAULT_CANCEL_URL = "http://localhost:8081/subscription/cancelled";
+/**
+ * Where Checkout sends the browser afterwards. Overridable, but not required.
+ *
+ * Both land on the app's plans screen (apps/mobile/app/plans.tsx) on Expo web,
+ * which reads `checkout` to either wait for the webhook or say nothing was
+ * charged. Web only: a native app sends its own stdyapp:// or exp:// link
+ * instead - see checkoutBodySchema - because a phone cannot load these.
+ */
+const DEFAULT_SUCCESS_URL = "http://localhost:8081/plans?checkout=success";
+const DEFAULT_CANCEL_URL = "http://localhost:8081/plans?checkout=cancelled";
 
 const requirePrefixed = (name, prefix, hint) => {
   const value = process.env[name];

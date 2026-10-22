@@ -318,13 +318,14 @@ export const loginWithGoogle = async (idToken, userAgent) => {
     });
   };
 
+  const found =
+    (await prisma.user.findUnique({ where: { googleId: claims.sub }, select })) ??
+    (await linkByEmail());
+  const created = found ? null : await createGoogleUser(claims);
+
   // The trailing linkByEmail covers createGoogleUser losing a race to a
   // concurrent first sign-in with the same email.
-  const user =
-    (await prisma.user.findUnique({ where: { googleId: claims.sub }, select })) ??
-    (await linkByEmail()) ??
-    (await createGoogleUser(claims)) ??
-    (await linkByEmail());
+  const user = found ?? created ?? (await linkByEmail());
 
   if (!user) throw new HttpError(401, GOOGLE_SIGN_IN_FAILED);
 
@@ -336,7 +337,88 @@ export const loginWithGoogle = async (idToken, userAgent) => {
   return {
     user: await userService.getUserById(user.id),
     tokens: await tokenService.issueTokenPair(user, userAgent),
+    // Only an account THIS call created. A linked one already existed, and its
+    // owner has been through onboarding - pick a plan included - before.
+    isNewUser: Boolean(created),
   };
+};
+
+const INCORRECT_PASSWORD = "Incorrect password";
+const GOOGLE_ACCOUNT_MISMATCH = "That Google account isn't linked to this account";
+
+/**
+ * Proves the caller OWNS this account, not merely that they hold a token for
+ * it - asked before the one thing a stolen 15-minute token must not be able to
+ * do, which is delete the account.
+ *
+ * Two kinds of proof, because two kinds of account exist:
+ *   - a password, checked as login checks it;
+ *   - a fresh Google ID token whose subject is the one linked here. Accounts
+ *     Google created were given a random password nobody learnt, so for them
+ *     this is the only proof there is.
+ *
+ * ⚠ EVERY FAILURE IS A 403, NEVER A 401. The app reads a 401 as an expired
+ * access token: it refreshes and sends the request again (withAuth in the
+ * app's auth.ts), so a wrong password answered with 401 would be retried
+ * rather than shown. That is also why verifyGoogleIdToken's 401 is re-thrown -
+ * though its "email not verified" message is kept, being the one worth showing.
+ *
+ * No dummy-hash timing defence here, unlike login: the user is already
+ * authenticated and the id is their own, so there is no existence to leak.
+ *
+ * @param {string} userId - the caller's own id; requireSelf has checked it
+ * @param {{ password?: string, googleIdToken?: string }} proof - deleteUserSchema
+ * @returns {Promise<void>}
+ * @throws {HttpError} 403 when the proof does not hold, 404 when the user is
+ *   gone, 503 when a Google proof arrives and Google sign-in is not configured
+ */
+export const verifyAccountOwner = async (userId, { password, googleIdToken }) => {
+  // The second deliberate passwordHash select in the app, beside
+  // findUserByIdentifier. Like that one, the hash never leaves this module.
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { passwordHash: true, googleId: true },
+  });
+  if (!user) throw new HttpError(404, "User not found");
+
+  if (password !== undefined) {
+    if (!(await bcrypt.compare(password, user.passwordHash))) {
+      throw new HttpError(403, INCORRECT_PASSWORD);
+    }
+    return;
+  }
+
+  const audience = getGoogleClientIds();
+  if (audience.length === 0) {
+    throw new HttpError(503, "Google sign-in is not configured");
+  }
+
+  let claims;
+  try {
+    claims = await verifyGoogleIdToken(googleIdToken, audience);
+  } catch (err) {
+    throw new HttpError(403, err.message ?? GOOGLE_SIGN_IN_FAILED);
+  }
+
+  if (!user.googleId || claims.sub !== user.googleId) {
+    throw new HttpError(403, GOOGLE_ACCOUNT_MISMATCH);
+  }
+};
+
+/**
+ * Whether a Google account is linked here, so a Google sign-in is accepted as
+ * proof by verifyAccountOwner. For the caller's own GET /api/auth/me only -
+ * googleId is not in USER_PUBLIC_SELECT and must not reach anyone else.
+ *
+ * @param {string} userId
+ * @returns {Promise<boolean>}
+ */
+export const hasLinkedGoogle = async (userId) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { googleId: true },
+  });
+  return Boolean(user?.googleId);
 };
 
 /**

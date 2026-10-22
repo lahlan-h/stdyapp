@@ -41,6 +41,7 @@ export const useUser = (userId: string): UserState => {
         lastName: data.lastName,
         avatarUrl: data.avatarUrl,
         bio: data.bio,
+        isPrivate: data.isPrivate === true,
       });
       setError(undefined);
     } catch (err) {

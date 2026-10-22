@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 
-import { useTheme, useStyles, TASK_ICON_SIZE } from "@theme";
+import { useTheme, useStyles, haptics, TASK_ICON_SIZE } from "@theme";
 import type { SessionTask } from "@data";
 
 /**
@@ -52,6 +52,7 @@ const TaskChecklist = ({
   const submit = () => {
     const clean = draft.trim();
     if (!clean) return;
+    haptics.tap();
     onAdd(clean);
     setDraft("");
   };
@@ -86,7 +87,11 @@ const TaskChecklist = ({
             // The whole row is the target, not the little box - 44pt minimum,
             // and nothing to aim at.
             style={({ pressed }) => [styles.taskRow, pressed && styles.rowPressed]}
-            onPress={() => task && onToggle?.(task)}
+            onPress={() => {
+              if (!task) return;
+              haptics.tick();
+              onToggle?.(task);
+            }}
             disabled={planning}
             accessibilityRole="checkbox"
             accessibilityState={{ checked, disabled: planning }}

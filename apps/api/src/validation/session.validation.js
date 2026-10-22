@@ -37,6 +37,9 @@ const MAX_PLANNED_MINUTES = 24 * 60;
  * than imported from @prisma/client so validation stays readable without the
  * generated client, matching how focus.service.js lists FocusSignal.
  */
+// BREAK is deliberately absent: a break is recorded by the server when one of
+// a session's three ends (see sessionPause.js). Accepting it here would let a
+// client file any time away as a break and dodge the focus estimate.
 export const INTERRUPTION_TYPES = ["APP_EXIT", "DEVICE_MOTION", "MANUAL"];
 
 /**

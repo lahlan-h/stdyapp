@@ -171,73 +171,141 @@ export const findRatedSessions = async (userId, take) => {
 };
 
 /**
- * Focus-weighted minutes per user since a cutoff, biggest first.
+ * The Session column and aggregate behind each leaderboard metric.
+ *
+ * Keys mirror METRICS in services/focusLeaderboard.js. One table rather than a
+ * function per metric because the three boards are the same query - group the
+ * window's sessions by user - differing only in which column they fold.
+ */
+const LEADERBOARD_COLUMNS = Object.freeze({
+  weightedMinutes: { column: "focusWeightedMinutes", agg: "_sum" },
+  focusScore: { column: "focusScore", agg: "_avg" },
+  tasksCompleted: { column: "tasksCompleted", agg: "_sum" },
+});
+
+/**
+ * The WHERE shared by the board and the caller's own row, so the two can never
+ * disagree about which sessions count.
+ *
+ * Sessions with a null metric column are excluded rather than counted as zero:
+ * they were never scored (or had no checklist), which is not the same as
+ * scoring badly. `since` null means all time, which still requires the session
+ * to have ended - a running session has no score yet.
+ *
+ * @param {string} column
+ * @param {Date|null} since
+ */
+const leaderboardWhere = (column, since) => ({
+  endedAt: since ? { gte: since } : { not: null },
+  [column]: { not: null },
+});
+
+/**
+ * One metric aggregated per user, biggest first.
  *
  * groupBy rather than reading the rows and summing in JavaScript: a week of
  * sessions across a cohort is a lot of rows to move for one number each, and
  * Postgres does this in the index.
  *
- * Sessions with a null focusWeightedMinutes are excluded rather than counted as
- * zero — they were never scored, which is not the same as scoring badly.
+ * The session floor is a HAVING, so a user below it never reaches the page and
+ * cannot push someone qualified out of the `take`.
  *
- * @param {{ since: Date, excludeUserIds?: string[], take: number }} args
+ * @param {{ metric: string, since: Date|null, userIds?: string[], excludeUserIds?: string[], minSessions?: number, take?: number }} args
+ *   userIds restricts to an audience (a following board); omitted means
+ *   everyone. take omitted means every qualifying user.
+ * @returns {Promise<Array<{ userId: string, value: number, sessions: number }>>}
  */
-export const sumWeightedMinutesByUser = async ({ since, excludeUserIds = [], take }) => {
+export const aggregateSessionsByUser = async ({
+  metric,
+  since,
+  userIds,
+  excludeUserIds = [],
+  minSessions = 1,
+  take,
+}) => {
+  const { column, agg } = LEADERBOARD_COLUMNS[metric];
+
+  let userFilter = {};
+  if (userIds) {
+    const excluded = new Set(excludeUserIds);
+    userFilter = { userId: { in: userIds.filter((id) => !excluded.has(id)) } };
+  } else if (excludeUserIds.length) {
+    userFilter = { userId: { notIn: excludeUserIds } };
+  }
+
   const grouped = await prisma.session.groupBy({
     by: ["userId"],
-    where: {
-      endedAt: { gte: since },
-      focusWeightedMinutes: { not: null },
-      ...(excludeUserIds.length ? { userId: { notIn: excludeUserIds } } : {}),
-    },
-    // Tasks ride along on the same groupBy rather than a second query: the
-    // board already scans these rows, and a "tasks completed" column is a
-    // second metric the team wants from the same week of sessions.
-    _sum: { focusWeightedMinutes: true, tasksCompleted: true },
+    where: { ...leaderboardWhere(column, since), ...userFilter },
+    [agg]: { [column]: true },
     _count: { _all: true },
-    orderBy: { _sum: { focusWeightedMinutes: "desc" } },
-    take,
+    ...(minSessions > 1 ? { having: { [column]: { _count: { gte: minSessions } } } } : {}),
+    // userId second so ties come back in a stable order between refreshes.
+    orderBy: [{ [agg]: { [column]: "desc" } }, { userId: "asc" }],
+    ...(take ? { take } : {}),
   });
 
-  if (grouped.length === 0) return [];
-
-  // A second query rather than a join: groupBy cannot include relations, and
-  // this is one indexed read on the primary key for a page of at most `take`.
-  const users = await prisma.user.findMany({
-    where: { id: { in: grouped.map((g) => g.userId) } },
-    select: { id: true, username: true, avatarUrl: true },
-  });
-  const byId = new Map(users.map((u) => [u.id, u]));
-
-  return grouped.map((g, i) => ({
-    rank: i + 1,
+  return grouped.map((g) => ({
     userId: g.userId,
-    username: byId.get(g.userId)?.username ?? null,
-    avatarUrl: byId.get(g.userId)?.avatarUrl ?? null,
-    weightedMinutes: g._sum.focusWeightedMinutes ?? 0,
-    tasksCompleted: g._sum.tasksCompleted ?? 0,
+    value: g[agg][column] ?? 0,
     sessions: g._count._all,
   }));
 };
 
 /**
- * One user's own weighted-minutes total since a cutoff, so the caller can be
- * shown their standing even when they are nowhere near the top of the board.
+ * One user's own aggregate for a metric, so the caller can be shown their
+ * standing even when they are nowhere near the top of the board - or below the
+ * session floor and not on it at all.
  *
- * @param {{ userId: string, since: Date }} args
+ * @param {{ metric: string, userId: string, since: Date|null }} args
+ * @returns {Promise<{ value: number|null, sessions: number }>}
  */
-export const sumWeightedMinutesForUser = async ({ userId, since }) => {
-  const agg = await prisma.session.aggregate({
-    where: { userId, endedAt: { gte: since }, focusWeightedMinutes: { not: null } },
-    _sum: { focusWeightedMinutes: true, tasksCompleted: true },
+export const aggregateSessionsForUser = async ({ metric, userId, since }) => {
+  const { column, agg } = LEADERBOARD_COLUMNS[metric];
+  const result = await prisma.session.aggregate({
+    where: { userId, ...leaderboardWhere(column, since) },
+    [agg]: { [column]: true },
     _count: { _all: true },
   });
 
-  return {
-    weightedMinutes: agg._sum.focusWeightedMinutes ?? 0,
-    tasksCompleted: agg._sum.tasksCompleted ?? 0,
-    sessions: agg._count._all,
-  };
+  return { value: result[agg][column] ?? null, sessions: result._count._all };
+};
+
+/**
+ * The people on one page of a board, by id.
+ *
+ * A second query rather than a join: groupBy cannot include relations, and
+ * this is one indexed read on the primary key for at most a page plus the
+ * caller. An explicit select, so email and passwordHash never ride along on a
+ * social surface.
+ *
+ * @param {string[]} ids
+ */
+export const findLeaderboardUsers = (ids) => {
+  if (ids.length === 0) return Promise.resolve([]);
+  return prisma.user.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, username: true, firstName: true, lastName: true, avatarUrl: true },
+  });
+};
+
+/**
+ * Everyone this user follows, as bare ids - the audience of a "following"
+ * board.
+ *
+ * Here rather than borrowed from follow.repository.js, whose readers join the
+ * followed user on for a list screen; the board needs only the ids, and keeping
+ * the read in this file keeps the feature's diff inside its own files. Served
+ * by the leading column of @@unique([followerId, followingId]).
+ *
+ * @param {string} userId
+ * @returns {Promise<string[]>}
+ */
+export const findFollowingIds = async (userId) => {
+  const rows = await prisma.follow.findMany({
+    where: { followerId: userId },
+    select: { followingId: true },
+  });
+  return rows.map((row) => row.followingId);
 };
 
 /**
@@ -261,6 +329,30 @@ export const findBlockedUserIds = async (userId) => {
     ids.add(row.blockerId === userId ? row.blockedId : row.blockerId);
   }
   return [...ids];
+};
+
+/**
+ * Private accounts this user may NOT see - every private user but themselves
+ * and the ones they are an approved follower of. The global board leaves these
+ * out; see authorVisibleTo in post.repository.js for the same rule as a filter.
+ *
+ * Only the global board asks. A following board already holds approved follows
+ * and nothing else, and a group's board shows its members to each other by
+ * design.
+ *
+ * @param {string} userId
+ * @returns {Promise<string[]>}
+ */
+export const findHiddenPrivateUserIds = async (userId) => {
+  const rows = await prisma.user.findMany({
+    where: {
+      isPrivate: true,
+      id: { not: userId },
+      followers: { none: { followerId: userId } },
+    },
+    select: { id: true },
+  });
+  return rows.map((row) => row.id);
 };
 
 /** @param {string} userId */

@@ -1,6 +1,7 @@
 import { View, Text, Image } from "react-native";
+import Feather from "@expo/vector-icons/Feather";
 
-import { useStyles } from "@theme";
+import { useStyles, useTheme, PROFILE_PRIVATE_BADGE_ICON_SIZE } from "@theme";
 import type { PublicProfile } from "@data";
 
 import { defaultAvatar } from "./defaultAvatar";
@@ -25,22 +26,45 @@ interface ProfileHeaderProps {
 const displayNameOf = ({ firstName, lastName, username }: PublicProfile): string =>
   [firstName, lastName].filter(Boolean).join(" ") || username;
 
-/** Avatar, name and bio. Renders from the profile it is given and queries nothing. */
+/**
+ * Avatar, name and bio: the avatar on the left with the name and username
+ * beside it, and the bio underneath. Renders from the profile it is given and
+ * queries nothing.
+ */
 const ProfileHeader = ({ profile }: ProfileHeaderProps) => {
+  const { colors } = useTheme();
   const styles = useStyles("profile");
   const displayName = displayNameOf(profile);
 
   return (
     <View style={styles.header}>
-      <Image
-        source={{ uri: profile.avatarUrl ?? defaultAvatar(displayName) }}
-        style={styles.avatar}
-        accessibilityIgnoresInvertColors
-      />
+      <View style={styles.headerRow}>
+        <Image
+          source={{ uri: profile.avatarUrl ?? defaultAvatar(displayName) }}
+          style={styles.avatar}
+          accessibilityIgnoresInvertColors
+        />
 
-      <View style={styles.identity}>
-        <Text style={styles.displayName}>{displayName}</Text>
-        <Text style={styles.username}>@{profile.username}</Text>
+        <View style={styles.identity}>
+          <Text style={styles.displayName} numberOfLines={2}>
+            {displayName}
+          </Text>
+          <View style={styles.usernameRow}>
+            <Text style={styles.username} numberOfLines={1}>
+              @{profile.username}
+            </Text>
+            {/* A private account says so before anyone taps Follow, so a
+                Requested button that follows is no surprise. */}
+            {profile.isPrivate ? (
+              <Feather
+                name="lock"
+                size={PROFILE_PRIVATE_BADGE_ICON_SIZE}
+                color={colors.textMuted}
+                accessibilityLabel="Private account"
+              />
+            ) : null}
+          </View>
+        </View>
       </View>
 
       {/* Absent rather than blank when unset: an empty line under the username

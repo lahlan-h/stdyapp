@@ -9,6 +9,8 @@ import {
   end,
   remove,
   addInterruption,
+  pause,
+  resume,
 } from "../controllers/session.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { validate } from "../middleware/validate.js";
@@ -162,5 +164,10 @@ router.post(
   validate({ params: sessionIdParamSchema, body: addInterruptionSchema }),
   addInterruption,
 );
+
+// Breaks - three per session, five minutes each; see sessionPause.js. No body:
+// the server keeps the clock, so a client cannot say when a break began.
+router.post("/:id/pause", writeLimit, validate({ params: sessionIdParamSchema }), pause);
+router.post("/:id/resume", writeLimit, validate({ params: sessionIdParamSchema }), resume);
 
 export default router;

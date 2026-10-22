@@ -119,6 +119,19 @@ const toLocalStatus = (stripeSub) => {
 };
 
 /**
+ * An app return URL with the outcome appended - `?checkout=success`, say.
+ *
+ * checkoutBodySchema has already refused a query, so this sets rather than
+ * merges. URL handles non-web schemes (exp://host:8081/--/plans included)
+ * without special-casing.
+ */
+const withCheckoutResult = (returnUrl, result) => {
+  const url = new URL(returnUrl);
+  url.searchParams.set("checkout", result);
+  return url.toString();
+};
+
+/**
  * The client-facing shape.
  *
  * Adds `isPremium`, which is the only question a client actually has, so that
@@ -208,11 +221,16 @@ export const getMySubscription = async (userId) => {
  * both would bill. This schema allows one row per user, so the second would
  * also silently overwrite the first's reference and orphan it at Stripe.
  *
+ * returnUrl is a native app's own link, from checkoutBodySchema, which has
+ * already confined it to app schemes. Without one - on web - Checkout returns
+ * to the configured URLs exactly as before.
+ *
  * @param {string} userId
+ * @param {{ returnUrl?: string }} [options]
  * @returns {Promise<{ url: string }>}
  * @throws {HttpError} 409 when the user is already premium
  */
-export const createCheckoutSession = async (userId) => {
+export const createCheckoutSession = async (userId, { returnUrl } = {}) => {
   const existing = await subscriptionRepo.findSubscriptionByUser(userId);
 
   // isExpired rather than status alone: a CANCELLED subscription still inside
@@ -228,8 +246,12 @@ export const createCheckoutSession = async (userId) => {
     mode: "subscription",
     customer,
     line_items: [{ price: getStripePriceId(), quantity: 1 }],
-    success_url: getCheckoutSuccessUrl(),
-    cancel_url: getCheckoutCancelUrl(),
+    success_url: returnUrl
+      ? withCheckoutResult(returnUrl, "success")
+      : getCheckoutSuccessUrl(),
+    cancel_url: returnUrl
+      ? withCheckoutResult(returnUrl, "cancelled")
+      : getCheckoutCancelUrl(),
     // Belt and braces for the dashboard. The webhook does NOT read this - it
     // goes through the customer id, which is the column with the constraint.
     client_reference_id: userId,
@@ -292,6 +314,54 @@ export const cancelSubscription = async (userId) => {
   await invalidateSubscription(userId);
 
   return toResponse(subscription);
+};
+
+/**
+ * Ends a user's Stripe subscription NOW, for account deletion.
+ *
+ * Immediate, where cancelSubscription waits for the period to end - and the
+ * opposite call is right here. That one keeps paid access the user still has;
+ * a deleted account has nothing left to keep access to, and a subscription
+ * left running would go on billing a customer whose account no longer exists.
+ * CANCELLED rows are ended too: they would stop billing on their own, but the
+ * account is going now, not at renewsAt.
+ *
+ * Writes nothing locally. The row cascades away with the user, and the webhook
+ * that follows finds no user for the customer and answers 200 - see
+ * findUserIdByStripeCustomer.
+ *
+ * Stub rows (no `sub_` reference) exist nowhere at Stripe, so there is nothing
+ * to call. Neither is there for a subscription Stripe says is already gone.
+ *
+ * @param {string} userId
+ * @returns {Promise<void>}
+ * @throws {HttpError} 502 when Stripe cannot cancel it - the caller must then
+ *   delete nothing, or the account would be gone while still being billed
+ */
+export const cancelSubscriptionNow = async (userId) => {
+  const existing = await subscriptionRepo.findSubscriptionByUser(userId);
+  if (!existing || existing.status === "EXPIRED") return;
+  if (!existing.paymentReference?.startsWith("sub_")) return;
+
+  const stripe = getStripe();
+  try {
+    await stripe.subscriptions.cancel(existing.paymentReference);
+  } catch (err) {
+    // Never there under this reference.
+    if (err?.code === "resource_missing") return;
+
+    // Already over at Stripe - a webhook the local row has not caught up with.
+    // Asked rather than inferred from the error, whose wording Stripe owns.
+    const current = await stripe.subscriptions
+      .retrieve(existing.paymentReference)
+      .catch(() => null);
+    if (current?.status === "canceled" || current?.status === "incomplete_expired") return;
+
+    throw new HttpError(
+      502,
+      "Couldn't cancel your subscription, so nothing was deleted. Try again.",
+    );
+  }
 };
 
 /**
