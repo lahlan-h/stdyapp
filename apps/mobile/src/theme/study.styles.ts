@@ -187,7 +187,10 @@ export const createStudyStyles = (colors: ColorScheme) => {
     phoneDownHint: { fontSize: 12, color: "#2A2A2A" },
 
     // ---- duration picker -------------------------------------------------
-    pickerWrap: { justifyContent: "center" },
+    // Stretched, not sized to content: the wheels are flex: 1, so in a
+    // centred parent (the length sheet) they shrank to zero width and the
+    // sheet showed only blank space.
+    pickerWrap: { alignSelf: "stretch", justifyContent: "center" },
     pickerRow: { flexDirection: "row" },
     /**
      * The lane the chosen row sits in, drawn BEHIND the wheels and spanning
@@ -199,7 +202,9 @@ export const createStudyStyles = (colors: ColorScheme) => {
       left: 0,
       right: 0,
       borderRadius: 12,
-      backgroundColor: colors.surface,
+      // bg, not surface: the length sheet is surface, so a surface lane
+      // vanished into it.
+      backgroundColor: colors.bg,
     },
     // Height is set by the component, which knows whether it is compact.
     wheel: { flex: 1 },
